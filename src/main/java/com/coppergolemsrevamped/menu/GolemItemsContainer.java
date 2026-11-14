@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.menu;
 
 import com.coppergolemsrevamped.core.GolemData;
 
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.entity.player.Player;
@@ -55,9 +56,18 @@ public class GolemItemsContainer implements Container {
 	@Override
 	public void setItem(int slot, ItemStack stack) {
 		var items = GolemData.get(golem).items;
-		if (slot < 0 || slot >= items.size()) return;
+		if (slot < 0 || slot >= items.size()) {
+			// Never destroy an item: a stale menu wrote past the stored list, drop it at the golem instead.
+			if (!stack.isEmpty() && golem.level() instanceof ServerLevel level) golem.spawnAtLocation(level, stack);
+			return;
+		}
 		items.set(slot, stack);
 		setChanged();
+	}
+
+	@Override
+	public boolean canPlaceItem(int slot, ItemStack stack) {
+		return slot >= 0 && slot < GolemData.get(golem).items.size();
 	}
 
 	@Override

@@ -25,18 +25,20 @@ for the golem API.
 
 ## Cancel / timeout / range
 
-- Sneak + right-click: cancel.
+- Sneak + right-click on a block: cancel. This is a `UseBlockCallback`, so sneak-clicking air does nothing
+  and the 30 s timeout still applies.
 - Timeout 30 s (600 ticks, `AssignMode.TIMEOUT_TICKS`), checked on click and every server tick (the
   player gets "Assignment timed out."). The first AREA click restarts the timer.
 - Range: golem position to block centre <= 32 blocks (`AssignMode.MAX_RANGE`), for each AREA corner.
 - Cancelled automatically if the golem is dead, removed or in another dimension, or if its profession
   id differs from arming time.
-- Pending state is dropped on player disconnect.
+- Pending state is dropped on player disconnect and cleared on `ServerLifecycleEvents.SERVER_STOPPING`
+  (the static map holds strong golem references, which must not leak into another world).
 
 ## Entry points
 
 - `AssignMode:init` registers `UseBlockCallback.EVENT`, `ServerTickEvents.END_SERVER_TICK`,
-  `ServerPlayConnectionEvents.DISCONNECT`.
+  `ServerPlayConnectionEvents.DISCONNECT`, `ServerLifecycleEvents.SERVER_STOPPING`.
 - `AssignMode:arm`; pure helpers `AssignMode:areaFits`, `AssignMode:inRange`, `AssignMode:matches`.
 
 ## Why

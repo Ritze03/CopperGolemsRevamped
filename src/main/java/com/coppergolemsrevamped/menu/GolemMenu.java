@@ -6,10 +6,12 @@ import com.coppergolemsrevamped.profession.Professions;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
@@ -37,6 +39,7 @@ public class GolemMenu extends AbstractContainerMenu {
 	private final @Nullable CopperGolem golem;
 	private final @Nullable Profession profession;
 	private final int itemCount;
+	private final @Nullable Identifier openedProfession;
 	private final List<Heading> headings = new ArrayList<>();
 	private int assignY;
 	private int heldY;
@@ -59,6 +62,7 @@ public class GolemMenu extends AbstractContainerMenu {
 		this.data = data;
 		this.golem = golem;
 		this.profession = Professions.get(data.profession().orElse(null));
+		this.openedProfession = data.profession().orElse(null);
 		this.itemCount = profession == null ? 0 : profession.inventorySize();
 		if (items == null) items = new SimpleContainer(itemCount);
 		if (held == null) held = new SimpleContainer(1);
@@ -152,7 +156,11 @@ public class GolemMenu extends AbstractContainerMenu {
 
 	@Override
 	public boolean stillValid(Player player) {
-		return golem == null || inRange(player, golem);
+		if (golem == null) return true;
+		if (!inRange(player, golem)) return false;
+		// Layout is fixed at construction: close if another player changed the profession or the stored list shrank.
+		GolemData d = GolemData.get(golem);
+		return Objects.equals(d.profession, openedProfession) && d.items.size() >= itemCount;
 	}
 
 	private static class GroupSlot extends Slot {
@@ -167,7 +175,7 @@ public class GolemMenu extends AbstractContainerMenu {
 
 		@Override
 		public boolean mayPlace(ItemStack stack) {
-			return filter.test(stack);
+			return container.canPlaceItem(getContainerSlot(), stack) && filter.test(stack);
 		}
 
 		@Override

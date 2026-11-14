@@ -5,7 +5,7 @@ Menu, screen and serverbound payloads for configuring a golem. Fabric/vanilla si
 
 ## Opening
 
-An empty main-hand right-click on a copper golem: `mixin/CopperGolemMixin:cgr$emptyHand` calls
+A main-hand right-click on a copper golem with BOTH hands empty: `mixin/CopperGolemMixin:cgr$emptyHand` calls
 `menu/GolemMenuOpener:open` (server). That builds a `GolemMenuData` snapshot and calls
 `ServerPlayer#openMenu` with an `ExtendedMenuProvider`. The menu type is
 `menu/ModMenus:GOLEM` (an `ExtendedMenuType<GolemMenu, GolemMenuData>`); the client screen is
@@ -14,6 +14,10 @@ registered in `client/CopperGolemsRevampedClient:onInitializeClient`.
 `GolemMenuData(golemId, Optional<Identifier> profession, boolean following, Map<String,BlockPos> assignments)`
 is the opening data; its `STREAM_CODEC` lives on the record. The client builds its menu from it, so
 the layout is identical on both sides.
+
+Why: both hands, not just the main one. Vanilla tries the main hand first and the off hand only if the
+main one passes, so opening the GUI on an empty main hand alone would swallow off-hand honeycomb, axe or
+shears use. Any item in either hand stays vanilla (decision D4).
 
 ## Layout comes from the declaration
 
@@ -31,7 +35,7 @@ Slot order: held (0), profession slots in declaration order, player inventory, h
 (`client/GolemScreen`) reads all y coordinates from the menu; background is plain fills (no texture).
 
 Containers: server side `menu/GolemItemsContainer` is a live view over `GolemData.items` that calls
-`GolemData.save` on every change (size = declared inventory size; out-of-range slots read empty);
+`GolemData.save` on every change (size = declared inventory size; out-of-range slots read empty and refuse placement);
 `menu/GolemHeldContainer` views the main hand. Client side uses plain `SimpleContainer`s synced by
 vanilla slot sync. The held slot is take-out only (`mayPlace` false): the vanilla brain owns what the
 golem carries. Writes to the main hand call
@@ -57,6 +61,17 @@ open container must be a `GolemMenu` for that same entity id, the entity must be
 within 8 blocks (`GolemMenu:inRange`). Then: profession id must be registered (and different from the
 current one, so a duplicate packet cannot wipe assignments); assign key must be in the current
 profession's `assigns()`. Anything else is ignored silently.
+
+## Stale menus close
+
+`GolemMenu` snapshots the profession (`openedProfession`) and slot count when opened. `GolemMenu:stillValid`
+(server side) returns false when the golem's current `GolemData.profession` differs from that snapshot, or
+`GolemData.items` is shorter than the declared slot count; vanilla then closes the menu next tick and returns
+the cursor stack. Defence in depth: `GolemItemsContainer:canPlaceItem` is false for out-of-range slots
+(checked by `GolemMenu.GroupSlot:mayPlace`), and `GolemItemsContainer:setItem` drops an out-of-range stack
+at the golem instead of discarding it.
+Why: only the player who changes the profession gets a reopened menu; any other viewer keeps the old slot
+layout, and an item placed in a slot that no longer exists would vanish (decision D9, no item is ever lost).
 
 ## Why reopen on profession change
 

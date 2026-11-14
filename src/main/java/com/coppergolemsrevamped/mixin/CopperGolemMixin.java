@@ -25,7 +25,7 @@ import net.minecraft.world.entity.player.Player;
 public abstract class CopperGolemMixin {
 	@Inject(method = "mobInteract", at = @At("HEAD"), cancellable = true)
 	private void cgr$emptyHand(Player player, InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
-		if (hand == InteractionHand.MAIN_HAND && player.getMainHandItem().isEmpty()) {
+		if (hand == InteractionHand.MAIN_HAND && player.getMainHandItem().isEmpty() && player.getOffhandItem().isEmpty()) {
 			if (player instanceof ServerPlayer sp) GolemMenuOpener.open(sp, (CopperGolem) (Object) this);
 			cir.setReturnValue(InteractionResult.SUCCESS);
 		}

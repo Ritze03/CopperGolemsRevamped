@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import org.jspecify.annotations.Nullable;
 
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -70,6 +71,7 @@ public final class AssignMode {
 			return InteractionResult.SUCCESS;
 		});
 		ServerTickEvents.END_SERVER_TICK.register(AssignMode::tick);
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> PENDING.clear());
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> PENDING.remove(handler.getPlayer().getUUID()));
 	}
 
