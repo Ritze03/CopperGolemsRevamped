@@ -145,8 +145,10 @@ Death flow: `LivingEntity#die(DamageSource)` -> `protected void LivingEntity#dro
 - `protected void CopperGolem#dropEquipment(ServerLevel level)` overrides: `super.dropEquipment(level)` then
   `dropPreservedEquipment(level)`. Because the carried item has `setGuaranteedDrop`, it drops here.
   **Best hook for dumping mod-stored items on death**: `dropEquipment` (runs regardless of the `shouldDropLoot` gate, e.g. gamerule off).
-- `public void Mob#dropPreservedEquipment(ServerLevel)` and
-  `public Set<EquipmentSlot> Mob#dropPreservedEquipment(ServerLevel, Predicate<ItemStack>)`.
+- `CopperGolem#dropPreservedEquipment(ServerLevel)` is the call site of the no-arg drop. Mixin `INVOKE` targets must name
+  `CopperGolem` as owner (`Lnet/minecraft/world/entity/animal/golem/CopperGolem;dropPreservedEquipment(Lnet/minecraft/server/level/ServerLevel;)V`),
+  not `Mob`: a `Mob` owner made the first build crash. `Mob` also has the overload
+  `Set<EquipmentSlot> Mob#dropPreservedEquipment(ServerLevel, Predicate<ItemStack>)`.
 - `public void Entity#spawnAtLocation(ServerLevel, ItemStack)`; `CopperGolem` also uses `spawnAtLocation(level, stack, 1.5F)` in `shear`.
 
 Statue conversion (oxidised golem -> statue block), all in `CopperGolem`:
@@ -234,7 +236,7 @@ ServerPlayNetworking.registerGlobalReceiver(SetProfession.TYPE, (p, ctx) -> { /*
 
 ## 10. Fabric API: GameTest
 
-`net.fabricmc.fabric.api.gametest.v1.GameTest` annotation (method takes `GameTestHelper`; scaffold: `SmokeTest#smoke`). Attributes and defaults:
+`net.fabricmc.fabric.api.gametest.v1.GameTest` annotation (method takes `GameTestHelper`; see `src/gametest/.../TransporterTest`). Attributes and defaults:
 `environment = "minecraft:default"`, `dimension = "minecraft:overworld"`, `structure = "fabric-gametest-api-v1:empty"` (empty structure),
 `maxTicks = 20`, `setupTicks = 0`, `required = true`, `rotation = Rotation.NONE`, `manualOnly = false`,
 `maxAttempts = 1`, `requiredSuccesses = 1`, `skyAccess = false`, `padding = 1`.
@@ -273,7 +275,7 @@ public void sortsItems(GameTestHelper h) {
 | Gate the vanilla transport brain | `CopperGolem#customServerAiStep(ServerLevel)` | `@WrapOperation` on the `Brain#tick(ServerLevel, LivingEntity)` call (skip when the golem has a non-Chest-Sorter profession; run profession tick instead), (an `@Inject(HEAD, cancellable)` cannot skip only the brain tick and still run `super.customServerAiStep`; prefer wrapping). `Mob#serverAiStep` is final, do not target it. Alternative: `@Inject` into `CopperGolem#tick()` for profession ticking (runs also when AI is off). |
 | Chest limit override | `TransportItemsBetweenContainers#setVisitedBlockPos(PathfinderMob, Level, BlockPos)` (protected) | `@ModifyConstant(method="setVisitedBlockPos", constant=@Constant(intValue=10))` (or MixinExtras `@ModifyExpressionValue` on the `Set#size()` result). Read the limit from the `body` (`body.getAttached(DATA)`) via a `@Redirect`/wrap of the size comparison since the constant has no golem access. The same literal `10` appears nowhere else in that method; `50` in `markVisitedBlockPosAsUnreachable` is separate. |
 | Death drops | `CopperGolem#dropEquipment(ServerLevel)` (protected) | `@Inject(at=@At("TAIL"))`: spawn stored items with `spawnAtLocation(level, stack)`. Runs on every `die()` path. |
-| Statue conversion drops | `CopperGolem#turnToStatue(ServerLevel)` (private) | `@Inject(method="turnToStatue", at=@At(value="INVOKE", target="Lnet/minecraft/world/entity/Mob;dropPreservedEquipment(Lnet/minecraft/server/level/ServerLevel;)V"))` so it only fires after the block entity was created; drop stored items there. `discard()` follows, `die` hooks are skipped. |
+| Statue conversion drops | `CopperGolem#turnToStatue(ServerLevel)` (private) | `@Inject(method="turnToStatue", at=@At(value="INVOKE", target="Lnet/minecraft/world/entity/animal/golem/CopperGolem;dropPreservedEquipment(Lnet/minecraft/server/level/ServerLevel;)V"))` so it only fires after the block entity was created; drop stored items there. `discard()` follows, `die` hooks are skipped. |
 
 Verify each descriptor against the compiled class (`javap -p`) when writing the mixin; the targets above
 come from decompiled source (names exact, synthetic details unverified).
