@@ -6,7 +6,8 @@
 	"environment": "*",
 	"entrypoints": {
 		"fabric-gametest": [
-			"com.coppergolemsrevamped.test.SmokeTest"
+			"com.coppergolemsrevamped.test.TransporterTest",
+			"com.coppergolemsrevamped.test.GolemDataTest"
 		]
 	},
 	"depends": {
