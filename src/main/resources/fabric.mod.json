@@ -1,0 +1,32 @@
+{
+	"schemaVersion": 1,
+	"id": "coppergolemsrevamped",
+	"version": "${version}",
+	"name": "Copper Golems Revamped",
+	"description": "Revamps copper golems.",
+	"authors": [],
+	"contact": {},
+	"license": "CC0-1.0",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.coppergolemsrevamped.CopperGolemsRevamped"
+		],
+		"client": [
+			"com.coppergolemsrevamped.client.CopperGolemsRevampedClient"
+		]
+	},
+	"mixins": [
+		"coppergolemsrevamped.mixins.json",
+		{
+			"config": "coppergolemsrevamped.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

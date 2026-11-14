@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "coppergolemsrevamped-test",
+	"version": "1.0.0",
+	"name": "Copper Golems Revamped Tests",
+	"environment": "*",
+	"entrypoints": {
+		"fabric-gametest": [
+			"com.coppergolemsrevamped.test.SmokeTest"
+		]
+	},
+	"depends": {
+		"coppergolemsrevamped": "*"
+	}
+}
