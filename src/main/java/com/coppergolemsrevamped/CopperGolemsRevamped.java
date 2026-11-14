@@ -1,5 +1,11 @@
 package com.coppergolemsrevamped;
 
+import com.coppergolemsrevamped.assign.AssignMode;
+import com.coppergolemsrevamped.core.ModAttachments;
+import com.coppergolemsrevamped.menu.ModMenus;
+import com.coppergolemsrevamped.network.ModNetworking;
+import com.coppergolemsrevamped.profession.transporter.TransporterProfession;
+
 import net.fabricmc.api.ModInitializer;
 
 import net.minecraft.resources.Identifier;
@@ -13,6 +19,11 @@ public class CopperGolemsRevamped implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
+		ModAttachments.init();
+		TransporterProfession.init();
+		ModMenus.init();
+		ModNetworking.init();
+		AssignMode.init();
 		LOGGER.info("Copper Golems Revamped initialized");
 	}
 
