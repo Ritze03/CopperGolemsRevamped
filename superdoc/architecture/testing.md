@@ -21,17 +21,20 @@ not part of `check`.
   `skipRuleExpires`, `deliversWhenOnlySkippedItemsRemain`, `unreachableItemDoesNotBlock`,
   `pickupWorksFromSpawnTick`: Cleaner pickup/delivery, area limit, item conservation, border and give-up rules, and
   configuring on the spawn tick (see [cleaner.md](../features/cleaner.md)).
+- `CrafterTest:craftsSticksFromTemplate`, `noCraftWithoutTable`, `templateDropsOnProfessionChange`,
+  `bufferDropsOnProfessionChange`, `noCraftWhenTableReplaced`, `deliversBufferWhenTemplateCleared`,
+  `templateSlotHoldsOne`: Crafter loop, drops and menu slot rules (see [crafter.md](../features/crafter.md)).
 
-Total: 14 `@GameTest` methods (TransporterTest 1, GolemDataTest 2, ChestSorterTest 3, CleanerTest 8), so the log
-says `All 15 required tests passed` (see Gotchas).
+Total: `@GameTest` methods counted with `grep -rc '@GameTest' src/gametest` (TransporterTest 1, GolemDataTest 2,
+ChestSorterTest 3, CleanerTest 8, CrafterTest 7 = 21), so the log says `All 22 required tests passed` (see Gotchas).
 
 ## Client tests (headless sway only)
 
 `GolemGuiClientTest` (`fabric-client-gametest` entrypoint, `enableClientGameTests = true` in
 `build.gradle`) launches the real client, creates a singleplayer world, spawns a golem next to the
-player, opens `GolemMenuOpener:open` on the server thread and screenshots the chest menu five times:
+player, opens `GolemMenuOpener:open` on the server thread and screenshots the chest menu six times:
 no profession, Transporter with items and an assignment, the Transporter first control slot hovered (tooltip),
-Chest Sorter (12 waxed copper blocks) and Cleaner (area and output assigned).
+Chest Sorter (12 waxed copper blocks), Cleaner (area and output assigned) and Crafter (template, buffer, three assigns).
 Window 1280x720, GUI scale 3. Screenshots land in `build/run/clientGameTest/screenshots/`.
 Task: `runClientGameTest`. It is not wired into `check`/`build` (the `runGameTest` server task is).
 

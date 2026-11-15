@@ -116,7 +116,7 @@ public class GolemMenu extends AbstractContainerMenu {
 				shown++;
 			}
 			groupCells.add(cells);
-			nextRow += g.rows();
+			nextRow += g.rows() + 1; // one filler row separates consecutive groups
 		}
 		this.itemCount = shown;
 		for (int gi = groupCells.size() - 1; gi >= 0; gi--) quickMoveCells.addAll(groupCells.get(gi));
@@ -142,7 +142,7 @@ public class GolemMenu extends AbstractContainerMenu {
 
 	/** Rows = 1 control row + the rows of every slot group (each group on new rows), at most 6. */
 	private static int rowsFor(@Nullable Profession p) {
-		return Math.min(MAX_ROWS, 1 + (p == null ? 0 : p.slotRows()));
+		return Math.min(MAX_ROWS, 1 + (p == null ? 0 : p.slotRows())); // slotRows includes the separator rows
 	}
 
 	private void buildControls() {
@@ -255,6 +255,13 @@ public class GolemMenu extends AbstractContainerMenu {
 		// empty hand: the cell shows a placeholder that no input may touch (QUICK_CRAFT still goes on, mayPlace refuses it)
 		if (slotId == HELD_CELL && input != ContainerInput.QUICK_CRAFT && heldIsEmpty()) return;
 		super.clicked(slotId, button, input, player);
+	}
+
+	/** Double-click collect must not strip a 1-stack template slot (and never touches control / filler / held cells). */
+	@Override
+	public boolean canTakeItemForPickAll(ItemStack carried, Slot target) {
+		if (target instanceof GroupSlot g && g.maxStack == 1) return false;
+		return super.canTakeItemForPickAll(carried, target);
 	}
 
 	private boolean heldIsEmpty() {
@@ -390,5 +397,6 @@ public class GolemMenu extends AbstractContainerMenu {
 		public int getMaxStackSize() {
 			return maxStack;
 		}
+
 	}
 }

@@ -53,6 +53,12 @@ a container, the table block is not a crafting table, no table is assigned or th
    Exactly k sets are taken, no more.
 4. Else idle.
 
+No valid recipe (empty or invalid template) with a valid output chest and a non-empty buffer: the whole buffer goes to
+the output (`CrafterLogic:deliverAll`; with no recipe everything counts as product), then idle. Missing output = idle.
+Why: otherwise changing or clearing the template strands the buffered items. With a valid recipe but an invalid
+table the golem does not craft; its items stay in the buffer / input chest. A golem that is airborne (just spawned)
+waits instead of treating the failed `createPath` as unreachable (that cost a 600-tick idle).
+
 `GolemData` is saved after every mutation. Order matters for no loss/duplication (D9): the buffer is edited as a
 copy and written back in one go; items that do not fit anywhere return to the source.
 
@@ -70,5 +76,12 @@ and idles; a stray item a player puts into the buffer is delivered to the output
   1 plank, the other template slots and the buffer are empty. maxTicks 1200.
 - `noCraftWithoutTable`: same, table unassigned; after 300 ticks the output is empty and planks are conserved
   (input + buffer == 8).
+- `bufferDropsOnProfessionChange`: buffer 5 planks + 3 sticks, template 2 planks; `changeProfession(..., null)` drops
+  7 planks and 3 sticks, items cleared.
+- `noCraftWhenTableReplaced`: table block replaced by stone right after setup; output stays empty, planks conserved
+  (input + buffer == 8).
+- `deliversBufferWhenTemplateCleared`: empty template, buffer 5 planks + 3 sticks; all of it ends in the output.
+- `templateSlotHoldsOne`: builds a `GolemMenu` for a mock player; template slot max stack 1, `canTakeItemForPickAll`
+  false for it and true for a buffer slot, buffer max 64, row 4 is filler.
 - `templateDropsOnProfessionChange`: `changeProfession(..., null)` drops the 2 template planks as item entities and
   clears `GolemData.items`.

@@ -275,12 +275,18 @@ public final class CrafterLogic {
 		Container cout = out == null ? null : TransporterLogic.containerAt(level, out);
 		boolean tableOk = table != null && level.getBlockState(table).is(Blocks.CRAFTING_TABLE);
 		boolean sized = data.items.size() >= CrafterProfession.TEMPLATE_SLOTS + CrafterProfession.BUFFER_SLOTS;
-		Plan plan = cin == null || cout == null || !tableOk || !sized ? null : plan(level, data);
+		Plan recipe = sized ? plan(level, data) : null;
+		SimpleContainer buf = buffer(data);
+		if (sized && recipe == null && cout != null && !isEmpty(buf)) {
+			// no valid recipe (template empty or invalid): the buffer would be stranded, so everything goes to the output
+			deliverAll(level, golem, data, s, buf, out, cout);
+			return;
+		}
+		Plan plan = cin == null || cout == null || !tableOk ? null : recipe;
 		if (plan == null) {
 			idle(golem, s, RETRY_TICKS);
 			return;
 		}
-		SimpleContainer buf = buffer(data);
 		Job job = decide(plan, cin, buf);
 		BlockPos target = switch (job) {
 			case FETCH -> in;
@@ -313,12 +319,43 @@ public final class CrafterLogic {
 			case DELIVER -> {
 				NonNullList<ItemStack> prods = takeProducts(plan, buf);
 				TransporterLogic.insertAll(prods, cout);
-				// what did not fit goes back into the buffer, never lost
+				// what did not fit goes back into the buffer, never lost; it always fits: the freed slots are the ones the stacks came from
 				for (ItemStack rest : prods) if (!rest.isEmpty()) buf.addItem(rest);
 				s.cooldown = hasProducts(plan, buf) ? RETRY_TICKS : AFTER_ACTION_TICKS;
 			}
 			case IDLE -> s.cooldown = RETRY_TICKS;
 		}
+		storeBuffer(data, buf);
+		GolemData.save(golem, data);
+	}
+
+	private static boolean isEmpty(Container c) {
+		for (int i = 0; i < c.getContainerSize(); i++) if (!c.getItem(i).isEmpty()) return false;
+		return true;
+	}
+
+	/** No recipe: walk to the output chest and move the whole buffer there; what does not fit stays in the buffer. */
+	private static void deliverAll(ServerLevel level, CopperGolem golem, GolemData data, State s, SimpleContainer buf,
+		BlockPos out, Container cout) {
+		if (!TransporterLogic.inReach(golem, out)) {
+			walk(golem, s, out);
+			return;
+		}
+		golem.getNavigation().stop();
+		golem.getLookControl().setLookAt(Vec3.atCenterOf(out));
+		s.repath = 0;
+		s.target = null;
+		s.stuck = 0;
+		NonNullList<ItemStack> all = NonNullList.create();
+		for (int i = 0; i < buf.getContainerSize(); i++) {
+			ItemStack st = buf.getItem(i);
+			if (st.isEmpty()) continue;
+			all.add(st);
+			buf.setItem(i, ItemStack.EMPTY);
+		}
+		TransporterLogic.insertAll(all, cout);
+		for (ItemStack rest : all) if (!rest.isEmpty()) buf.addItem(rest); // same slots as freed above, always fits
+		s.cooldown = isEmpty(buf) ? AFTER_ACTION_TICKS : RETRY_TICKS;
 		storeBuffer(data, buf);
 		GolemData.save(golem, data);
 	}
@@ -356,6 +393,11 @@ public final class CrafterLogic {
 			return;
 		}
 		if (--s.repath <= 0 || golem.getNavigation().isDone()) {
+			// airborne (just spawned / falling): createPath returns null, which would read as unreachable and idle 600 ticks
+			if (!golem.onGround()) {
+				s.repath = 0;
+				return;
+			}
 			if (golem.getNavigation().createPath(target, 0) == null) {
 				idle(golem, s, GIVE_UP_IDLE_TICKS);
 				return;

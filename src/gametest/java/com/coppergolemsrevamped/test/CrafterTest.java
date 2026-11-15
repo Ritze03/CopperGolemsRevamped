@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.test;
 
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
+import com.coppergolemsrevamped.menu.GolemMenu;
 import com.coppergolemsrevamped.profession.crafter.CrafterProfession;
 
 import java.util.List;
@@ -10,6 +11,8 @@ import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -112,5 +115,89 @@ public class CrafterTest {
 			helper.assertTrue(GolemData.get(golem).items.isEmpty(), "items must be cleared");
 			helper.succeed();
 		});
+	}
+
+	@GameTest
+	public void bufferDropsOnProfessionChange(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[2];
+		CopperGolem golem = setup(helper, true, c);
+		GolemData data = GolemData.get(golem);
+		data.items.set(BUFFER, new ItemStack(Items.OAK_PLANKS, 5));
+		data.items.set(BUFFER + 1, new ItemStack(Items.STICK, 3));
+		GolemData.save(golem, data);
+		GolemService.changeProfession(helper.getLevel(), golem, null);
+		helper.runAfterDelay(2, () -> {
+			AABB box = golem.getBoundingBox().inflate(4);
+			List<ItemEntity> drops = helper.getLevel().getEntitiesOfClass(ItemEntity.class, box, ItemEntity::isAlive);
+			int planks = 0;
+			int sticks = 0;
+			for (ItemEntity e : drops) {
+				if (e.getItem().is(Items.OAK_PLANKS)) planks += e.getItem().getCount();
+				if (e.getItem().is(Items.STICK)) sticks += e.getItem().getCount();
+			}
+			// 2 template planks + 5 buffered planks
+			helper.assertTrue(planks == 7, "dropped planks: " + planks);
+			helper.assertTrue(sticks == 3, "dropped sticks: " + sticks);
+			helper.assertTrue(GolemData.get(golem).items.isEmpty(), "items must be cleared");
+			helper.succeed();
+		});
+	}
+
+	/** Valid recipe but the table block is gone: no crafting; the planks stay in the input chest / buffer (idle). */
+	@GameTest(maxTicks = 400)
+	public void noCraftWhenTableReplaced(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[2];
+		CopperGolem golem = setup(helper, true, c);
+		helper.setBlock(new BlockPos(3, 1, 6), Blocks.STONE);
+		helper.runAfterDelay(300, () -> {
+			helper.assertTrue(total(c[1]) == 0, "output must stay empty, holds " + total(c[1]));
+			int buffered = 0;
+			GolemData d = GolemData.get(golem);
+			for (int i = 0; i < 9; i++) {
+				ItemStack s = d.items.get(BUFFER + i);
+				if (s.is(Items.OAK_PLANKS)) buffered += s.getCount();
+				else helper.assertTrue(s.isEmpty(), "unexpected buffer item " + s);
+			}
+			helper.assertTrue(count(c[0], Items.OAK_PLANKS) + buffered == 8, "planks not conserved: input "
+				+ count(c[0], Items.OAK_PLANKS) + " + buffer " + buffered);
+			helper.succeed();
+		});
+	}
+
+	@GameTest(maxTicks = 600)
+	public void deliversBufferWhenTemplateCleared(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[2];
+		CopperGolem golem = setup(helper, true, c);
+		c[0].setItem(0, ItemStack.EMPTY);
+		GolemData data = GolemData.get(golem);
+		data.items.set(0, ItemStack.EMPTY);
+		data.items.set(3, ItemStack.EMPTY);
+		data.items.set(BUFFER, new ItemStack(Items.OAK_PLANKS, 5));
+		data.items.set(BUFFER + 1, new ItemStack(Items.STICK, 3));
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[1], Items.OAK_PLANKS) == 5, "planks in output: " + count(c[1], Items.OAK_PLANKS) + " buf0=" + GolemData.get(golem).items.get(BUFFER) + " gpos=" + golem.blockPosition() + " prof=" + GolemData.get(golem).profession);
+			helper.assertTrue(count(c[1], Items.STICK) == 3, "sticks in output: " + count(c[1], Items.STICK));
+			GolemData d = GolemData.get(golem);
+			for (int i = 0; i < 9; i++) helper.assertTrue(d.items.get(BUFFER + i).isEmpty(), "buffer " + i + ": " + d.items.get(BUFFER + i));
+		});
+	}
+
+	@GameTest
+	public void templateSlotHoldsOne(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[2];
+		CopperGolem golem = setup(helper, true, c);
+		@SuppressWarnings("removal")
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), golem);
+		ItemStack planks = new ItemStack(Items.OAK_PLANKS, 64);
+		Slot template = menu.slots.get(9); // row 1, column 0 = template slot 0
+		Slot buffer = menu.slots.get(5 * 9); // row 5 = buffer
+		helper.assertTrue(template.getMaxStackSize(planks) == 1, "template max stack " + template.getMaxStackSize(planks));
+		helper.assertTrue(!menu.canTakeItemForPickAll(planks, template), "template must refuse PICKUP_ALL");
+		helper.assertTrue(buffer.getMaxStackSize(planks) == 64, "buffer max stack " + buffer.getMaxStackSize(planks));
+		helper.assertTrue(menu.canTakeItemForPickAll(planks, buffer), "buffer must allow PICKUP_ALL");
+		helper.assertTrue(!menu.slots.get(4 * 9).getItem().isEmpty() && !menu.slots.get(4 * 9).mayPlace(planks), "row 4 must be a filler separator");
+		helper.succeed();
 	}
 }

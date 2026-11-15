@@ -61,11 +61,11 @@ public record Profession(
 		return n;
 	}
 
-	/** GUI rows taken by all slot groups (each group starts on a new row). */
+	/** GUI rows taken by all slot groups: each group starts on a new row, one filler row between consecutive groups. */
 	public int slotRows() {
 		int n = 0;
 		for (SlotGroup g : slots) n += g.rows();
-		return n;
+		return slots.isEmpty() ? 0 : n + slots.size() - 1;
 	}
 
 	public void tick(ServerLevel level, CopperGolem golem, GolemData data) {
