@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.profession.transporter;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.core.GolemData;
 
 import java.util.Map;
@@ -29,6 +30,7 @@ public final class TransporterLogic {
 	/** Transient per-golem timers; the persistent state is only GolemData items + assignments. */
 	private static final class State {
 		int cooldown;
+		boolean loading;
 		final Interact.Approach walk = new Interact.Approach();
 	}
 
@@ -50,18 +52,32 @@ public final class TransporterLogic {
 			return;
 		}
 		boolean carryEmpty = isEmpty(data.items);
-		BlockPos target = carryEmpty ? a : b;
+		boolean loading = s.loading; // a take cut short by the transfer budget goes on before the carry is delivered
+		BlockPos target = loading || carryEmpty ? a : b;
 		if (!Interact.approach(level, golem, target, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
-		if (carryEmpty) {
-			boolean moved = takeAll(ca, data.items);
+		if (loading || carryEmpty) {
+			boolean moved = TransferBudget.take(level, golem, ca, data.items) > 0;
 			if (moved) Interact.openChest(level, golem, target, Interact.Action.TAKE);
-			s.cooldown = moved ? Interact.OPEN_TICKS : RETRY_TICKS;
-			if (moved) s.walk.reset();
+			if (TransferBudget.exhausted(level, golem)) {
+				// budget used up, not "chest empty": stay, keep the lid open and go on next window
+				s.loading = true;
+				Interact.openChest(level, golem, target, Interact.Action.TAKE);
+				s.cooldown = TransferBudget.waitTicks(level);
+			} else {
+				s.cooldown = moved || loading ? Interact.OPEN_TICKS : RETRY_TICKS;
+				if (moved || loading) s.walk.reset();
+				s.loading = false;
+			}
 		} else {
-			if (insertAll(data.items, cb)) Interact.openChest(level, golem, target, Interact.Action.INSERT);
-			s.cooldown = isEmpty(data.items) ? Interact.OPEN_TICKS : RETRY_TICKS;
-			if (isEmpty(data.items)) s.walk.reset();
+			if (TransferBudget.insert(level, golem, data.items, cb) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
+			boolean empty = isEmpty(data.items);
+			if (empty) s.walk.reset();
+			if (empty) s.cooldown = Interact.OPEN_TICKS;
+			else if (TransferBudget.exhausted(level, golem)) {
+				Interact.openChest(level, golem, target, Interact.Action.INSERT);
+				s.cooldown = TransferBudget.waitTicks(level);
+			} else s.cooldown = RETRY_TICKS;
 		}
 		GolemData.save(golem, data);
 	}
@@ -82,48 +98,60 @@ public final class TransporterLogic {
 
 	/** Moves items from {@code src} into {@code carry} (merge first, then empty slots). Returns true if anything moved. */
 	public static boolean takeAll(Container src, NonNullList<ItemStack> carry) {
-		boolean moved = false;
-		for (int i = 0; i < src.getContainerSize(); i++) {
+		return takeAll(src, carry, Integer.MAX_VALUE) > 0;
+	}
+
+	/** Like {@link #takeAll(Container, NonNullList)} but moves at most {@code limit} items; returns how many moved. */
+	public static int takeAll(Container src, NonNullList<ItemStack> carry, int limit) {
+		int total = 0;
+		for (int i = 0; i < src.getContainerSize() && total < limit; i++) {
 			ItemStack in = src.getItem(i);
 			if (in.isEmpty()) continue;
 			int before = in.getCount();
-			ItemStack rest = addTo(carry, in.copy(), null);
+			ItemStack rest = addTo(carry, in.copy(), null, limit - total);
 			if (rest.getCount() != before) {
-				moved = true;
+				total += before - rest.getCount();
 				src.setItem(i, rest.isEmpty() ? ItemStack.EMPTY : rest);
 			}
 		}
-		if (moved) src.setChanged();
-		return moved;
+		if (total > 0) src.setChanged();
+		return total;
 	}
 
 	/** Inserts every carried stack into {@code dst}; what does not fit stays in {@code carry}. Returns true if anything moved. */
 	public static boolean insertAll(NonNullList<ItemStack> carry, Container dst) {
-		boolean moved = false;
-		for (int i = 0; i < carry.size(); i++) {
+		return insertAll(carry, dst, Integer.MAX_VALUE) > 0;
+	}
+
+	/** Like {@link #insertAll(NonNullList, Container)} but moves at most {@code limit} items; returns how many moved. */
+	public static int insertAll(NonNullList<ItemStack> carry, Container dst, int limit) {
+		int total = 0;
+		for (int i = 0; i < carry.size() && total < limit; i++) {
 			ItemStack s = carry.get(i);
 			if (s.isEmpty()) continue;
 			int before = s.getCount();
-			ItemStack rest = addTo(null, s.copy(), dst);
-			if (rest.getCount() != before) moved = true;
+			ItemStack rest = addTo(null, s.copy(), dst, limit - total);
+			total += before - rest.getCount();
 			carry.set(i, rest);
 		}
-		if (moved) dst.setChanged();
-		return moved;
+		if (total > 0) dst.setChanged();
+		return total;
 	}
 
-	/** Adds stack to a list or a container (exactly one non-null); returns the remainder. */
-	private static ItemStack addTo(@Nullable NonNullList<ItemStack> list, ItemStack stack, @Nullable Container cont) {
+	/** Adds at most {@code limit} items of stack to a list or a container (exactly one non-null); returns the remainder. */
+	private static ItemStack addTo(@Nullable NonNullList<ItemStack> list, ItemStack stack, @Nullable Container cont, int limit) {
 		int size = list != null ? list.size() : cont.getContainerSize();
-		for (int pass = 0; pass < 2 && !stack.isEmpty(); pass++) {
-			for (int i = 0; i < size && !stack.isEmpty(); i++) {
+		int left = limit;
+		for (int pass = 0; pass < 2 && !stack.isEmpty() && left > 0; pass++) {
+			for (int i = 0; i < size && !stack.isEmpty() && left > 0; i++) {
 				ItemStack cur = list != null ? list.get(i) : cont.getItem(i);
 				if (pass == 0 ? cur.isEmpty() || !ItemStack.isSameItemSameComponents(cur, stack) : !cur.isEmpty()) continue;
 				if (cont != null && !cont.canPlaceItem(i, stack)) continue;
 				int max = Math.min(stack.getMaxStackSize(), cont != null ? cont.getMaxStackSize() : 64);
 				int room = max - cur.getCount();
 				if (room <= 0) continue;
-				int n = Math.min(room, stack.getCount());
+				int n = Math.min(Math.min(room, stack.getCount()), left);
+				left -= n;
 				if (cur.isEmpty()) {
 					cur = stack.copyWithCount(n);
 				} else {

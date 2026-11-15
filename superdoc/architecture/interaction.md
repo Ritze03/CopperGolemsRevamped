@@ -89,6 +89,8 @@ cooldown to `Interact.OPEN_TICKS` (Transporter and Cleaner do) so the golem stan
 animation state plays; do not open on a failed take/insert (empty source, full target), or an idle golem would
 open and close the chest every retry.
 
+A transfer cut short by `TransferBudget` (see [transfer-limit.md](transfer-limit.md)) keeps the lid open the same way: call `openChest` again and wait `TransferBudget.waitTicks`, instead of `OPEN_TICKS`.
+
 ## Adopting it in a profession
 
 1. Add `final Interact.Approach walk = new Interact.Approach();` to the profession's `State`.

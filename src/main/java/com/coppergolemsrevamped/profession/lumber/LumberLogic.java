@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.profession.lumber;
 
 import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.ToolSwing;
+import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -111,6 +112,8 @@ public final class LumberLogic {
 	}
 
 	private static final class State {
+		/** A supply fetch was cut short by the transfer budget: it goes on to its full target. */
+		boolean topUp;
 		/** The tree spot this state was built for; a different spot (reassigned tree) starts a fresh state. */
 		@Nullable BlockPos tree;
 		int cooldown;
@@ -331,6 +334,7 @@ public final class LumberLogic {
 		s.phase = p;
 		s.inputTried = false;
 		s.outputTried = false;
+		s.topUp = false;
 		s.chasing = null;
 		s.spot = null;
 		s.spotBad.clear();
@@ -348,7 +352,7 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.BONEMEAL, now);
 			return;
 		}
-		if (in != null && wantsFetch(data, in, false, true, false)) {
+		if (in != null && wantsFetch(data, in, false, true, false, s.topUp)) {
 			fetchVisit(s, level, golem, data, in, inPos, now, false, true, false);
 			return;
 		}
@@ -363,7 +367,7 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.PICKUP, now);
 			return;
 		}
-		if (in != null && wantsFetch(data, in, false, false, true)) {
+		if (in != null && wantsFetch(data, in, false, false, true, s.topUp)) {
 			fetchVisit(s, level, golem, data, in, inPos, now, false, false, true);
 			return;
 		}
@@ -383,7 +387,7 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.PICKUP, now);
 			return;
 		}
-		boolean fetch = in != null && wantsFetch(data, in, true, false, false);
+		boolean fetch = in != null && wantsFetch(data, in, true, false, false, false);
 		if (fetch || axeSlot(data) < 0 || s.mustDeliver) ToolSwing.end(level, golem); // not chopping now: back to IDLE at once
 		if (fetch) {
 			fetchVisit(s, level, golem, data, in, inPos, now, true, false, false);
@@ -437,14 +441,28 @@ public final class LumberLogic {
 		boolean axe, boolean saplings, boolean bone) {
 		if (!reach(s, level, golem, inPos, inPos, now)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
-		boolean took = false;
-		if (axe) took |= fetchAxe(in, data);
-		if (saplings) took |= fetchSupply(in, data, LumberLogic::isSapling, 64);
-		if (bone) took |= fetchSupply(in, data, LumberLogic::isBone, BONE_TARGET);
-		if (took) Interact.openChest(level, golem, inPos, Interact.Action.TAKE);
+		int took = 0;
+		if (axe && TransferBudget.remaining(level, golem) >= 1 && fetchAxe(in, data)) {
+			took++; // a swap counts as one item
+			TransferBudget.spend(level, golem, 1);
+		}
+		if (saplings) {
+			int n = fetchSupply(in, data, LumberLogic::isSapling, 64, TransferBudget.remaining(level, golem));
+			TransferBudget.spend(level, golem, n);
+			took += n;
+		}
+		if (bone) {
+			int n = fetchSupply(in, data, LumberLogic::isBone, BONE_TARGET, TransferBudget.remaining(level, golem));
+			TransferBudget.spend(level, golem, n);
+			took += n;
+		}
 		s.anchored = false;
-		s.walk.reset();
-		done(s, golem, data, took ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+		// budget used up while the golem still wants more: stay, keep the lid open, go on next window (not "chest empty")
+		boolean pending = TransferBudget.exhausted(level, golem) && wantsFetch(data, in, axe, saplings, bone, true);
+		s.topUp = pending;
+		if (took > 0 || pending) Interact.openChest(level, golem, inPos, Interact.Action.TAKE);
+		if (!pending) s.walk.reset();
+		done(s, golem, data, pending ? TransferBudget.waitTicks(level) : took > 0 ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
 	}
 
 	// ---- delivery -------------------------------------------------------------------------------------------------
@@ -485,7 +503,7 @@ public final class LumberLogic {
 	}
 
 	/** Inserts only the carry stacks matching {@code only} into {@code chest}; true when something moved. */
-	private static boolean insertMatching(GolemData data, Container chest, Predicate<ItemStack> only) {
+	private static int insertMatching(ServerLevel level, CopperGolem golem, GolemData data, Container chest, Predicate<ItemStack> only) {
 		NonNullList<ItemStack> view = NonNullList.withSize(LumberProfession.CARRY_SLOTS, ItemStack.EMPTY);
 		boolean[] mask = new boolean[view.size()];
 		for (int i = 0; i < view.size(); i++) {
@@ -493,7 +511,7 @@ public final class LumberLogic {
 			mask[i] = only.test(st);
 			if (mask[i]) view.set(i, st);
 		}
-		boolean moved = TransporterLogic.insertAll(view, chest);
+		int moved = TransferBudget.insert(level, golem, view, chest);
 		for (int i = 0; i < view.size(); i++) if (mask[i]) data.items.set(LumberProfession.CARRY_FROM + i, view.get(i));
 		return moved;
 	}
@@ -510,10 +528,15 @@ public final class LumberLogic {
 		if (in != null && inPos != null && !s.inputTried && hasSurplus(data)) {
 			if (!reach(s, level, golem, inPos, inPos, now)) return false;
 			golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
-			boolean moved = insertMatching(data, in, LumberLogic::isSurplusKind);
-			s.inputTried = true;
+			boolean moved = insertMatching(level, golem, data, in, LumberLogic::isSurplusKind) > 0;
 			if (moved) Interact.openChest(level, golem, inPos, Interact.Action.INSERT);
 			s.anchored = false;
+			if (TransferBudget.exhausted(level, golem) && hasSurplus(data)) { // budget, not "chest full": stay and go on next window
+				Interact.openChest(level, golem, inPos, Interact.Action.INSERT);
+				done(s, golem, data, TransferBudget.waitTicks(level));
+				return false;
+			}
+			s.inputTried = true;
 			s.walk.reset();
 			done(s, golem, data, moved ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
 			return false;
@@ -522,11 +545,16 @@ public final class LumberLogic {
 			if (!reach(s, level, golem, outPos, outPos, now)) return false;
 			golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
 			NonNullList<ItemStack> carry = carryView(data);
-			boolean moved = TransporterLogic.insertAll(carry, out);
+			boolean moved = TransferBudget.insert(level, golem, carry, out) > 0;
 			writeCarry(data, carry);
-			s.outputTried = true;
 			if (moved) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
 			s.anchored = false;
+			if (TransferBudget.exhausted(level, golem) && !carryEmpty(data)) { // budget, not "chest full": stay and go on next window
+				Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
+				done(s, golem, data, TransferBudget.waitTicks(level));
+				return false;
+			}
+			s.outputTried = true;
 			s.walk.reset();
 			done(s, golem, data, moved ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
 			return false;
@@ -971,10 +999,11 @@ public final class LumberLogic {
 	}
 
 	/** Anything to fetch right now? Mirrors the fetch methods' preconditions exactly (no endless walking to the chest). */
-	private static boolean wantsFetch(GolemData data, Container in, boolean felling, boolean wantSap, boolean growing) {
+	private static boolean wantsFetch(GolemData data, Container in, boolean felling, boolean wantSap, boolean growing, boolean topUp) {
 		if (felling && fetchableAxe(in, data) >= 0) return true;
-		if (wantSap && countOf(data, LumberLogic::isSapling) < SAPLING_LOW && supplySource(in, data, LumberLogic::isSapling) >= 0) return true;
-		return growing && countOf(data, LumberLogic::isBone) < BONE_LOW && supplySource(in, data, LumberLogic::isBone) >= 0;
+		// topUp: a fetch the transfer budget cut short goes on up to its full target, not just above the low mark
+		if (wantSap && countOf(data, LumberLogic::isSapling) < (topUp ? 64 : SAPLING_LOW) && supplySource(in, data, LumberLogic::isSapling) >= 0) return true;
+		return growing && countOf(data, LumberLogic::isBone) < (topUp ? BONE_TARGET : BONE_LOW) && supplySource(in, data, LumberLogic::isBone) >= 0;
 	}
 
 	static int supplySlot(GolemData data, Predicate<ItemStack> is) {
@@ -1010,16 +1039,16 @@ public final class LumberLogic {
 		return -1;
 	}
 
-	/** Takes supplies of one kind up to {@code target} items in the golem's slot; true when something moved. */
-	static boolean fetchSupply(Container chest, GolemData data, Predicate<ItemStack> is, int target) {
+	/** Takes supplies of one kind up to {@code target} items in the golem's slot, at most {@code limit}; returns how many. */
+	static int fetchSupply(Container chest, GolemData data, Predicate<ItemStack> is, int target, int limit) {
 		int first = supplySource(chest, data, is);
-		if (first < 0) return false;
+		if (first < 0 || limit <= 0) return 0;
 		int slot = supplySlot(data, is);
 		if (slot < 0) slot = emptySupplySlot(data);
 		ItemStack cur = data.items.get(slot);
 		ItemStack kind = chest.getItem(first).copyWithCount(1);
 		int have = cur.getCount();
-		int max = Math.min(target, Math.min(64, kind.getMaxStackSize()));
+		int max = Math.min(Math.min(target, Math.min(64, kind.getMaxStackSize())), have + limit);
 		int took = 0;
 		for (int i = first; i < chest.getContainerSize() && have + took < max; i++) {
 			ItemStack st = chest.getItem(i);
@@ -1029,10 +1058,10 @@ public final class LumberLogic {
 			st.shrink(n);
 			if (st.isEmpty()) chest.setItem(i, ItemStack.EMPTY);
 		}
-		if (took == 0) return false;
+		if (took == 0) return 0;
 		data.items.set(slot, kind.copyWithCount(have + took));
 		chest.setChanged();
-		return true;
+		return took;
 	}
 
 	// ---- carry helpers --------------------------------------------------------------------------------------------

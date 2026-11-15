@@ -26,6 +26,8 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
      (`INSERT`) and wait 20.
 6. `GolemData.save` after each take/insert.
 
+**Transfer limit:** `takeAll` / `insertAll` run through `TransferBudget` (16 items per 5 ticks). A take cut short by the budget sets `State.loading` so the golem stays at A (lid kept open, wait until the next window) and only delivers once a take ends with budget left; a cut insert just repeats at B. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
+
 Reach is `Interact:inReach` (1 block, plus diagonal-up and below), fallback `Interact:nearReach` (2 blocks).
 The old 2-block `TransporterLogic:inReach` was deleted once every profession used `Interact`.
 

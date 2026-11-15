@@ -195,7 +195,7 @@ optional). `LumberLogic:tick` detects the tree and runs the current `LumberLogic
    and bone meal first top up the supply slots (`topUpSupplies`); the surplus saplings / bone meal go to the **input
    chest**, everything else (logs, sticks, apples, other items) and whatever the input chest could not take (not assigned,
    full, skipped) to the **output chest**. One visit per chest per delivery; items that do not fit stay in the carry and
-   are retried in the next cycle, nothing is lost. Lids open via `Interact.openChest`. Then PLANT.
+   are retried in the next cycle, nothing is lost. Lids open via `Interact.openChest`. Then PLANT. Chest moves are budgeted (16 items per 5 ticks): a cut delivery or fetch stays at the chest and goes on next window, see [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
 
 Why a strict cycle (user rule): earlier the golem went from picking up straight back to planting and never went through the
 whole loop; now every cycle ends at the chests before it plants again. Fresh state (first tick, restart, reassignment):

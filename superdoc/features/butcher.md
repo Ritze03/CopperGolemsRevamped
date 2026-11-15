@@ -130,6 +130,8 @@ No ground pickup: the old separate pickup step is gone. Stray drops in the area 
 in) are left alone: the Cleaner exists for that, and walking after items would break the cycle. Why not "during DELIVER's
 walk": it is not on the path, so it is not trivial.
 
+Chest moves are budgeted (16 items per 5 ticks per golem): delivery (carry and XP bottles), food fetch and weapon fetch. A cut visit stays in its phase at the chest and goes on next window; `fetchFood` / `fetchWeapon` then return true (busy), because false means "nothing to fetch". Kill drops captured into the carry are not counted. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
+
 ### Drops go straight into the carry
 
 Why: user request ("items should just go straight to his inventory, like it does for the Lumber"). Death loot is rolled

@@ -117,6 +117,8 @@ action is the **crop block** (soil Y + 1), so the golem stands beside it on the 
 it. Chests are the target for the tool, seed and output trips. A successful take/insert calls
 `Interact.openChest` (TAKE/INSERT) and sets the cooldown to `Interact.OPEN_TICKS` so the lid is seen to open.
 
+Chest moves (tool, seeds, delivery) are budgeted (16 items per 5 ticks); a cut visit stays at the chest and goes on next window (`State.seedTopUp` for seeds), see [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
+
 Give-up (like the Cleaner), on top of `approach`'s own fallback: the distance to the walking target must shrink by
 more than 0.1 (squared) within 200 ticks, else the cell or chest is ignored for 1200 ticks. While the golem is not on
 the ground it waits (first ticks after spawning) but those ticks count toward the same 200-tick limit, so a golem

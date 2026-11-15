@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.profession.butcher;
 
 import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.ToolSwing;
+import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemXp;
 import com.coppergolemsrevamped.profession.cleaner.CleanerLogic;
@@ -299,14 +300,22 @@ public final class ButcherLogic {
 		s.doing = "Delivering to the output chest";
 		if (!Interact.approach(level, golem, outPos, s.walk, SPEED)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
-		boolean moved = TransporterLogic.insertAll(carry, out);
-		moved |= GolemXp.deliver(data, out);
+		boolean moved = TransferBudget.insert(level, golem, carry, out) > 0;
+		int bottles = GolemXp.deliver(data, out, TransferBudget.remaining(level, golem));
+		TransferBudget.spend(level, golem, bottles);
+		moved |= bottles > 0;
 		if (moved) {
 			Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
 			s.worked = true;
 		}
 		writeCarry(data, carry);
 		GolemData.save(golem, data);
+		if (TransferBudget.exhausted(level, golem) && (!TransporterLogic.isEmpty(carry) || GolemXp.bottlesReady(data) > 0)) {
+			// budget used up, not "chest full": stay in DELIVER, keep the lid open and go on next window
+			Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
+			s.cooldown = TransferBudget.waitTicks(level);
+			return true;
+		}
 		// one visit per cycle: leftovers stay in the carry
 		if (s.worked) {
 			setPhase(s, golem, Phase.BREED);
@@ -659,9 +668,10 @@ public final class ButcherLogic {
 		ItemStack cur = data.items.get(dst);
 		if (!cur.isEmpty() && !ItemStack.isSameItemSameComponents(cur, wanted)) {
 			NonNullList<ItemStack> one = NonNullList.withSize(1, cur);
-			TransporterLogic.insertAll(one, chest);
+			TransferBudget.insert(level, golem, one, chest);
 			data.items.set(dst, one.get(0));
 			cur = data.items.get(dst);
+			if (!cur.isEmpty() && TransferBudget.exhausted(level, golem)) return atChest(level, golem, data, s, pos, Interact.Action.INSERT);
 			if (!cur.isEmpty()) return false; // chest refused it: canMakeRoom is a prediction, never lose the stack
 			src = chestFood(chest, a);
 			if (src < 0) return false;
@@ -670,12 +680,24 @@ public final class ButcherLogic {
 		int room = Math.min(FOOD_FETCH, wanted.getMaxStackSize() - cur.getCount());
 		int n = Math.min(room, wanted.getCount());
 		if (n <= 0) return false;
+		int budget = TransferBudget.remaining(level, golem);
+		if (budget <= 0) return atChest(level, golem, data, s, pos, Interact.Action.TAKE);
+		n = Math.min(n, budget);
+		TransferBudget.spend(level, golem, n);
 		ItemStack taken = chest.removeItem(src, n);
 		if (cur.isEmpty()) data.items.set(dst, taken); else cur.grow(taken.getCount());
 		chest.setChanged();
 		Interact.openChest(level, golem, pos, Interact.Action.TAKE);
 		s.walk.reset();
 		s.cooldown = Interact.OPEN_TICKS;
+		GolemData.save(golem, data);
+		return true;
+	}
+
+	/** The transfer budget ran out while the golem stands at a chest: keep the lid open and go on next window; true (busy). */
+	private static boolean atChest(ServerLevel level, CopperGolem golem, GolemData data, State s, BlockPos pos, Interact.Action action) {
+		Interact.openChest(level, golem, pos, action);
+		s.cooldown = TransferBudget.waitTicks(level);
 		GolemData.save(golem, data);
 		return true;
 	}
@@ -727,7 +749,9 @@ public final class ButcherLogic {
 		if (!Interact.approach(level, golem, pos, s.walk, SPEED)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(pos));
 		int i = fetchableWeapon(chest, cur);
+		if (i >= 0 && TransferBudget.exhausted(level, golem)) return atChest(level, golem, data, s, pos, Interact.Action.TAKE);
 		if (i >= 0) {
+			TransferBudget.spend(level, golem, 1); // a swap counts as one item
 			ItemStack fresh = chest.removeItem(i, 1);
 			if (!cur.isEmpty()) chest.setItem(i, cur); // only single-item slots are offered, so slot i is empty now
 			data.items.set(ButcherProfession.TOOL_SLOT, fresh);

@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.profession.cleaner;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -116,9 +117,16 @@ public final class CleanerLogic {
 		}
 		if (!Interact.approach(level, golem, out, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(out));
-		if (TransporterLogic.insertAll(data.items, chest)) Interact.openChest(level, golem, out, Interact.Action.INSERT);
-		s.cooldown = TransporterLogic.isEmpty(data.items) ? Interact.OPEN_TICKS : RETRY_TICKS;
-		if (TransporterLogic.isEmpty(data.items)) s.walk.reset();
+		if (TransferBudget.insert(level, golem, data.items, chest) > 0) Interact.openChest(level, golem, out, Interact.Action.INSERT);
+		if (TransporterLogic.isEmpty(data.items)) {
+			s.cooldown = Interact.OPEN_TICKS;
+			s.walk.reset();
+		} else if (TransferBudget.exhausted(level, golem)) { // budget used up, not "chest full": stay and go on next window
+			Interact.openChest(level, golem, out, Interact.Action.INSERT);
+			s.cooldown = TransferBudget.waitTicks(level);
+		} else {
+			s.cooldown = RETRY_TICKS;
+		}
 		GolemData.save(golem, data);
 	}
 

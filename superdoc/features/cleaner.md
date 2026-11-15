@@ -41,6 +41,8 @@ edge was collected). Pickup reuses `TransporterLogic:takeAll` (via a one-slot
 `SimpleContainer`), `insertAll`, `containerAt`, `isEmpty`; nothing is copied.
 Items with a pickup delay are skipped so freshly dropped/thrown items are not grabbed mid-air.
 
+Delivery is budgeted (16 items per 5 ticks per golem); a cut delivery stays at the chest and goes on next window. Picking up item entities is not counted. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
+
 ## Unreachable items (give-up rule)
 
 Transient per-golem state in `CleanerLogic:State`: current `target` UUID, `bestDist` (squared), `stuck` ticks and a

@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.profession.crafter;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -57,6 +58,10 @@ public final class CrafterLogic {
 		@Nullable BlockPos target;
 		double bestDist;
 		int stuck;
+		/** FETCH or DELIVER cut short by the transfer budget: it goes on before anything else is decided. */
+		@Nullable Job sticky;
+		/** Where the fetch round-robin continues after a cut (see {@link #fetch}). */
+		final int[] cursor = new int[1];
 		final Interact.Approach walk = new Interact.Approach();
 	}
 
@@ -198,20 +203,23 @@ public final class CrafterLogic {
 
 	/**
 	 * Tops up the used input slots from the chest, one item at a time round-robin over the cells, so a scarce item is
-	 * shared fairly (8 planks for 2 cells = 4 each) instead of the first cell taking all. Returns true if anything moved.
+	 * shared fairly (8 planks for 2 cells = 4 each) instead of the first cell taking all. Moves at most {@code limit}
+	 * items and returns how many. {@code cursor[0]} is the cell the round-robin continues at: a fetch cut short by the
+	 * transfer budget resumes there, so the split stays fair across windows.
 	 */
-	static boolean fetch(GolemData data, Plan p, Container cin) {
-		int[] want = new int[CrafterProfession.TEMPLATE_SLOTS];
-		for (int i = 0; i < want.length; i++) {
+	static int fetch(GolemData data, Plan p, Container cin, int limit, int[] cursor) {
+		int n = CrafterProfession.TEMPLATE_SLOTS;
+		int[] want = new int[n];
+		for (int i = 0; i < n; i++) {
 			if (used(p, i)) want[i] = target(data, p, i) - at(data, CrafterProfession.FIRST_INPUT + i).getCount();
 		}
-		boolean moved = false;
-		boolean progress = true;
-		while (progress) {
-			progress = false;
-			for (int i = 0; i < want.length; i++) {
-				if (want[i] <= 0) continue;
-				for (int j = 0; j < cin.getContainerSize(); j++) {
+		int moved = 0;
+		int i = cursor[0] % n;
+		int idle = 0;
+		while (moved < limit && idle < n) {
+			boolean took = false;
+			if (want[i] > 0) {
+				for (int j = 0; j < cin.getContainerSize() && !took; j++) {
 					ItemStack c = cin.getItem(j);
 					if (!same(c, p.cell()[i])) continue;
 					ItemStack one = c.split(1);
@@ -220,31 +228,33 @@ public final class CrafterLogic {
 					ItemStack s = data.items.get(idx);
 					if (s.isEmpty()) data.items.set(idx, one); else s.grow(1);
 					want[i]--;
-					moved = true;
-					progress = true;
-					break;
+					moved++;
+					took = true;
 				}
 			}
+			idle = took ? 0 : idle + 1;
+			i = (i + 1) % n;
 		}
-		if (moved) cin.setChanged();
+		cursor[0] = i;
+		if (moved > 0) cin.setChanged();
 		return moved;
 	}
 
 	/**
 	 * Moves the stacks at {@code idxs} into {@code cout}; what does not fit stays in its slot (nothing lost).
-	 * Returns true if anything moved.
+	 * Moves at most {@code limit} items; returns how many moved.
 	 */
-	static boolean deliver(GolemData data, List<Integer> idxs, Container cout) {
+	static int deliver(GolemData data, List<Integer> idxs, Container cout, int limit) {
 		NonNullList<ItemStack> carry = NonNullList.create();
 		for (int idx : idxs) carry.add(data.items.get(idx));
-		boolean moved = TransporterLogic.insertAll(carry, cout);
+		int moved = TransporterLogic.insertAll(carry, cout, limit);
 		for (int k = 0; k < idxs.size(); k++) data.items.set(idxs.get(k), carry.get(k));
 		return moved;
 	}
 
 	// ---- loop ----
 
-	private enum Job { FETCH, CRAFT, DELIVER, DELIVER_ALL, IDLE }
+	enum Job { FETCH, CRAFT, DELIVER, DELIVER_ALL, IDLE }
 
 	private static Job decide(GolemData data, @Nullable Plan p, Container cin) {
 		if (p == null) return Job.IDLE;
@@ -254,6 +264,15 @@ public final class CrafterLogic {
 		if (outFull) return outputHasItems(data) ? Job.DELIVER : Job.IDLE;
 		if (canFetch(data, p, cin)) return Job.FETCH;
 		return outputHasItems(data) ? Job.DELIVER : Job.IDLE;
+	}
+
+	/** Data slots a delivery moves out, without the output slot: the stale input slots, or all of them (no recipe). */
+	private static List<Integer> deliverIdxs(GolemData data, @Nullable Plan plan, boolean all) {
+		List<Integer> idxs = new ArrayList<>();
+		for (int i = 0; i < CrafterProfession.INPUT_SLOTS; i++) {
+			if (all ? !at(data, CrafterProfession.FIRST_INPUT + i).isEmpty() : stale(data, plan, i)) idxs.add(CrafterProfession.FIRST_INPUT + i);
+		}
+		return idxs;
 	}
 
 	private static boolean holdsAnything(GolemData data) {
@@ -291,6 +310,13 @@ public final class CrafterLogic {
 		} else {
 			job = decide(data, plan, cin);
 		}
+		// a fetch or delivery cut short by the transfer budget is finished first (not "chest empty/full")
+		if (s.sticky != null) {
+			if (plan != null && s.sticky == Job.FETCH && cin != null && job != Job.IDLE && canFetch(data, plan, cin)) job = Job.FETCH;
+			else if (cout != null && s.sticky != Job.FETCH && job != Job.IDLE && (plan == null) == (s.sticky == Job.DELIVER_ALL)
+				&& (outputHasItems(data) || !deliverIdxs(data, plan, s.sticky == Job.DELIVER_ALL).isEmpty())) job = s.sticky;
+			else s.sticky = null;
+		}
 		BlockPos target = switch (job) {
 			case FETCH -> in;
 			case CRAFT -> table;
@@ -305,29 +331,43 @@ public final class CrafterLogic {
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
 		switch (job) {
 			case FETCH -> {
-				if (fetch(data, plan, cin)) Interact.openChest(level, golem, in, Interact.Action.TAKE);
-				s.cooldown = Interact.OPEN_TICKS;
-				s.walk.reset();
+				int n = fetch(data, plan, cin, TransferBudget.remaining(level, golem), s.cursor);
+				TransferBudget.spend(level, golem, n);
+				if (n > 0 || TransferBudget.exhausted(level, golem)) Interact.openChest(level, golem, in, Interact.Action.TAKE);
+				if (TransferBudget.exhausted(level, golem)) {
+					s.sticky = Job.FETCH;
+					s.cooldown = TransferBudget.waitTicks(level);
+				} else {
+					s.sticky = null;
+					s.cursor[0] = 0;
+					s.cooldown = Interact.OPEN_TICKS;
+					s.walk.reset();
+				}
 			}
 			case CRAFT -> {
 				craft(data, plan);
 				s.cooldown = CRAFT_TICKS;
 			}
 			case DELIVER, DELIVER_ALL -> {
-				List<Integer> idxs = new ArrayList<>();
-				for (int i = 0; i < CrafterProfession.INPUT_SLOTS; i++) {
-					if (job == Job.DELIVER_ALL ? !at(data, CrafterProfession.FIRST_INPUT + i).isEmpty() : stale(data, plan, i)) {
-						idxs.add(CrafterProfession.FIRST_INPUT + i);
-					}
-				}
+				List<Integer> idxs = deliverIdxs(data, plan, job == Job.DELIVER_ALL);
 				idxs.add(CrafterProfession.OUTPUT_SLOT);
-				boolean moved = deliver(data, idxs, cout);
+				int n = deliver(data, idxs, cout, TransferBudget.remaining(level, golem));
+				TransferBudget.spend(level, golem, n);
+				boolean moved = n > 0;
 				if (moved) Interact.openChest(level, golem, out, Interact.Action.INSERT);
 				boolean left = false;
 				for (int idx : idxs) left |= !data.items.get(idx).isEmpty();
-				// chest full: keep the items and retry; never freeze, never lose
-				s.cooldown = left || !moved ? RETRY_TICKS : Interact.OPEN_TICKS;
-				if (!left) s.walk.reset();
+				if (left && TransferBudget.exhausted(level, golem)) {
+					// budget used up, not "chest full": stay, keep the lid open, go on next window
+					s.sticky = job;
+					Interact.openChest(level, golem, out, Interact.Action.INSERT);
+					s.cooldown = TransferBudget.waitTicks(level);
+				} else {
+					s.sticky = null;
+					// chest full: keep the items and retry; never freeze, never lose
+					s.cooldown = left || !moved ? RETRY_TICKS : Interact.OPEN_TICKS;
+					if (!left) s.walk.reset();
+				}
 			}
 			case IDLE -> s.cooldown = RETRY_TICKS;
 		}
