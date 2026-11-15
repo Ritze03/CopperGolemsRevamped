@@ -14,11 +14,11 @@ OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
 
 PAL = {
     # copper ramp
-    "K": "5A2E1E", "d": "8C4A30", "c": "C15A36", "C": "E77C56", "h": "FBB497",
+    "k": "3A1D12", "K": "5A2E1E", "d": "8C4A30", "c": "C15A36", "C": "E77C56", "h": "FBB497",
     # oxidized accent
     "g": "3B8B78", "G": "5BC1A4",
     # wood
-    "w": "4C3A22", "W": "6B5132", "v": "9C7A4A", "V": "B8945F",
+    "u": "2E2214", "w": "4C3A22", "W": "6B5132", "v": "9C7A4A", "V": "B8945F",
     # green
     "n": "2F6B26", "N": "4C9A2A", "M": "76C043",
     # red
@@ -80,30 +80,36 @@ PIN = [
     "..r..",
 ]
 
-HEAD = [
-    ".KKKKKKKK.",
-    "KhCCCCCCcK",
-    "KCccccccdK",
-    "KCKKccKKdK",
-    "KCccccccdK",
-    "KCccCCccdK",
-    "KCccCdccdK",
-    "KcccccccdK",
-    ".KKKKKKKK.",
+HEAD = [                                           # copper golem face, eyes closed
+    ".KKKKKKK.",
+    "KhCCCCCcK",
+    "KCcccccdK",
+    "KCKKcKKdK",
+    "KCccCccdK",
+    "KcccCdcdK",
+    "KcccdccdK",
+    ".KKKKKKK.",
 ]
-Z_BIG = ["BBB", ".B.", "bbb"]
+Z_SMALL = ["BBB", "..B", ".B.", "bbb"]
+Z_BIG = ["BBBBB", "..BB.", ".BB..", "bbbbb"]
 
-ARROW = [
-    "..K....",
-    "...K...",
-    "KKKCK..",
-    "KhCCCK.",
-    "KCCCCcK",
-    "KcccdK.",
-    "KKKdK..",
-    "...K...",
-    "..K....",
-]
+
+def arrow(shaft):
+    """Right-pointing copper arrow, 9 tall, `shaft` extra pixels of shaft."""
+    rows = [
+        "..K....",
+        "...K...",
+        "KKKCK..",
+        "KhCCCK.",
+        "KCCCCcK",
+        "KcccdK.",
+        "KKKdK..",
+        "...K...",
+        "..K....",
+    ]
+    ext = "..KCCcK.."
+    return [r[0] + ext[i] * shaft + r[1:] for i, r in enumerate(rows)]
+
 
 BROOM_HANDLE = [".vw."] * 6
 BROOM_BAND = ["KhCK", "KcdK"]
@@ -117,64 +123,82 @@ BROOM_HEAD = [
     "yyyyyyyyyyyy",
 ]
 
-HOE = (
-    ["KKKKKKK", "KhCCCcK", "KCcccdK", "KcKKKvw", "KcK..vw", "KKK..vw"]
-    + [".....vw"] * 8
-)
-STALK = [".Z.", "ZYy", "ZYy", "ZYy", ".Yy"]
-AXE = (
-    [".KKKKKK.", "KhCCCCcK", "KCCcccdK", "KCccccdK", ".KcccdK.", "..KKKvw."]
-    + [".....vw."] * 8
-)
+
+def handle(cv, x0, y0, n):
+    """Vanilla-style diagonal tool handle from (x0, y0) going up-right for n rows."""
+    for i in range(n):
+        stamp(cv, x0 + i, y0 - i, ["w" + ("v" if i % 2 == 0 else "W") + "u"])
+    stamp(cv, x0, y0 + 1, ["uu"])
+
+
+# Tool heads are full-canvas overlays drawn for a handle(2, 13, n) handle (the vanilla diagonal).
+AXE_HEAD = [                                       # with handle(2, 13, 9)
+    "................",
+    "........kkk.....",
+    ".......khhCk....",
+    "......khCCCck...",
+    ".....khCcccdwW..",
+    ".....khCccdcdu..",
+    "......kkkwccdck.",
+    "........wWucdck.",
+    ".......wvu.kkk..",
+]
+HOE_HEAD = [                                       # with handle(2, 13, 10)
+    "................",
+    ".....KKKKKKK....",
+    ".....KhhCCCck...",
+    ".....kCcdddcdk..",
+    ".....kck..kddWu.",
+    "......k...wkk...",
+]
+HAMMER_HEAD = [                                    # with handle(7, 9, 4)
+    "..........kk....",
+    ".........khCk...",
+    "........khCCck..",
+    ".........kCCcck.",
+    "..........kccdk.",
+    "...........kddk.",
+    "............kk..",
+]
+WHEAT = [                                          # sheaf, ears up-right like vanilla wheat
+    ".....ZZ.",
+    "...ZZYZy",
+    "..ZYZyYy",
+    "..YZyYy.",
+    "...yYy..",
+    "..yy....",
+    ".yy.....",
+    "y.y.....",
+]
 LOG = [".wwww.", "wWVVWw", "wVvvVw", "wVvvVw", "wWVVWw", ".wwww."]
-SAPLING = [".nnn.", "nMMNn", "nMNNn", ".nnn.", "..v..", "..v.."]
 
-FOOT = [
-    ".ooo.",
-    "olffo",
-    "offfo",
-    "offso",
-    "ofsso",
-    ".ooo.",
-    ".....",
-    ".ooo.",
-    "offso",
-    ".ooo.",
+FOOT = [                                           # bare left footprint: toes, sole, heel
+    "f.f.ff",
+    "......",
+    ".ffff.",
+    "ffffff",
+    "ffffff",
+    ".ffff.",
+    ".fff..",
+    ".fff..",
+    "..f...",
 ]
-FOOT_GREEN = {"o": "n", "l": "M", "f": "N", "s": "n"}
-FOOT_GREY = {"o": "1", "l": "3", "f": "2", "s": "1"}
-
-HAMMER_HEAD = ["KKKKKK", "KhCCcK", "KCccdK", "KKKKKK"]
-
-TABLE = [
-    "wwwwwwwwww",
-    "wVVwVVwVVw",
-    "wwwwwwwwww",
-    "wvvwvvwvvw",
-    "wwwwwwwwww",
-    "wvvwvvwvvw",
-    "wwwwwwwwww",
-    ".Ww....Ww.",
-    ".Ww....Ww.",
-    ".Ww....Ww.",
+CHECK = [
+    ".....nn",
+    "....nMn",
+    "nn.nMn.",
+    "nMnMn..",
+    ".nMn...",
+    "..n....",
 ]
-
-
-def line_sprite(w, h, pts, fill, edge):
-    """Thick diagonal line: 2px wide `fill`, 1px outline `edge` around it."""
-    s = [["."] * w for _ in range(h)]
-    for x, y in pts:
-        for xx in (x, x + 1):
-            s[y][xx] = fill
-    for y in range(h):
-        for x in range(w):
-            if s[y][x] == ".":
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < w and 0 <= ny < h and s[ny][nx] == fill:
-                        s[y][x] = edge
-                        break
-    return ["".join(r) for r in s]
+CROSS = [
+    "R...R",
+    "rR.Rr",
+    ".rRr.",
+    ".RrR.",
+    "Rr.rR",
+    "r...r",
+]
 
 
 def _cube_face(x, y):
@@ -187,8 +211,34 @@ def _cube_face(x, y):
     return None
 
 
-def oblique_cube():
-    """Copper block: 8x8 front face + depth 3 -> 11x11 sprite."""
+def copper_shade(f, x, y):
+    if f == "front":
+        return "h" if (x == 1 or y == 4) else ("d" if (x == 6 or y == 9) else "c")
+    if f == "top":
+        return "h" if y == 1 else "C"
+    return "d" if y > 4 else "c"
+
+
+CT_FRONT = [                                       # crafting table front, 6x6 interior
+    "WWWWWW",
+    "V3vVWv",
+    "v2VvWV",
+    "V2vV3v",
+    "vWWvWV",
+    "VvVvWv",
+]
+
+
+def table_shade(f, x, y):
+    if f == "front":
+        return CT_FRONT[y - 4][x - 1]
+    if f == "top":
+        return "w" if (x + y) in (5, 8) else ("V" if y == 1 else "v")
+    return "W" if (y - (10 - x)) % 3 else "w"
+
+
+def oblique_cube(shade=copper_shade, o="K"):
+    """Block: 8x8 front face + depth 3 -> 11x11 sprite; `shade(face, x, y)` colors the interior."""
     out = []
     for y in range(11):
         r = ""
@@ -200,13 +250,9 @@ def oblique_cube():
             edge = any(_cube_face(x + dx, y + dy) is None
                        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
             if edge or (f == "front" and (x in (0, 7) or y in (3, 10))) or (x + y == 10 and x >= 7):
-                r += "K"
-            elif f == "front":
-                r += "h" if (x == 1 or y == 4) else ("d" if (x == 6 or y == 9) else "c")
-            elif f == "top":
-                r += "h" if y == 1 else "C"
+                r += o
             else:
-                r += "d" if y > 4 else "c"
+                r += shade(f, x, y)
         out.append(r)
     return out
 
@@ -246,15 +292,16 @@ def crafting_board():
 def build():
     icons = {}
 
-    cv = blank()                                   # 1 idle golem head + zzz
-    stamp(cv, 1, 6, HEAD)
-    stamp(cv, 12, 0, Z_BIG)
-    stamp(cv, 9, 3, Z_BIG)
+    cv = blank()                                   # 1 idle golem head + zZ
+    stamp(cv, 1, 7, HEAD)
+    stamp(cv, 6, 2, Z_SMALL)
+    stamp(cv, 10, 1, Z_BIG)
     icons["profession_none"] = cv
 
-    cv = blank()                                   # 2 chest -> arrow
-    stamp(cv, 0, 4, chest(7, 8))
-    stamp(cv, 8, 3, ARROW)
+    cv = blank()                                   # 2 chest -> chest
+    stamp(cv, 2, 1, arrow(5))
+    stamp(cv, 1, 9, chest(6, 6))
+    stamp(cv, 9, 9, chest(6, 6))
     icons["profession_transporter"] = cv
 
     cv = blank()                                   # 3 copper chest + items to sort
@@ -273,32 +320,28 @@ def build():
 
     cv = blank()                                   # 5 recipe board + hammer
     stamp(cv, 0, 5, crafting_board())
-    stamp(cv, 9, 1, HAMMER_HEAD)
-    stamp(cv, 11, 5, ["vw"] * 10)
+    handle(cv, 7, 9, 4)
+    stamp(cv, 0, 0, HAMMER_HEAD)
     icons["profession_crafter"] = cv
 
     cv = blank()                                   # 6 hoe + wheat
-    stamp(cv, 0, 6, STALK + [".y."] * 4)
-    stamp(cv, 3, 3, STALK + [".y."] * 7)
-    stamp(cv, 6, 1, HOE)
+    handle(cv, 2, 13, 10)
+    stamp(cv, 0, 0, HOE_HEAD)
+    stamp(cv, 7, 7, WHEAT)
     icons["profession_farmer"] = cv
 
-    cv = blank()                                   # 7 axe + log + sapling
-    stamp(cv, 1, 1, AXE)
+    cv = blank()                                   # 7 axe + log
+    handle(cv, 2, 13, 9)
+    stamp(cv, 0, 0, AXE_HEAD)
     stamp(cv, 9, 9, LOG)
-    stamp(cv, 10, 2, SAPLING)
     icons["profession_lumber"] = cv
 
-    cv = blank()                                   # 8 follow on
-    stamp(cv, 2, 5, recolor(FOOT, FOOT_GREEN))
-    stamp(cv, 9, 1, recolor(FOOT, FOOT_GREEN))
-    icons["follow_on"] = cv
-
-    cv = blank()                                   # 9 follow off
-    stamp(cv, 2, 5, recolor(FOOT, FOOT_GREY))
-    stamp(cv, 9, 1, recolor(FOOT, FOOT_GREY))
-    stamp(cv, 0, 0, line_sprite(16, 16, [(i, 14 - i) for i in range(1, 14)], "R", "r"))
-    icons["follow_off"] = cv
+    for name, col, badge in (("follow_on", "d", CHECK), ("follow_off", "2", CROSS)):
+        cv = blank()                               # 8/9 footprints + on/off badge
+        stamp(cv, 1, 7, recolor(FOOT, {"f": col}))
+        stamp(cv, 7, 1, recolor([r[::-1] for r in FOOT], {"f": col}))
+        stamp(cv, 15 - len(badge[0]), 9, badge)
+        icons[name] = cv
 
     cv = blank()                                   # 10 chest + pin
     stamp(cv, 0, 6, chest(11, 9))
@@ -306,7 +349,7 @@ def build():
     icons["assign_chest"] = cv
 
     cv = blank()                                   # 11 crafting table + pin
-    stamp(cv, 0, 5, TABLE)
+    stamp(cv, 0, 4, oblique_cube(table_shade, "w"))
     stamp(cv, 10, 0, PIN)
     icons["assign_crafting_table"] = cv
 
@@ -324,10 +367,10 @@ def build():
     return icons
 
 
-FILLER = {"a": "2E2A28", "t": "3A3532", "b": "262221", "p": "322D2A"}
+FILLER = {"a": "838383", "t": "8B8B8B", "b": "7B7B7B", "p": "7F7F7F"}
 
 
-def filler():                                      # 14 opaque, low-contrast tile
+def filler():                                      # 14 opaque tile, just off slot grey: recedes
     g = [["a"] * 16 for _ in range(16)]
     for i in range(16):
         g[0][i] = g[i][0] = "t"
