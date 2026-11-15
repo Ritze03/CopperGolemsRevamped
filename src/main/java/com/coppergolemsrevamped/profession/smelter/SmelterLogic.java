@@ -13,6 +13,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.WeakHashMap;
 
 import org.jspecify.annotations.Nullable;
@@ -46,6 +47,9 @@ public final class SmelterLogic {
 	private SmelterLogic() {}
 
 	static final int SLOTS = SmelterProfession.SLOTS;
+	static final int FURNACES = SmelterProfession.MAX_FURNACES;
+	/** Last slot: shared overflow for results that do not fit their furnace's buffer. Always delivered, never fed. */
+	static final int OVERFLOW = SmelterProfession.OVERFLOW;
 	static final int RETRY_TICKS = 40;
 	static final int ACTION_TICKS = 10;
 	static final int RESCAN_TICKS = 100;
@@ -59,8 +63,12 @@ public final class SmelterLogic {
 	static final double PROGRESS_EPS = 0.1;
 	static final double SPEED = 1.0;
 	static final int FUEL_TARGET = 8;
-	/** Results below this wait in a furnace that is still burning with input left (fewer trips). */
-	static final int COLLECT_MIN = 8;
+	/**
+	 * A furnace's input is topped up to this many items only (about 8 x 200 ticks of cooking). Why: the golem returns to
+	 * collect sooner instead of stocking 64, so products come out sooner; the cycle is shorter than the batch cooks, so
+	 * every furnace stays busy.
+	 */
+	public static final int BATCH = 8;
 	static final int MAX_Y_SPAN = 32;
 
 	private static final RecipeManager.CachedCheck<SingleRecipeInput, SmeltingRecipe> SMELT = RecipeManager.createCheck(RecipeType.SMELTING);
@@ -70,8 +78,28 @@ public final class SmelterLogic {
 	/** What a buffer slot holds. Transient; after a restart it is derived from the item ({@link #kindOf}). */
 	enum Kind { RAW, FUEL, RESULT }
 
-	/** Order of a pass. */
-	enum Phase { FETCH, FEED, FUEL_FETCH, FUEL, COLLECT, DELIVER, RETURN }
+	/**
+	 * Order of a cycle: empty the furnaces first so products come out sooner, then restock. A phase without work is
+	 * skipped; WAIT is reported (not part of the cycle) while nothing can be done. FUEL_FETCH (trip to the fuel chest) and
+	 * FUEL (top up the fuel slots) are one phase to the outside ({@link #phaseOf}: both read FUEL).
+	 */
+	public enum Phase { COLLECT, DELIVER, FETCH, FEED, FUEL_FETCH, FUEL, RETURN, WAIT }
+
+	/** Test hook: called on every change of the visible phase (transient state). */
+	public static @Nullable BiConsumer<CopperGolem, Phase> phaseListener;
+
+	public static @Nullable Phase phaseOf(CopperGolem golem) {
+		State st = STATES.get(golem);
+		return st == null ? null : st.shown;
+	}
+
+	private static void show(State s, CopperGolem golem, Phase p) {
+		if (p == Phase.FUEL_FETCH) p = Phase.FUEL;
+		if (p == s.shown) return;
+		s.shown = p;
+		BiConsumer<CopperGolem, Phase> l = phaseListener;
+		if (l != null) l.accept(golem, p);
+	}
 
 	record Work(Phase phase, BlockPos pos, int slot) {}
 
@@ -80,9 +108,10 @@ public final class SmelterLogic {
 	private static final class State {
 		int cooldown;
 		int phase;
+		@Nullable Phase shown;
 		int served;
 		@Nullable Work work;
-		final BlockPos[] fur = new BlockPos[SLOTS];
+		final BlockPos[] fur = new BlockPos[FURNACES];
 		long scanAt;
 		final Kind[] kind = new Kind[SLOTS];
 		final ItemStack[] seen = new ItemStack[SLOTS];
@@ -163,6 +192,7 @@ public final class SmelterLogic {
 	private static @Nullable Kind kindOf(Env e, int i) {
 		ItemStack st = slot(e, i);
 		if (st.isEmpty()) return null;
+		if (i == OVERFLOW) return Kind.RESULT;
 		Kind k = e.s.kind[i];
 		if (k != null) return k;
 		if (smeltsAnywhere(e.level, st)) return Kind.RAW;
@@ -183,7 +213,7 @@ public final class SmelterLogic {
 
 	private static int usableCount(Env e) {
 		int n = 0;
-		for (int i = 0; i < SLOTS; i++) if (usable(e, i) != null) n++;
+		for (int i = 0; i < FURNACES; i++) if (usable(e, i) != null) n++;
 		return n;
 	}
 
@@ -209,7 +239,7 @@ public final class SmelterLogic {
 		}
 		Set<BlockPos> inArea = new HashSet<>(area);
 		Set<BlockPos> have = new HashSet<>();
-		for (int i = 0; i < SLOTS; i++) {
+		for (int i = 0; i < FURNACES; i++) {
 			if (s.fur[i] != null && !inArea.contains(s.fur[i])) s.fur[i] = null;
 			if (s.fur[i] != null) have.add(s.fur[i]);
 		}
@@ -219,7 +249,7 @@ public final class SmelterLogic {
 		fresh.sort(Comparator.<BlockPos>comparingDouble(p -> Vec3.atCenterOf(p).distanceToSqr(ref))
 			.thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getY).thenComparingInt(BlockPos::getZ));
 		int next = 0;
-		for (int i = 0; i < SLOTS && next < fresh.size(); i++) if (s.fur[i] == null) s.fur[i] = fresh.get(next++);
+		for (int i = 0; i < FURNACES && next < fresh.size(); i++) if (s.fur[i] == null) s.fur[i] = fresh.get(next++);
 	}
 
 	// ---- plans ----
@@ -244,7 +274,7 @@ public final class SmelterLogic {
 	private static List<Move> planFetch(Env e) {
 		if (e.in == null) return List.of();
 		Set<Integer> free = new LinkedHashSet<>();
-		for (int i = 0; i < SLOTS; i++) if (usable(e, i) != null && slot(e, i).isEmpty()) free.add(i);
+		for (int i = 0; i < FURNACES; i++) if (usable(e, i) != null && slot(e, i).isEmpty()) free.add(i);
 		if (free.isEmpty()) return List.of();
 		List<ItemStack> types = new ArrayList<>();
 		List<Integer> totals = new ArrayList<>();
@@ -263,7 +293,7 @@ public final class SmelterLogic {
 				if (f == null || !smelts(e.level, f, type)) continue;
 				ItemStack in0 = f.getItem(0);
 				if (!in0.isEmpty() && !same(in0, type)) continue;
-				int r = Math.min(type.getMaxStackSize(), f.getMaxStackSize()) - in0.getCount();
+				int r = Math.min(BATCH, Math.min(type.getMaxStackSize(), f.getMaxStackSize())) - in0.getCount();
 				if (r <= 0) continue;
 				elig.add(i);
 				level.add(in0.getCount());
@@ -308,7 +338,7 @@ public final class SmelterLogic {
 		List<Integer> needy = new ArrayList<>();
 		List<Integer> typeOf = new ArrayList<>();
 		List<Integer> want = new ArrayList<>();
-		for (int i = 0; i < SLOTS; i++) {
+		for (int i = 0; i < FURNACES; i++) {
 			AbstractFurnaceBlockEntity f = usable(e, i);
 			if (f == null || !slot(e, i).isEmpty()) continue;
 			ItemStack in0 = f.getItem(0);
@@ -375,7 +405,7 @@ public final class SmelterLogic {
 		if (f == null || st.isEmpty() || kindOf(e, i) != Kind.RAW) return false;
 		ItemStack in0 = f.getItem(0);
 		if (!in0.isEmpty() && !same(in0, st)) return false;
-		return smelts(e.level, f, st) && Math.min(st.getMaxStackSize(), f.getMaxStackSize()) - in0.getCount() > 0;
+		return smelts(e.level, f, st) && Math.min(BATCH, Math.min(st.getMaxStackSize(), f.getMaxStackSize())) - in0.getCount() > 0;
 	}
 
 	/** Slot i holds fuel that furnace i's fuel slot can take now. */
@@ -394,24 +424,22 @@ public final class SmelterLogic {
 		return kindOf(e, i) == Kind.RESULT && same(st, incoming) && st.getCount() < st.getMaxStackSize();
 	}
 
-	/** The result is worth a trip: plenty of it, or the furnace is done, cannot cook its input, or has no fuel burning. */
-	private static boolean resultReady(Env e, AbstractFurnaceBlockEntity f) {
-		ItemStack res = f.getItem(2);
-		if (res.isEmpty()) return false;
-		ItemStack in0 = f.getItem(0);
-		return res.getCount() >= COLLECT_MIN || in0.isEmpty() || !smelts(e.level, f, in0) || !lit(e.level, f.getBlockPos());
-	}
-
 	private static boolean fuelLeftover(AbstractFurnaceBlockEntity f) {
 		ItemStack fs = f.getItem(1);
 		return !fs.isEmpty() && !isFuel(fs);
 	}
 
+	/** Buffer a result of furnace i goes to: its own, else the shared overflow slot; -1 when neither has room. */
+	private static int resultSlot(Env e, int i, ItemStack incoming) {
+		if (resultRoom(e, i, incoming)) return i;
+		return resultRoom(e, OVERFLOW, incoming) ? OVERFLOW : -1;
+	}
+
 	private static boolean collectable(Env e, int i) {
 		AbstractFurnaceBlockEntity f = usable(e, i);
 		if (f == null) return false;
-		if (resultReady(e, f) && resultRoom(e, i, f.getItem(2))) return true;
-		return fuelLeftover(f) && resultRoom(e, i, f.getItem(1));
+		if (!f.getItem(2).isEmpty() && resultSlot(e, i, f.getItem(2)) >= 0) return true;
+		return fuelLeftover(f) && resultSlot(e, i, f.getItem(1)) >= 0;
 	}
 
 	private static boolean chestOk(Env e, @Nullable BlockPos pos, @Nullable Container c) {
@@ -423,7 +451,7 @@ public final class SmelterLogic {
 	private static @Nullable Work nearest(Env e, Phase ph, java.util.function.IntPredicate ok) {
 		Work best = null;
 		double bd = Double.MAX_VALUE;
-		for (int i = 0; i < SLOTS; i++) {
+		for (int i = 0; i < FURNACES; i++) {
 			if ((e.s.served & (1 << i)) != 0 || !ok.test(i)) continue;
 			BlockPos p = e.s.fur[i];
 			double d = e.golem.distanceToSqr(Vec3.atCenterOf(p));
@@ -518,6 +546,7 @@ public final class SmelterLogic {
 		if (w != null && skipped(s, w.pos(), now)) w = null;
 		if (w == null) w = pick(e);
 		s.work = w;
+		show(s, golem, w == null ? Phase.WAIT : w.phase());
 		if (w == null) {
 			golem.getNavigation().stop();
 			s.target = null;
@@ -539,7 +568,7 @@ public final class SmelterLogic {
 	private static String idleStatus(Env e) {
 		if (e.data.assignments.get(SmelterProfession.FURNACES + "_a") == null) return "No furnace area set";
 		int n = 0;
-		for (int i = 0; i < SLOTS; i++) if (e.s.fur[i] != null) n++;
+		for (int i = 0; i < FURNACES; i++) if (e.s.fur[i] != null) n++;
 		if (n == 0) return "No furnaces in the area";
 		if (usableCount(e) == 0) return "No reachable furnaces";
 		boolean holdsResults = false;
@@ -547,7 +576,7 @@ public final class SmelterLogic {
 		if (holdsResults) return "Output chest is full or missing";
 		boolean cooking = false;
 		boolean noFuel = false;
-		for (int i = 0; i < SLOTS; i++) {
+		for (int i = 0; i < FURNACES; i++) {
 			AbstractFurnaceBlockEntity f = usable(e, i);
 			if (f == null || f.getItem(0).isEmpty() || !smelts(e.level, f, f.getItem(0))) continue;
 			cooking = true;
@@ -585,7 +614,7 @@ public final class SmelterLogic {
 					AbstractFurnaceBlockEntity f = usable(e, w.slot());
 					ItemStack st = e.data.items.get(w.slot());
 					ItemStack in0 = f.getItem(0);
-					int n = Math.min(st.getCount(), Math.min(st.getMaxStackSize(), f.getMaxStackSize()) - in0.getCount());
+					int n = Math.min(st.getCount(), Math.min(BATCH, Math.min(st.getMaxStackSize(), f.getMaxStackSize())) - in0.getCount());
 					f.setItem(0, st.copyWithCount(in0.getCount() + n));
 					st.shrink(n);
 					if (st.isEmpty()) e.data.items.set(w.slot(), ItemStack.EMPTY);
@@ -655,15 +684,17 @@ public final class SmelterLogic {
 			e.s.scanAt = 0;
 			return;
 		}
-		boolean result = resultReady(e, f) && resultRoom(e, i, f.getItem(2));
+		boolean result = !f.getItem(2).isEmpty() && resultSlot(e, i, f.getItem(2)) >= 0;
 		int idx = result ? 2 : 1;
 		ItemStack src = f.getItem(idx);
 		if (src.isEmpty() || !(result || fuelLeftover(f))) return;
-		ItemStack st = e.data.items.get(i);
+		int dst = resultSlot(e, i, src);
+		if (dst < 0) return;
+		ItemStack st = e.data.items.get(dst);
 		int n = Math.min(src.getCount(), src.getMaxStackSize() - st.getCount());
 		if (n <= 0) return;
-		if (st.isEmpty()) e.data.items.set(i, src.copyWithCount(n)); else st.grow(n);
-		e.s.kind[i] = Kind.RESULT;
+		if (st.isEmpty()) e.data.items.set(dst, src.copyWithCount(n)); else st.grow(n);
+		e.s.kind[dst] = Kind.RESULT;
 		ItemStack rest = src.copyWithCount(src.getCount() - n);
 		f.setItem(idx, rest.isEmpty() ? ItemStack.EMPTY : rest);
 		if (result) {

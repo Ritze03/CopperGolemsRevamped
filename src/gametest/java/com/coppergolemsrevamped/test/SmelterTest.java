@@ -15,6 +15,7 @@ import java.util.Set;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
@@ -335,22 +336,106 @@ public class SmelterTest {
 		});
 	}
 
-	/** Inventory tab: label plus one row of 8 buffer slots at row 3, columns 0..7. */
+	/** The cycle: COLLECT, DELIVER, FETCH, FEED, FUEL; a COLLECT that took something is always followed by DELIVER. */
+	@GameTest(maxTicks = 3800)
+	public void phasesRunInCycleOrder(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		for (int i = 0; i < 3; i++) furnace(helper, new BlockPos(1 + 2 * i, 1, 5), Blocks.FURNACE);
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 64));
+		addFuel(c[1], 64);
+		List<SmelterLogic.Phase> seen = new ArrayList<>();
+		SmelterLogic.phaseListener = (g, ph) -> {
+			if (g == golem) seen.add(ph);
+		};
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) >= 3, "ingots " + count(c[2], Items.IRON_INGOT));
+			List<SmelterLogic.Phase> p = seen.stream().filter(x -> x != SmelterLogic.Phase.WAIT).toList();
+			int fetch = p.indexOf(SmelterLogic.Phase.FETCH);
+			int feed = p.indexOf(SmelterLogic.Phase.FEED);
+			int fuel = p.indexOf(SmelterLogic.Phase.FUEL);
+			int collect = p.indexOf(SmelterLogic.Phase.COLLECT);
+			helper.assertTrue(fetch >= 0 && fetch < feed && feed < fuel && fuel < collect, "first cycle order " + p);
+			for (int i = 0; i < p.size() - 1; i++) {
+				if (p.get(i) == SmelterLogic.Phase.COLLECT) helper.assertTrue(p.get(i + 1) == SmelterLogic.Phase.DELIVER, "COLLECT not followed by DELIVER: " + p);
+			}
+			int d = p.indexOf(SmelterLogic.Phase.DELIVER);
+			helper.assertTrue(d >= 0 && d + 1 < p.size() && p.get(d + 1) == SmelterLogic.Phase.FETCH, "FETCH after DELIVER: " + p);
+			SmelterLogic.phaseListener = null;
+		});
+	}
+
+	/** 64 ore, 3 furnaces: the first ingots reach the output chest while most of the ore is still in the input chest. */
+	@GameTest(maxTicks = 3800)
+	public void earlyOutput(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		base(helper, 1, c);
+		for (int i = 0; i < 3; i++) furnace(helper, new BlockPos(1 + 2 * i, 1, 5), Blocks.FURNACE);
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 64));
+		addFuel(c[1], 64);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) > 0, "no ingots yet");
+			helper.assertTrue(total(c[0]) >= 16, "ore left in the input chest: " + total(c[0]));
+		});
+	}
+
+	/** A furnace's input never exceeds the batch target, and still reaches it. */
+	@GameTest(maxTicks = 3800)
+	public void inputNeverExceedsBatch(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		base(helper, 1, c);
+		AbstractFurnaceBlockEntity[] f = {furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE), furnace(helper, new BlockPos(3, 1, 5), Blocks.FURNACE)};
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 64));
+		addFuel(c[1], 64);
+		int[] max = new int[1];
+		helper.onEachTick(() -> {
+			for (AbstractFurnaceBlockEntity x : f) max[0] = Math.max(max[0], x.getItem(0).getCount());
+			helper.assertTrue(max[0] <= SmelterLogic.BATCH, "furnace input " + max[0]);
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) >= 16, "ingots " + count(c[2], Items.IRON_INGOT));
+			helper.assertTrue(max[0] == SmelterLogic.BATCH, "batch reached: " + max[0]);
+		});
+	}
+
+	/** Inventory tab: label at (2,4) plus one full row of 9 buffer slots at row 3, columns 0..8. */
 	@GameTest
 	@SuppressWarnings("removal")
-	public void inventoryTabIsOneRowOfEight(GameTestHelper helper) {
+	public void inventoryTabIsOneFullRowOfNine(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
 		CopperGolem golem = base(helper, 1, c);
 		ServerPlayer p = helper.makeMockServerPlayerInLevel();
 		p.setPos(golem.position());
 		GolemMenu menu = new GolemMenu(1, p.getInventory(), golem, Tab.INVENTORY);
-		for (int col = 0; col < 8; col++) {
+		for (int col = 0; col < 9; col++) {
 			helper.assertTrue(menu.slots.get(27 + col).mayPlace(new ItemStack(Items.STONE)), "buffer slot at column " + col);
 		}
-		helper.assertTrue(!menu.slots.get(27 + 8).mayPlace(new ItemStack(Items.STONE)), "no slot at column 8");
-		ItemStack label = menu.slots.get(2 * 9 + 3).getItem();
-		helper.assertTrue(label.is(Items.FURNACE) && label.getHoverName().getString().equals("Furnace buffers"), "label " + label);
-		helper.assertTrue(GolemData.get(golem).items.size() == 8, "8 slots");
+		for (int col = 0; col < 9; col++) {
+			helper.assertTrue(!menu.slots.get(18 + col).mayPlace(new ItemStack(Items.STONE)), "no slot above the row at column " + col);
+		}
+		ItemStack label = menu.slots.get(2 * 9 + 4).getItem();
+		helper.assertTrue(label.is(Items.FURNACE) && label.getHoverName().getString().equals("Furnace buffers"), "label at (2,4) " + label);
+		helper.assertTrue(!menu.slots.get(2 * 9 + 3).getItem().is(Items.FURNACE), "no label left at (2,3)");
+		helper.assertTrue(GolemData.get(golem).items.size() == 9, "9 slots");
 		helper.succeed();
+	}
+
+	/** A Smelter saved with 8 item slots grows to 9 on its next tick and keeps its items. */
+	@GameTest(maxTicks = 100)
+	public void eightSlotSmelterGrowsToNine(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		GolemData d = GolemData.get(golem);
+		d.items = NonNullList.withSize(8, ItemStack.EMPTY);
+		d.items.set(0, new ItemStack(Items.IRON_INGOT, 5));
+		d.items.set(7, new ItemStack(Items.GOLD_INGOT, 3));
+		GolemData.save(golem, d);
+		helper.succeedWhen(() -> {
+			GolemData n = GolemData.get(golem);
+			helper.assertTrue(n.items.size() == 9, "size " + n.items.size());
+			helper.assertTrue(n.items.get(0).is(Items.IRON_INGOT) && n.items.get(0).getCount() == 5, "slot 0 " + n.items.get(0));
+			helper.assertTrue(n.items.get(7).is(Items.GOLD_INGOT) && n.items.get(7).getCount() == 3, "slot 7 " + n.items.get(7));
+			helper.assertTrue(n.items.get(8).isEmpty(), "slot 8 empty");
+		});
 	}
 }
