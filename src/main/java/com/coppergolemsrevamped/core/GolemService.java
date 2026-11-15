@@ -38,6 +38,7 @@ public final class GolemService {
 		releaseHand(level, golem, player);
 		drop(level, golem, data, player);
 		data.assignments.clear();
+		data.frozen = false; // a new profession starts working (freeze.md)
 		data.profession = id;
 		Profession p = Professions.get(id);
 		data.items = NonNullList.withSize(p == null ? 0 : p.inventorySize(), ItemStack.EMPTY);
@@ -116,9 +117,19 @@ public final class GolemService {
 	}
 
 	private static void drop(ServerLevel level, CopperGolem golem, GolemData data, @Nullable ServerPlayer player) {
+		// a ghost recipe slot is memory, not an item: its one-item copy is never given out (it would duplicate an item, D9)
+		boolean[] memory = new boolean[data.items.size()];
+		Profession p = profession(golem);
+		if (p != null) {
+			int idx = 0;
+			for (Profession.SlotGroup g : p.slots()) {
+				for (int k = 0; k < g.count(); k++, idx++) if (g.recipe() && idx < memory.length) memory[idx] = true;
+			}
+		}
 		for (int i = 0; i < data.items.size(); i++) {
 			ItemStack s = data.items.get(i);
 			data.items.set(i, ItemStack.EMPTY);
+			if (memory[i]) s = s.getCount() > 1 ? s.copyWithCount(s.getCount() - 1) : ItemStack.EMPTY; // surplus of an odd stack is real
 			if (s.isEmpty()) continue;
 			if (player != null) {
 				give(player, s);
@@ -133,7 +144,7 @@ public final class GolemService {
 	 * Moves as much of {@code stack} as fits into the player's main inventory (merge first, then empty slots); the rest
 	 * stays in {@code stack}. Not {@code Inventory#add}: for a creative player it deletes the stack.
 	 */
-	private static void give(ServerPlayer player, ItemStack stack) {
+	public static void give(ServerPlayer player, ItemStack stack) {
 		NonNullList<ItemStack> inv = player.getInventory().getNonEquipmentItems();
 		for (int i = 0; i < inv.size() && !stack.isEmpty(); i++) {
 			ItemStack cur = inv.get(i);

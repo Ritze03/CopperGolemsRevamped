@@ -25,8 +25,15 @@ sealed interface Cell {
 		void click(ServerPlayer player, int button);
 	}
 
-	/** A control, label or filler: nothing can be placed in or taken out of it. */
-	record Icon(ItemStack stack, @Nullable Control control) implements Cell {}
+	/**
+	 * A control, label or filler: nothing can be placed in or taken out of it. {@code pickupOnly}: the control runs
+	 * for PICKUP only, not for shift-click (the Recipe tab's ghost cells, where shift-click must do nothing).
+	 */
+	record Icon(ItemStack stack, @Nullable Control control, boolean pickupOnly) implements Cell {
+		Icon(ItemStack stack, @Nullable Control control) {
+			this(stack, control, false);
+		}
+	}
 
 	/**
 	 * A cell backed by one slot of {@code GolemData.items}. Besides the real stack it can show a display copy (never
@@ -71,23 +78,20 @@ sealed interface Cell {
 			}
 			ItemStack m = memory();
 			return m.isEmpty() ? ItemStack.EMPTY : GolemIcon.ghost(m.copyWithCount(1), "remembered, empty",
-				List.of(GolemIcon.line("Only this item fits here"), GolemIcon.line("Empty-handed click: forget it")));
+				List.of(GolemIcon.line("Only this item fits here"), GolemIcon.line("Set the recipe on the Recipe tab")));
 		}
 
-		/** True while the cell shows a display copy: no input may take it, and only placing / forgetting is handled. */
+		/** True while the cell shows a display copy: no input may take it, and only placing a fitting item is handled. */
 		boolean placeholder() {
 			return real().isEmpty() && !ghost().isEmpty();
 		}
 
+		/** A memory slot accepts only its remembered item and refuses everything while it remembers nothing. */
 		boolean mayPlace(ItemStack stack) {
 			if (!items.canPlaceItem(idx, stack) || !group.filter().test(stack)) return false;
+			if (group.memoryOffset() == 0) return true;
 			ItemStack m = memory();
-			return m.isEmpty() || ItemStack.isSameItemSameComponents(m, stack);
-		}
-
-		/** Shift-click only fills a memory slot that already remembers something (never sets a recipe by accident). */
-		boolean mayQuickPlace(ItemStack stack) {
-			return mayPlace(stack) && (group.memoryOffset() == 0 || !memory().isEmpty());
+			return !m.isEmpty() && ItemStack.isSameItemSameComponents(m, stack);
 		}
 
 		boolean mayPickup() {
@@ -98,12 +102,8 @@ sealed interface Cell {
 			return group.maxStack();
 		}
 
-		/** Stores {@code stack}; an empty memory slot that receives an item learns it (one-item copy). */
 		void set(ItemStack stack) {
 			items.setItem(idx, stack);
-			if (group.memoryOffset() > 0 && !stack.isEmpty() && memory().isEmpty()) {
-				items.setItem(idx - group.memoryOffset(), stack.copyWithCount(1));
-			}
 		}
 
 		ItemStack remove(int n) {
@@ -112,13 +112,6 @@ sealed interface Cell {
 
 		void changed() {
 			items.setChanged();
-		}
-
-		/** Forgets the remembered item of an empty memory slot. */
-		boolean clearMemory() {
-			if (group.memoryOffset() <= 0 || !real().isEmpty() || memory().isEmpty()) return false;
-			items.setItem(idx - group.memoryOffset(), ItemStack.EMPTY);
-			return true;
 		}
 	}
 }

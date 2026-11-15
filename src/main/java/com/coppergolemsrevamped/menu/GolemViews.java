@@ -45,6 +45,7 @@ final class GolemViews {
 		switch (m.tab()) {
 			case STATUS -> status(m, cells);
 			case TARGETS -> targets(m, cells);
+			case RECIPE -> recipe(m, cells);
 			case INVENTORY -> inventory(m, cells);
 			case SETTINGS -> settings(m, cells);
 			case PROFESSION -> professions(m, cells);
@@ -94,19 +95,25 @@ final class GolemViews {
 
 	// ---- tab bar (row 0) ----
 
+	/**
+	 * Row 0: black panes, the profession's tabs right-aligned to end at column 6 (5 tabs start at 2, with a Recipe tab
+	 * at 1) and Help at column 8. There is no Back button: players close the menu with Esc like any chest.
+	 */
 	private static void bar(GolemMenu m, Cell[] cells) {
-		set(cells, 0, 0, icon(GolemIcon.BACK.stack(Component.literal("Back"), lore("Close the menu"), false),
-			(p, b) -> p.closeContainer()));
 		// black panes mark the bar as another part of the UI than the orange tab content
-		set(cells, 0, 1, icon(GolemIcon.barFiller()));
-		set(cells, 0, 7, icon(GolemIcon.barFiller()));
+		for (int c = 0; c < GolemMenu.COLS; c++) set(cells, 0, c, icon(GolemIcon.barFiller()));
 		Profession prof = m.profession();
-		Tab[] tabs = Tab.values();
-		for (int k = 0; k < tabs.length; k++) {
-			Tab t = tabs[k];
+		List<Tab> tabs = Tab.forProfession(prof);
+		int start = 7 - tabs.size();
+		for (int k = 0; k < tabs.size(); k++) {
+			Tab t = tabs.get(k);
 			boolean active = t == m.tab();
-			GolemIcon g = t.icon != null ? t.icon : GolemIcon.profession(prof == null ? "none" : prof.id().getPath());
-			set(cells, 0, 2 + k, icon(g.stack(Component.literal(t.label), lore(t.lore), active), (p, b) -> m.showTab(t)));
+			List<Component> lore = lore(t.lore);
+			ItemStack stack = t.plain != null
+				? GolemIcon.plain(t.plain, Component.literal(t.label), lore, active)
+				: (t.icon != null ? t.icon : GolemIcon.profession(prof == null ? "none" : prof.id().getPath()))
+					.stack(Component.literal(t.label), lore, active);
+			set(cells, 0, start + k, icon(stack, (p, b) -> m.showTab(t)));
 		}
 		set(cells, 0, 8, icon(GolemIcon.HELP.stack(Component.literal("Help"), lore("Explains this page in chat"), false),
 			(p, b) -> m.sendHelp(p)));
@@ -146,7 +153,7 @@ final class GolemViews {
 		int idx = 0;
 		for (SlotGroup g : p.slots()) {
 			for (int i = 0; i < g.count(); i++, idx++) {
-				if (g.maxStack() > 1 && g.visible() && idx < data.items.size()) n += data.items.get(idx).getCount();
+				if (g.maxStack() > 1 && g.visible() && !g.recipe() && idx < data.items.size()) n += data.items.get(idx).getCount();
 			}
 		}
 		return n;
@@ -234,40 +241,76 @@ final class GolemViews {
 		boolean any = false;
 		if (prof != null) {
 			for (SlotGroup g : prof.slots()) {
-				if (!g.visible()) continue;
+				if (!g.visible() || g.recipe()) continue;
 				any = true;
 				int first = prof.firstIndex(g);
 				for (int i = 0; i < g.count(); i++) {
 					set(cells, g.row() + i / g.width(), g.col() + i % g.width(), new Cell.Store(m.golem(), m.items(), first + i, g));
 				}
 				Profession.Label l = g.label();
-				if (l != null) set(cells, l.row(), l.col(), icon(label(m, g, l)));
+				if (l != null) set(cells, l.row(), l.col(), icon(label(l)));
 			}
 		}
 		if (!any) set(cells, 3, 4, icon(GolemIcon.plain(Items.BOOK, Component.literal("No inventory"), List.of(), false)));
 	}
 
-	/** A group's label; for a previewing group the lore names what is crafted. */
-	private static ItemStack label(GolemMenu m, SlotGroup g, Profession.Label l) {
-		List<Component> lore = new ArrayList<>();
-		if (g.preview() != null) {
-			ItemStack o = g.preview().outcome((ServerLevel) m.golem().level(), GolemData.get(m.golem()));
-			lore.add(GolemIcon.line(o.isEmpty() ? "No valid recipe"
-				: o.getHoverName().getString() + (o.getCount() > 1 ? " x" + o.getCount() : "")));
-		} else if (!l.lore().isEmpty()) {
-			lore.add(GolemIcon.line(l.lore()));
+	/** A group's label on the Inventory tab: icon, name and the declared lore (one line per {@code \n}). */
+	private static ItemStack label(Profession.Label l) {
+		return GolemIcon.label(l.icon(), l.name(), lore(l.lore().isEmpty() ? new String[0] : l.lore().split("\n")));
+	}
+
+	// ---- Recipe ----
+
+	/**
+	 * The Recipe tab: each ghost-recipe group's cells show the stored one-item memory copy (an empty cell shows nothing)
+	 * and set it on a click with an item on the cursor; a previewing group adds its arrow (lore: the outcome) and the
+	 * ghost preview. Every cell is an {@link Cell.Icon}, so nothing here can be taken or placed as a real item.
+	 */
+	private static void recipe(GolemMenu m, Cell[] cells) {
+		Profession prof = m.profession();
+		if (prof == null) return;
+		GolemData data = GolemData.get(m.golem());
+		ServerLevel level = (ServerLevel) m.golem().level();
+		for (SlotGroup g : prof.slots()) {
+			if (!g.visible()) continue;
+			if (g.recipe()) {
+				int first = prof.firstIndex(g);
+				for (int i = 0; i < g.count(); i++) {
+					int idx = first + i;
+					ItemStack stored = idx < data.items.size() ? data.items.get(idx) : ItemStack.EMPTY;
+					ItemStack shown = stored.isEmpty() ? ItemStack.EMPTY : GolemIcon.ghost(stored.copyWithCount(1), "recipe",
+						lore("Click with an item to replace it", "Click with an empty hand to clear it"));
+					set(cells, g.row() + i / g.width(), g.col() + i % g.width(),
+						new Cell.Icon(shown, (p, b) -> m.setRecipeCell(p, g, idx), true));
+				}
+				if (g.label() != null) set(cells, g.label().row(), g.label().col(), icon(label(g.label())));
+			} else if (g.preview() != null) {
+				ItemStack o = g.preview().outcome(level, data);
+				if (g.label() != null) {
+					Profession.Label l = g.label();
+					List<Component> lore = lore(o.isEmpty() ? "No valid recipe"
+						: o.getHoverName().getString() + (o.getCount() > 1 ? " x" + o.getCount() : ""));
+					set(cells, l.row(), l.col(), icon(GolemIcon.label(l.icon(), l.name(), lore)));
+				}
+				set(cells, g.row(), g.col(), icon(o.isEmpty() ? ItemStack.EMPTY : GolemIcon.ghost(o, "preview",
+					lore("Crafted by the golem", "Cannot be taken"))));
+			}
 		}
-		return GolemIcon.label(l.icon(), l.name(), lore);
 	}
 
 	// ---- Settings ----
 
 	private static void settings(GolemMenu m, Cell[] cells) {
-		boolean on = GolemData.get(m.golem()).following;
-		set(cells, 3, 4, icon((on ? GolemIcon.FOLLOW_ON : GolemIcon.FOLLOW_OFF).stack(
+		GolemData data = GolemData.get(m.golem());
+		boolean on = data.following;
+		set(cells, 3, 3, icon((on ? GolemIcon.FOLLOW_ON : GolemIcon.FOLLOW_OFF).stack(
 			Component.literal("Follow: " + (on ? "on" : "off")),
 			lore(on ? "Click to stop following you" : "Click to make the golem follow you"), on),
 			(p, b) -> m.toggleFollow(p)));
+		boolean frozen = data.frozen;
+		set(cells, 3, 5, icon(GolemIcon.plain(Items.BLUE_ICE, Component.literal("Freeze: " + (frozen ? "on" : "off")),
+			lore("Golem stops all work and stands still", "Use it to safely change its inventory"), frozen),
+			(p, b) -> m.toggleFreeze()));
 	}
 
 	// ---- Profession and confirm ----

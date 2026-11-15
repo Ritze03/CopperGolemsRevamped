@@ -35,6 +35,7 @@ public final class ProfessionStatus {
 
 	/** What the golem is doing, e.g. "Felling the tree". */
 	public static String doing(ServerLevel level, CopperGolem golem, GolemData data, @Nullable Profession p) {
+		if (data.frozen) return "Frozen";
 		if (p == null) return "Idle";
 		if (data.following) return "Following you";
 		if (WalkTo.active(golem)) return "Walking to a target";
@@ -53,6 +54,7 @@ public final class ProfessionStatus {
 
 	/** What comes next, e.g. "Next: deliver to the output chest". */
 	public static String next(CopperGolem golem, GolemData data, @Nullable Profession p) {
+		if (data.frozen) return "Frozen: unfreeze it in Settings";
 		if (p == null) return "Next: wait for a profession";
 		if (data.following) return "Next: work again when Follow is off";
 		AssignSpec m = missing(p, data);

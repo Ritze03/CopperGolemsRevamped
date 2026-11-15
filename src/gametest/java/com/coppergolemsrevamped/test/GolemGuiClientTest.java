@@ -82,7 +82,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 			shot(context, "golem-gui-none-status");
 			open(world, context, golem, Tab.PROFESSION, "golem-gui-none-profession");
 
-			// transporter: items and one assignment on every tab; hover the Back button for a tooltip
+			// transporter: items and one assignment on every tab; hover the Settings toggle for a tooltip
 			scene(world, context, golem, "transporter", (player, data) -> {
 				data.items.set(0, new ItemStack(Items.COBBLESTONE, 64));
 				data.items.set(1, new ItemStack(Items.OAK_LOG, 32));
@@ -91,7 +91,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 			open(world, context, golem, Tab.TARGETS, "golem-gui-transporter-targets");
 			open(world, context, golem, Tab.INVENTORY, "golem-gui-transporter-inventory");
 			open(world, context, golem, Tab.SETTINGS, "golem-gui-transporter-settings");
-			context.getInput().setCursorPos(422, 212);
+			context.getInput().setCursorPos(589, 270);
 			context.waitTicks(10);
 			shot(context, "golem-gui-transporter-tooltip");
 
@@ -113,6 +113,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 				data.assignments.put("input", player.blockPosition().offset(3, 0, 0));
 				data.assignments.put("table", player.blockPosition().offset(3, 0, 2));
 			}, Tab.INVENTORY, "golem-gui-crafter-inventory");
+			open(world, context, golem, Tab.RECIPE, "golem-gui-crafter-recipe");
 
 			// farmer: hoe, wheat seeds, a few wheat in carry, every assignment set
 			scene(world, context, golem, "farmer", (player, data) -> {

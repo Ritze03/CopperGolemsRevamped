@@ -36,18 +36,27 @@ Why in place: a vanilla client re-centres the mouse cursor when a new menu opens
 pointer. The menu is only reopened when the title must change (a profession switch).
 Code split: `GolemMenu` (slots, clicks, quick-move, state and control actions), `GolemViews` (the cells of each tab),
 `Cell`, `Tab` (labels, lore and help lines), `GolemIcon`.
-The views are rebuilt after every control click, after any click on the Inventory tab (the Crafter's arrow lore depends
-on the grid) and every 10 ticks on the Status tab (live values). Profession-specific data comes from the `Profession`
+The views are rebuilt after every control click (a Recipe cell click rebuilds too: the arrow lore names the outcome)
+and every 10 ticks on the Status tab (live values). Profession-specific data comes from the `Profession`
 declaration only (slot groups, labels, assigns) and from `profession/ProfessionStatus` (decision D6).
 
 ### Tab bar (row 0, every tab)
 
+There is **no Back button**: players close the menu with Esc or E like any chest (user request). Row 0 starts as black
+stained glass panes (user request: "to indicate it's another part of the UI"); `GolemViews:bar` then places the tabs
+of `Tab:forProfession` right-aligned so they end at column 6, and Help at column 8:
+
 | Cell | Content |
 |---|---|
-| 0 | Back (`icon_back`): closes the menu |
-| 1, 7 | Black stained glass pane filler (user request: "to indicate it's another part of the UI") |
-| 2..6 | Tabs: Status (`icon_status`), Targets (`assign_block`), Inventory (`icon_inventory`), Settings (`icon_settings`), Profession (the current profession's icon). The active tab has the glint |
+| 0, 7 (and 1 with five tabs) | Black pane filler |
+| 2..6 (five tabs) | Status (`icon_status`), Targets (`assign_block`), Inventory (`icon_inventory`), Settings (`icon_settings`), Profession (the current profession's icon). The active tab has the glint |
+| 1..6 (six tabs) | Status, Targets, **Recipe** (plain `knowledge_book`), Inventory, Settings, Profession |
 | 8 | Help (`help`): `GolemMenu:sendHelp` sends the tab's help to chat, the menu stays open |
+
+Which professions get the sixth tab is declared, not coded in `menu/`: `Tab.RECIPE` appears only when
+`Profession:hasRecipeTab` is true, i.e. when a slot group is a ghost recipe (`SlotGroup:recipeAt`, see "Crafter").
+Why: user wanted Recipe directly before Inventory and, with Back gone, the bar has room for a sixth tab; a declaration
+keeps D6 (no profession ids in `menu/`).
 
 Rows 1..5 are the tab content on orange stained-glass filler (tooltip hidden).
 
@@ -73,15 +82,17 @@ targets". More than 4 specs are not shown (none exist; `everyProfessionHasHelp` 
 ### Inventory
 
 The slot groups of the profession, placed by explicit cells (see "Slot layout" below), each with an optional label icon
-(name + lore, non-interactive). Lumber: label (1,3) "Axe" with the tool slot (2,3); label (1,5) "Supplies" with slots
+(name + lore, non-interactive; a `\n` in the declared lore starts a new line). Lumber: label (1,3) "Axe" with the tool slot (2,3); label (1,5) "Supplies" with slots
 (2,5),(2,6); label (4,4) "Carry" with nine slots across row 5. Farmer: "Tool" (1,3) / slot (2,3), "Seeds" (1,5) / slot (2,5),
 "Carry" (4,4) / row 5. Transporter and Cleaner: "Carry" (2,4) with nine slots in row 3. Crafter: see below. None and Chest
-Sorter: (3,4) a book "No inventory".
+Sorter: (3,4) a book "No inventory". A ghost-recipe group (`SlotGroup:recipe`) is never shown here, only on the Recipe tab.
 
 ### Settings
 
-(3,4) the Follow toggle (`follow_on` / `follow_off`, glint while on): `following = !following`, `followPlayer` = clicker UUID when
-on else null, `GolemData.save`.
+(3,3) the Follow toggle (`follow_on` / `follow_off`, glint while on): `following = !following`, `followPlayer` = clicker UUID when
+on else null, `GolemData.save`; refused with a chat message while frozen. (3,5) the **Freeze** toggle (`blue_ice` through
+`GolemIcon:plain`, glint while on, name "Freeze: on/off", `GolemMenu:toggleFreeze`): all professions, rules in
+[freeze.md](freeze.md).
 
 ### Profession and the confirm screen
 
@@ -103,8 +114,12 @@ Why confirm: a switch clears the targets and hands out every stored item, which 
 `Profession.SlotGroup` carries its own placement: `at(row, col)` puts slot `i` at row `row + i / width`, column
 `col + i % width` of the menu (rows 1..5, `width` default 9). `labeled(row, col, icon, name, lore)` adds the label
 icon cell. `Professions:register` calls `Profession:validateLayout`, which throws when a shown cell or label leaves rows
-1..5 / columns 0..8 or two overlap. A group without `at` is **hidden**: it still reserves its data slots and drops on a
-profession change, but has no cell (the Crafter's template). Other group flags:
+1..5 / columns 0..8 or two overlap, with one board for the Inventory tab and one for the Recipe tab (recipe groups and
+previewing groups on the Recipe board, everything but recipe groups on the Inventory board). A group without `at` is
+**hidden**: it still reserves its data slots but has no cell. Other group flags:
+
+- `recipeAt(row, col)`: a ghost recipe. The group is the profession's memory, not items; it is shown only on the Recipe
+  tab (see Crafter), is never quick-moved into, and its slots are not handed out on a profession change (see below).
 
 - `remembers(offset)`: slot `k` remembers its item in data slot `k - offset` (see Crafter below).
 - `noQuickMove()`: shift-click never fills it. `shownInHand()`: the first non-empty stack is shown in the golem's hand
@@ -119,27 +134,42 @@ No profession-specific code lives in `menu/` (decision D6).
 saves on every change; out-of-range slots read empty and a write past the list drops the stack at the golem) and a Store
 per shown slot with its data index.
 
-## Crafter: one grid whose cells remember their item
+## Crafter: a Recipe tab and an Inventory tab
 
-Data model unchanged: `GolemData.items` 0..8 `template`, 9..17 `input`, 18 `output` ([crafter.md](crafter.md)). The 9
-**input** slots are the visible 3x3 grid at (2..4, 1..3); the **template** slots are the memory and are no longer shown.
+Data model unchanged: `GolemData.items` 0..8 `template`, 9..17 `input`, 18 `output` ([crafter.md](crafter.md)). The template
+slots are the recipe memory (declared `recipeAt(2, 1)`); the 9 input slots are the real ingredients. Each lives on its own
+tab at (2..4, 1..3). Why two tabs: user request, "there has to be a menu for the recipe and one for the inventory. Right
+now it's kinda hard to use": one grid was both recipe and inventory, setting the recipe meant placing a real item and
+forgetting it needed a hidden empty-hand gesture.
 
-- An empty cell whose memory is set shows the remembered item as a display copy ("<Item> (remembered, empty)", gray name),
-  accepts only that item (same item and components), and is not takeable.
-- Putting an item into an empty cell with no memory stores it and sets the memory to a one-item copy (`Cell.Store:set`).
-- **Forgetting a recipe cell**: a PICKUP with an empty cursor on an empty remembered cell clears that memory
-  (`GolemMenu:placeholderClick`). The simulator had no way to change a recipe; this is the addition. A full cell keeps its
-  memory when emptied; the Crafter help text mentions the gesture.
-- (3,5) the crafting arrow (`craft_arrow`, non-interactive): name "Crafts", lore the recipe outcome (`Stick x4`) or "No valid
-  recipe".
-- (3,7) the output, take-only. While it is empty and the remembered grid forms a recipe it shows the **ghost preview**:
-  the outcome as a display copy ("<Item> (preview)").
-- The recipe comes from `CrafterLogic:plan` (the real recipe lookup); `CrafterLogic:preview` is the `Preview` the output
-  group declares. No hardcoded recipes.
-- Shift-click only fills a grid cell that already remembers an item, so a stray shift-click never sets a recipe.
+### Recipe tab (`GolemViews:recipe`)
 
-Why the memory lives in the template slots: the Crafter logic already derives everything from them (recipe plan, stale
-detection, fetch targets); mapping the new UI onto them left `CrafterLogic` and its tests unchanged.
+- The 3x3 ghost grid at (2..4, 1..3) shows the nine template slots: a set cell is a display copy of its item
+  ("<Item> (recipe)", `GolemIcon:ghost`), an unset cell is empty. Every cell is a `Cell.Icon` with `pickupOnly`.
+- **Click with an item on the cursor** (left or right) sets the cell to a one-count copy (`GolemMenu:setRecipeCell`); the
+  cursor stack is neither consumed nor moved. **Click with an empty hand** clears a set cell. Nothing else does anything:
+  shift-click (`pickupOnly`), drag, pick-all, clone, swap, throw are swallowed or refused, so no real item is ever created
+  or deleted (D9). Why a ghost copy and not a real stack: the user asked for the way recipe and filter slots work in many
+  mods, and a memory that can be set by a click must never be takeable.
+- (1,2) label "Recipe" (lore "Click with an item to set a cell (the item is not used up)" / "Click with an empty hand to
+  clear it"). (3,5) the arrow (`craft_arrow`, "Crafts") with the outcome ("Stick x4") or "No valid recipe" as lore, (3,7)
+  the ghost preview of the outcome ("<Item> (preview)", never takeable) from `CrafterLogic:preview`. Both come from the
+  previewing output group's label and cell.
+- Migration: none. Whatever the template slots hold is the recipe. A stored stack bigger than one (only possible through
+  hand-edited data, the mod always writes one) is not deleted by a click: the surplus is given to the player
+  (`GolemService:give`, rest dropped) before the cell is overwritten.
+
+### Inventory tab
+
+- The 9 input slots are a 3x3 grid at (2..4, 1..3). An empty input cell whose recipe cell is set shows the faded
+  "<Item> (remembered, empty)" copy and accepts only that item (same item and components, `Cell.Store:mayPlace`); it is not
+  takeable. An input cell whose recipe cell is **not** set is an empty slot that refuses everything.
+  Why: the recipe is now set only on the Recipe tab, so placing an item no longer sets the memory (it used to) and the
+  empty-hand "forget" gesture is gone from this tab.
+- (1,2) label "Ingredients" (lore "Filled by the golem from its input chest; you can add items too"), (3,5) a plain
+  arrow (no lore), (3,7) the output, take-only; the ghost preview shows while it is empty.
+- Shift-click from the player fills only cells whose recipe cell matches (`GolemMenu:moveIntoProfession` uses `mayPlace`).
+- The output group and its arrow are shared with the Recipe tab; the recipe group never appears here.
 
 ### Display copies never become real items
 
@@ -147,8 +177,8 @@ Server-side "faded" does not exist, so a cell shows a display copy through `View
 held cell used). Every copy is a marked (`core/DisplayItems`, custom data `cgr_display`) one-off stack that is never
 stored. Safety rules, all in `GolemMenu:clicked` / `ViewSlot`:
 
-- A cell that currently shows a copy (`Cell.Store:placeholder`) handles only PICKUP itself (place a fitting item, or forget
-  the memory with an empty cursor); every other input on it (QUICK_MOVE, CLONE, PICKUP_ALL, SWAP, THROW) is dropped. Creative
+- A cell that currently shows a copy (`Cell.Store:placeholder`) handles only PICKUP itself (place a fitting item; an empty
+  cursor does nothing); every other input on it (QUICK_MOVE, CLONE, PICKUP_ALL, SWAP, THROW) is dropped. Creative
   CLONE and double-click collect therefore cannot copy it.
 - `mayPickup` is `!real().isEmpty()`, `canTakeItemForPickAll` refuses placeholders and 1-stack groups, `quickMoveStack`
   returns EMPTY for a cell without a real stack, drag (QUICK_CRAFT) goes to vanilla: `canItemQuickReplace` refuses a
@@ -156,13 +186,15 @@ stored. Safety rules, all in `GolemMenu:clicked` / `ViewSlot`:
 - Icon cells (controls, labels, filler) swallow CLONE, SWAP, THROW, PICKUP_ALL. QUICK_CRAFT is always passed on (swallowing
   it corrupts the drag state).
 - `MenuTest:ghostCellsCannotBeTaken` runs every input on a ghost output and a faded cell and asserts that no marked stack
-  reaches the inventory or cursor and the item count is conserved.
+  reaches the inventory or cursor and the item count is conserved; `recipeCellOtherClicksConserveItems` does the same for
+  the Recipe tab's cells (every click type except the setting PICKUP, plus a drag).
 
 ## Click handling (`GolemMenu:clicked`)
 
-- On an icon cell: `PICKUP` and `QUICK_MOVE` run the control (if any), everything else is dropped (see above).
+- On an icon cell: `PICKUP` and `QUICK_MOVE` run the control (if any), everything else is dropped (see above); for a
+  `pickupOnly` icon (Recipe cells) `QUICK_MOVE` is dropped too.
 - Trust check before running a control: `stillValid` (golem alive, within 8 blocks via `GolemMenu:inRange`, profession
-  unchanged, stored list not shrunk). The memory-forget and placeholder placing check it too.
+  unchanged, stored list not shrunk). The Recipe cell controls run behind it as well; the placeholder placing checks it too.
 - Everything else (golem slots, player inventory) is vanilla `super.clicked`.
 - A vanilla client shows the clicked icon on the cursor until the server's correction arrives; unavoidable.
 - `openMenu` closes any open container first and `removed()` returns the cursor stack, so reopening from inside
@@ -204,6 +236,9 @@ It is display only and built so it can never duplicate or reach a player:
   (`GolemService:give`, merge then empty slots, not `Inventory#add` which deletes the stack for creative players); the rest
   drops at the player's feet. Without a player (death, statue, tests) they drop at the golem. Why: a drop at the golem was
   missed by players (user report "items get lost").
+- Freeze is cleared (`GolemData:frozen`, see [freeze.md](freeze.md)); the golem starts the new profession.
+- Ghost recipe slots (`SlotGroup:recipe`) are not handed out: their one-item copies are memory, giving them out would
+  create items from nothing (D9). A surplus above one in such a slot is real and is given out (`GolemService:drop`).
 - Assignments are cleared; the first `Kind.CHEST` assign (declaration order) is pre-filled with
   `GolemData.spawnChest` when that block is still a chest. `spawnChest` is set by `mixin/GolemSpawnMixin` for golems
   built from copper block + carved pumpkin (see vanilla-copper-golem.md section 6), never for egg/statue golems.
@@ -224,8 +259,7 @@ attaches to the declaration when it has none (declarations stay editable by othe
 declaration may still pass its own). The Help button sends the current tab's lines (`Tab.help`) plus profession lines where
 they fit: the Targets tab adds `ProfessionHelp:assignLines` (one line per assignment,
 `<label>: right-click ... , max NxN, larger areas are capped`; sizes come from the `AssignSpec`, never typed into the text),
-the Inventory tab adds the profession's own help (slot explanations; the Crafter's explains the memory and the forget
-gesture). The same `ProfessionHelp:prompt` is the chat prompt when an assign button arms (see [assign-mode.md](assign-mode.md)).
+the Inventory and Recipe tabs add the profession's own help (slot explanations; the Crafter's explains both tabs). The same `ProfessionHelp:prompt` is the chat prompt when an assign button arms (see [assign-mode.md](assign-mode.md)).
 Why chat and not the tooltip: the user asked for explanations of assignments and sizes in chat, a tooltip has no room
 for several lines per profession. Icon: `help` on base item `book`.
 
@@ -244,7 +278,8 @@ An icon is a vanilla base item with `DataComponents.CUSTOM_MODEL_DATA` = one str
 lines are explicitly non-italic gray, the other icons
 hide `ATTRIBUTE_MODIFIERS` (tool base items), an "on" toggle gets `ENCHANTMENT_GLINT_OVERRIDE`.
 `GolemIcon:plain` is the same for a vanilla item with no custom model (bundle, compass, spyglass, barrier, apple, lime dye,
-arrow, book in the Status, Targets and confirm views).
+arrow, book in the Status, Targets and confirm views, `blue_ice` for Freeze, `knowledge_book` for the Recipe tab and label).
+Why plain for those two: a vanilla item already reads right and needs no texture, model or override file.
 
 The mod jar and the resource pack both ship `assets/minecraft/items/<base>.json`, overriding the vanilla item
 definition with a `minecraft:select` on `minecraft:custom_model_data` (string index 0): one case per icon using
@@ -273,13 +308,13 @@ item, so the pack is optional (decision D18).
 | `assign_seeds` | `wheat_seeds` | wheat seeds (chest with a sprout badge; Farmer seed chest) |
 | `assign_tree` | `oak_sapling` | oak sapling (a tree with the pin; Lumber tree) |
 | `help` | `book` | book (copper-bound book with a "?") |
-| `icon_back` | `arrow` | arrow (Back) |
 | `icon_status` | `writable_book` | book and quill (copper clipboard; Status tab) |
 | `icon_settings` | `comparator` | comparator (copper cog; Settings tab) |
 | `craft_arrow` | `spectral_arrow` | spectral arrow (grey crafting arrow; the Crafter's arrow) |
 
-Why these base items: each hints at the meaning for a vanilla client without the pack (arrow = back / crafts, book and
-quill = status, comparator = settings, chest = inventory). Two icons on one base item is one `select` with several cases.
+Why these base items: each hints at the meaning for a vanilla client without the pack (arrow = crafts, book and
+quill = status, comparator = settings, chest = inventory). The old Back icon (`icon_back`, base `arrow`: model,
+texture, generator code, `arrow.json` override) was removed with the Back button. Two icons on one base item is one `select` with several cases.
 The removed `held_empty` icon (glass bottle) went with the held cell.
 
 Why `assign_tools` / `assign_seeds` / `assign_tree` exist: the screenshot review showed the Farmer's two chest buttons

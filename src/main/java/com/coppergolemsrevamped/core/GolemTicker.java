@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.core;
 
 import com.coppergolemsrevamped.ai.FollowMode;
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.WalkTo;
 import com.coppergolemsrevamped.chunk.GolemChunkLoader;
 import com.coppergolemsrevamped.profession.Profession;
@@ -21,6 +22,12 @@ public final class GolemTicker {
 		// old saves kept waxed copper in the sorter's slot; a no-op early return unless a sorter still holds items
 		if (p != null && ChestSorterProfession.ID.equals(p.id())) ChestSorterProfession.migrateLegacyItems(level, golem);
 		if (golem.tickCount % GolemHandDisplay.PERIOD == 0) GolemHandDisplay.sync(golem);
+		if (data.frozen) {
+			// Freeze: no profession tick, no vanilla brain, no follow, no WalkTo; phase and WalkTo state stay for the unfreeze.
+			golem.getNavigation().stop();
+			Interact.closeChest(golem);
+			return;
+		}
 		if (WalkTo.tick(level, golem)) return;
 		if (data.following) {
 			FollowMode.tick(level, golem, data);
