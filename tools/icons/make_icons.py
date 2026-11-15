@@ -29,6 +29,8 @@ PAL = {
     "B": "9FC4FF", "b": "5A82D0", "L": "2F4FA8", "l": "6E96F0",
     # greys
     "1": "3E3E3E", "2": "6B6B6B", "3": "8F8F8F",
+    # ghost (8 hex digits = RRGGBBAA): held_empty placeholder
+    "o": "ECECECA8", "x": "FFFFFF2C",
 }
 
 
@@ -201,6 +203,68 @@ CROSS = [
 ]
 
 
+ARROW_DOWN = [                                     # 7x8 green arrow, tip down
+    ".nnnnn.",
+    ".nMMNn.",
+    ".nMNNn.",
+    "nnnMNnn",
+    "nMMMNNn",
+    ".nMMNn.",
+    "..nMn..",
+    "...n...",
+]
+# orange (copper) arrow pointing up: the same shape flipped, recolored
+ARROW_UP = recolor(ARROW_DOWN[::-1], {"n": "k", "M": "C", "N": "c"})
+
+HAND_MASK = [                                      # open-hand silhouette, 14x13 ('#' = hand)
+    "......##.......",
+    "...##.##.##....",
+    "...##.##.##....",
+    "...##.##.##.##.",
+    "...##.##.##.##.",
+    ".#.##.##.##.##.",
+    ".#############.",
+    ".##############",
+    "###############",
+    "###############",
+    "..############.",
+    "...##########..",
+    "....########...",
+]
+
+
+def ghost_hand():
+    m = HAND_MASK
+    out = []
+    for y, row in enumerate(m):
+        r = ""
+        for x, ch in enumerate(row):
+            if ch != "#":
+                r += "."
+                continue
+            edge = any(not (0 <= y + dy < len(m) and 0 <= x + dx < len(row) and m[y + dy][x + dx] == "#")
+                       for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+            r += "o" if edge else "x"
+        out.append(r)
+    return out
+
+
+def outlined(sprite, fill, edge):
+    """Recolor `fill` pixels that touch transparency (4-neighbour) with `edge`."""
+    out = []
+    for y, row in enumerate(sprite):
+        r = ""
+        for x, ch in enumerate(row):
+            if ch == ".":
+                r += ch
+                continue
+            e = any(not (0 <= y + dy < len(sprite) and 0 <= x + dx < len(row) and sprite[y + dy][x + dx] != ".")
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+            r += edge if e else fill
+        out.append(r)
+    return out
+
+
 def _cube_face(x, y):
     if 0 <= x <= 7 and 3 <= y <= 10:
         return "front"
@@ -338,8 +402,11 @@ def build():
 
     for name, col, badge in (("follow_on", "d", CHECK), ("follow_off", "2", CROSS)):
         cv = blank()                               # 8/9 footprints + on/off badge
-        stamp(cv, 1, 7, recolor(FOOT, {"f": col}))
-        stamp(cv, 7, 1, recolor([r[::-1] for r in FOOT], {"f": col}))
+        foot, foot2 = recolor(FOOT, {"f": col}), recolor([r[::-1] for r in FOOT], {"f": col})
+        if name == "follow_off":                   # dark outline: grey alone is lost on slot grey
+            foot, foot2 = outlined(foot, "2", "1"), outlined(foot2, "2", "1")
+        stamp(cv, 1, 7, foot)
+        stamp(cv, 7, 1, foot2)
         stamp(cv, 15 - len(badge[0]), 9, badge)
         icons[name] = cv
 
@@ -364,21 +431,23 @@ def build():
     stamp(cv, 10, 9, PIN)
     icons["assign_area"] = cv
 
+    cv = blank()                                   # 14 chest + green arrow down into it + pin
+    stamp(cv, 0, 6, chest(11, 9))
+    stamp(cv, 2, 0, ARROW_DOWN)
+    stamp(cv, 10, 0, PIN)
+    icons["assign_input"] = cv
+
+    cv = blank()                                   # 15 chest + orange arrow up out of it + pin
+    stamp(cv, 0, 6, chest(11, 9))
+    stamp(cv, 2, 0, ARROW_UP)
+    stamp(cv, 10, 0, PIN)
+    icons["assign_output"] = cv
+
+    cv = blank()                                   # 16 faint ghost hand (empty held-item slot)
+    stamp(cv, 1, 1, ghost_hand())
+    icons["held_empty"] = cv
+
     return icons
-
-
-FILLER = {"a": "838383", "t": "8B8B8B", "b": "7B7B7B", "p": "7F7F7F"}
-
-
-def filler():                                      # 14 opaque tile, just off slot grey: recedes
-    g = [["a"] * 16 for _ in range(16)]
-    for i in range(16):
-        g[0][i] = g[i][0] = "t"
-        g[15][i] = g[i][15] = "b"
-    g[0][15] = g[15][0] = "a"
-    for x, y in ((4, 5), (11, 3), (8, 10), (3, 12), (12, 13)):
-        g[y][x] = "p"
-    return g
 
 
 def rgba(cv, pal):
@@ -386,7 +455,7 @@ def rgba(cv, pal):
     for row in cv:
         raw.append(0)
         for ch in row:
-            raw += b"\0\0\0\0" if ch == "." else bytes.fromhex(pal[ch]) + b"\xff"
+            raw += b"\0\0\0\0" if ch == "." else bytes.fromhex(pal[ch] + ("FF" if len(pal[ch]) == 6 else ""))
     return bytes(raw)
 
 
@@ -400,12 +469,10 @@ def png(raw):
 def main():
     os.makedirs(OUT, exist_ok=True)
     icons = build()
-    icons["filler"] = filler()
     for name, cv in icons.items():
         assert len(cv) == 16 and all(len(r) == 16 for r in cv), name
-        pal = FILLER if name == "filler" else PAL
         with open(os.path.join(OUT, name + ".png"), "wb") as f:
-            f.write(png(rgba(cv, pal)))
+            f.write(png(rgba(cv, PAL)))
     print("wrote", len(icons), "icons to", os.path.normpath(OUT))
 
 
