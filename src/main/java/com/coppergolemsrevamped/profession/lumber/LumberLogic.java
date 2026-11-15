@@ -449,7 +449,7 @@ public final class LumberLogic {
 		int took = 0;
 		if (axe) {
 			// Mending: bottles from the input chest repair the axe (and Mending axes lying there), 1 item per bottle
-			int b = GolemMending.repair(level, data.items.get(LumberProfession.AXE_SLOT), in, LumberLogic::isAxe, TransferBudget.remaining(level, golem));
+			int b = GolemMending.repair(level, data, data.items.get(LumberProfession.AXE_SLOT), in, LumberLogic::isAxe, TransferBudget.remaining(level, golem));
 			TransferBudget.spend(level, golem, b);
 			took += b;
 			if (TransferBudget.remaining(level, golem) >= 1 && fetchAxe(in, data)) {
@@ -484,7 +484,7 @@ public final class LumberLogic {
 	// ---- Mending while waiting -----------------------------------------------------------------------------------
 
 	private static boolean wantsTopUp(ServerLevel level, GolemData data, Container in) {
-		return GolemMending.canRepair(level, data.items.get(LumberProfession.AXE_SLOT), in, LumberLogic::isAxe, true);
+		return GolemMending.canRepair(level, data, data.items.get(LumberProfession.AXE_SLOT), in, LumberLogic::isAxe, true);
 	}
 
 	/** While waiting for growth: walk to the input chest and top up damaged Mending axes. True when this tick was used. */
@@ -492,7 +492,7 @@ public final class LumberLogic {
 		if (in == null || inPos == null || !wantsTopUp(level, data, in)) return false;
 		if (!reach(s, level, golem, inPos, inPos, now)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
-		int used = GolemMending.repair(level, data.items.get(LumberProfession.AXE_SLOT), in, LumberLogic::isAxe, TransferBudget.remaining(level, golem), true);
+		int used = GolemMending.repair(level, data, data.items.get(LumberProfession.AXE_SLOT), in, LumberLogic::isAxe, TransferBudget.remaining(level, golem), true);
 		TransferBudget.spend(level, golem, used);
 		s.anchored = false;
 		boolean pending = TransferBudget.exhausted(level, golem) && wantsTopUp(level, data, in);
@@ -1074,7 +1074,7 @@ public final class LumberLogic {
 		if (felling && fetchableAxe(in, data) >= 0) return true;
 		// Mending: bottles to use, or a resting Mending axe the chest can take back
 		ItemStack held = data.items.get(LumberProfession.AXE_SLOT);
-		if (felling && (GolemMending.canRepair(level, held, in, LumberLogic::isAxe)
+		if (felling && (GolemMending.canRepair(level, data, held, in, LumberLogic::isAxe)
 			|| GolemMending.mustPark(held) && GolemMending.canPark(in, held))) return true;
 		// topUp: a fetch the transfer budget cut short goes on up to its full target, not just above the low mark
 		if (wantSap && countOf(data, LumberLogic::isSapling) < (topUp ? 64 : SAPLING_LOW) && supplySource(in, data, LumberLogic::isSapling) >= 0) return true;

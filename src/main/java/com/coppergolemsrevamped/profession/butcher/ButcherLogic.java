@@ -777,7 +777,7 @@ public final class ButcherLogic {
 		Container chest = pos == null ? null : TransporterLogic.containerAt(level, pos);
 		if (chest == null) return false;
 		ItemStack cur = data.items.get(ButcherProfession.TOOL_SLOT);
-		boolean repair = GolemMending.canRepair(level, cur, chest, ButcherLogic::isWeapon);
+		boolean repair = GolemMending.canRepair(level, data, cur, chest, ButcherLogic::isWeapon);
 		boolean swap = needsWeapon(cur) && fetchableWeapon(chest, cur) >= 0;
 		boolean park = GolemMending.mustPark(cur) && GolemMending.canPark(chest, cur);
 		if (!repair && !swap && !park) return false;
@@ -787,7 +787,7 @@ public final class ButcherLogic {
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(pos));
 		boolean acted = false;
 		if (repair) {
-			int used = GolemMending.repair(level, cur, chest, ButcherLogic::isWeapon, TransferBudget.remaining(level, golem));
+			int used = GolemMending.repair(level, data, cur, chest, ButcherLogic::isWeapon, TransferBudget.remaining(level, golem));
 			TransferBudget.spend(level, golem, used);
 			acted = used > 0;
 		}
@@ -806,7 +806,7 @@ public final class ButcherLogic {
 			data.items.set(ButcherProfession.TOOL_SLOT, ItemStack.EMPTY);
 			acted = true;
 		}
-		if (TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon)) {
+		if (TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, data, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon)) {
 			return atChest(level, golem, data, s, pos, Interact.Action.TAKE); // budget, not "done": more bottles to use next window
 		}
 		if (acted) Interact.openChest(level, golem, pos, Interact.Action.TAKE);
@@ -823,13 +823,13 @@ public final class ButcherLogic {
 	private static boolean mendVisit(ServerLevel level, CopperGolem golem, GolemData data, State s) {
 		BlockPos pos = data.assignments.get(ButcherProfession.TOOLS);
 		Container chest = pos == null ? null : TransporterLogic.containerAt(level, pos);
-		if (chest == null || !GolemMending.canRepair(level, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, true)) return false;
+		if (chest == null || !GolemMending.canRepair(level, data, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, true)) return false;
 		s.doing = "Repairing tool with XP bottles";
 		if (!Interact.approach(level, golem, pos, s.walk, SPEED)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(pos));
-		int used = GolemMending.repair(level, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, TransferBudget.remaining(level, golem), true);
+		int used = GolemMending.repair(level, data, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, TransferBudget.remaining(level, golem), true);
 		TransferBudget.spend(level, golem, used);
-		boolean more = TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, true);
+		boolean more = TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, data, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, true);
 		if (used > 0 || more) Interact.openChest(level, golem, pos, Interact.Action.TAKE);
 		if (!more) s.walk.reset();
 		s.cooldown = more ? TransferBudget.waitTicks(level) : used > 0 ? Interact.OPEN_TICKS : RETRY_TICKS;

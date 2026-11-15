@@ -16,10 +16,21 @@ different tool"). Bottles come from [xp-bottles.md](xp-bottles.md) (`GolemXp:XP_
   effect of Mending), which is **14 durability per bottle** in 26.3 (2 per XP). `GolemMending:perBottle` asks the API, so a
   data pack changing the effect is respected. `MendingTest:guardAndConversion` pins the 14.
 - A visit repairs the held tool first, then Mending tools lying in the chest (the profession's own tool kind only: axes for
-  Lumber, hoes and axes for Farmer, swords and axes for Butcher), one bottle at a time until whole, bottles run out or the
+  Lumber, hoes and axes for Farmer, swords and axes for Butcher), until whole, the XP and bottles run out or the
   transfer budget is used (1 item per bottle, so a big repair spans several windows like any cut visit, see
-  [../architecture/transfer-limit.md](../architecture/transfer-limit.md)). The last bottle may overshoot (repairing to full is
-  fine).
+  [../architecture/transfer-limit.md](../architecture/transfer-limit.md)).
+- **No XP is wasted** (`GolemMending:repair`). Why: user request ("no XP is ever wasted"); a whole bottle per repair burned
+  7 XP for a tool missing 5 points. Repairs pay in XP: the durability missing is converted with the vanilla ratio (`perBottle`
+  per 7 XP, `GolemMending:xpFor`, rounded up, the golem never goes past damage 0). The golem's stored XP (`GolemData.xp`, see
+  [xp-bottles.md](xp-bottles.md)) is spent first, free of transfer budget; only when it does not cover the damage a bottle is
+  taken from the chest (+7 to the store, 1 budget), then spent again. The leftover stays stored for the next repair (saved with
+  the golem; dropped like any stored XP on profession change or death, `GolemService:drop`). Example: 5 points missing costs
+  3 XP, 4 stay stored; 4 more points missing are paid from the store, no bottle. If no bottle is left the store is still spent
+  (partial repair). `canRepair` is true with stored XP alone, so no bottle in the chest is needed.
+- Butcher: its kill/breeding XP is the same store, so a repair can use it before it is bottled (vanilla-like: Mending eats XP
+  orbs). Bottling the rest (whole 7s, `GolemXp:deliver`) is never blocked by this, only less XP is left to bottle. Lumber and
+  Farmer have no bottle slot and never bottle (`GolemXp:fillSlot` is Smelter only, `deliver` Butcher only), so their XP stays
+  invisible in the store until used or dropped.
 - A tool is only *worth* a visit when it is resting (below) or lacks at least one bottle's worth (`GolemMending:wantsRepair`).
   Why: otherwise the golem would walk back after every hit to burn a bottle on 1 point. Once a repair has started it goes
   to full.
@@ -87,14 +98,13 @@ fixed text), so nothing is shown for them; a status there would need a hook in `
 
 ## D9 (no loss or duplication)
 
-A tool only moves slot to chest slot, never dropped; bottles are shrunk by exactly one per repair (the repaired points come
-from `perBottle`); a chest that cannot take the tool leaves it in the slot. The tests assert exactly one Mending tool exists
+A tool only moves slot to chest slot, never dropped; bottles are shrunk by exactly one per bottle opened (their 7 XP go into the store, then are spent as above); a chest that cannot take the tool leaves it in the slot. The tests assert exactly one Mending tool exists
 every tick.
 
-## Tests (`MendingTest`, 11)
+## Tests (`MendingTest`, 12)
 
 `guardAndConversion`; Lumber: `lumberRepairsWithBottles` (damage 20, 5 bottles: 2 used, axe whole then 3 chops),
 `lumberNeverBreaksMendingAxeAndChopsByHand` (threshold + 1, no other axe), `lumberSwitchesToPlainAxe`,
 `lumberRepairsStoredMendingAxeAndReusesIt` (18 bottles, more than one window); Butcher: `butcherNeverBreaksMendingSword`,
 `butcherRepairsWithBottles`; Farmer: `farmerReturnsMendingHoeAndDoesNotTill` (also: ripe wheat is still harvested by hand),
-`farmerRepairsStoredMendingHoeAndReusesIt`; idle top-up: `butcherTopsUpSwordWhileIdle`, `farmerTopsUpHoeWhileIdle`.
+`farmerRepairsStoredMendingHoeAndReusesIt`; idle top-up: `butcherTopsUpSwordWhileIdle`, `farmerTopsUpHoeWhileIdle`; no waste: `mendingWastesNoXp` (5 points missing: bottle used, 4 XP stored; then 4 points from the store with no bottle; XP bottled = spent + stored).
