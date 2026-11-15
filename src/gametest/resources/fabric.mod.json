@@ -11,7 +11,8 @@
 			"com.coppergolemsrevamped.test.ChestSorterTest",
 			"com.coppergolemsrevamped.test.CleanerTest",
 			"com.coppergolemsrevamped.test.CrafterTest",
-			"com.coppergolemsrevamped.test.FarmerTest"
+			"com.coppergolemsrevamped.test.FarmerTest",
+			"com.coppergolemsrevamped.test.LumberTest"
 		],
 		"fabric-client-gametest": [
 			"com.coppergolemsrevamped.test.GolemGuiClientTest"

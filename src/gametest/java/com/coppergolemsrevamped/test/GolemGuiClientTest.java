@@ -132,6 +132,27 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 			});
 			context.waitTicks(20);
 			context.takeScreenshot("golem-gui-farmer");
+
+			// (h) lumber: axe + shears, 16 oak saplings, some logs in carry, every assignment set
+			world.getServer().runOnServer(server -> {
+				ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
+				player.closeContainer();
+				GolemService.changeProfession(player.level(), golem, CopperGolemsRevamped.id("lumber"));
+				GolemData data = GolemData.get(golem);
+				data.items.set(0, new ItemStack(Items.IRON_AXE));
+				data.items.set(1, new ItemStack(Items.SHEARS));
+				data.items.set(2, new ItemStack(Items.OAK_SAPLING, 16));
+				data.items.set(3, new ItemStack(Items.OAK_LOG, 12));
+				data.items.set(4, new ItemStack(Items.OAK_LOG, 5));
+				data.items.set(5, new ItemStack(Items.OAK_LEAVES, 3));
+				data.assignments.put("tree", player.blockPosition().offset(-3, 0, 0));
+				data.assignments.put("input", player.blockPosition().offset(3, 0, 0));
+				data.assignments.put("output", player.blockPosition().offset(3, 0, 1));
+				GolemData.save(golem, data);
+				GolemMenuOpener.open(player, golem);
+			});
+			context.waitTicks(20);
+			context.takeScreenshot("golem-gui-lumber");
 		}
 	}
 }
