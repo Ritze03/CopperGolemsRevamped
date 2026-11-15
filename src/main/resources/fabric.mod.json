@@ -6,7 +6,7 @@
 	"description": "Revamps copper golems.",
 	"authors": [],
 	"contact": {},
-	"license": "CC0-1.0",
+	"license": "LGPL-3.0-only",
 	"environment": "*",
 	"entrypoints": {
 		"main": [

@@ -41,6 +41,12 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 }
 
+jar {
+	def archiveBase = project.base.archivesName.get()
+	from("COPYING") { rename { "${it}_${archiveBase}" } }
+	from("COPYING.LESSER") { rename { "${it}_${archiveBase}" } }
+}
+
 processResources {
 	def version = project.version
 	inputs.property "version", version

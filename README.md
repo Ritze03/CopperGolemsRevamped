@@ -71,3 +71,7 @@ With JDK 25:
 ```
 
 The outputs are the mod jar and `*-resourcepack.zip` in `build/libs/`. The GameTests run as part of the build.
+
+## License
+
+Copper Golems Revamped is licensed under the GNU Lesser General Public License v3.0 only (LGPL-3.0-only). See COPYING.LESSER and COPYING.
