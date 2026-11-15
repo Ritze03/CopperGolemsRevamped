@@ -526,27 +526,28 @@ public class LumberTest {
 	}
 
 	/**
-	 * Chopping is visible: an iron axe (10 base ticks) still takes two whole swings (24 ticks) per log, the golem is in the
-	 * raised state during a swing and drops back to IDLE on the chop, and when the tree is done it is back to IDLE with
-	 * no swing left active (no crack, no stuck pose). 3 logs give at least 6 chops.
+	 * Chopping is visible and continuous: an iron axe (10 base ticks) still takes two whole swings (24 ticks) per log, and
+	 * from the first chop until the last log is gone the golem holds the interaction state with no IDLE pulse (also not
+	 * between two logs); when the tree is done it is back to IDLE with no swing left active (no crack, no stuck pose).
 	 */
 	@GameTest(maxTicks = 1500)
-	public void chopsInSwingsAndReturnsToIdle(GameTestHelper helper) {
+	public void chopsHoldTheInteractionStateAndReturnsToIdle(GameTestHelper helper) {
 		world(helper);
 		tree(helper, 3, 1);
 		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
 		give(in, Items.IRON_AXE, Items.OAK_SAPLING, 8);
 		CopperGolem golem = lumber(helper);
-		boolean[] raised = { false };
-		int[] chops = { 0 };
+		boolean[] started = { false };
+		int[] heldTicks = { 0 };
 		long[] lastBreak = { -1 };
 		int[] logsLeft = { 3 };
 		helper.onEachTick(() -> {
-			boolean r = golem.getState() == ToolSwing.RAISED;
-			if (raised[0] && !r && ToolSwing.active(golem)) chops[0]++;
-			raised[0] = r || (raised[0] && ToolSwing.active(golem));
 			int left = 0;
 			for (int k = 0; k < 3; k++) if (helper.getBlockState(T.above(k)).is(Blocks.OAK_LOG)) left++;
+			boolean held = golem.getState() == ToolSwing.HELD && ToolSwing.active(golem);
+			if (held) { started[0] = true; heldTicks[0]++; }
+			// all logs are in reach from the spot, so no walk: no IDLE until the last log breaks (the break tick itself may be IDLE-free too)
+			else if (started[0] && left > 0) helper.fail("state left the held interaction mid-tree: " + golem.getState() + ", logs left " + left);
 			if (left < logsLeft[0]) {
 				long now = helper.getLevel().getGameTime();
 				// the first log needs the walk too; later ones must each take two whole swings
@@ -557,9 +558,9 @@ public class LumberTest {
 		});
 		helper.succeedWhen(() -> {
 			helper.assertTrue(count(out, Items.OAK_LOG) == 3, "oak logs in output: " + count(out, Items.OAK_LOG));
-			helper.assertTrue(chops[0] >= 6, "chops seen: " + chops[0]);
+			helper.assertTrue(heldTicks[0] >= 3 * 2 * ToolSwing.PERIOD - 3, "held ticks seen: " + heldTicks[0]);
 			helper.assertTrue(!ToolSwing.active(golem), "a swing is still active");
-			helper.assertTrue(golem.getState() != ToolSwing.RAISED, "golem stuck raised: " + golem.getState());
+			helper.assertTrue(golem.getState() == CopperGolemState.IDLE, "golem not back to IDLE: " + golem.getState());
 		});
 	}
 
@@ -570,10 +571,34 @@ public class LumberTest {
 		helper.assertTrue(ToolSwing.swingTicks(30, 2) == 36 && ToolSwing.swingTicks(60, 2) == 60, "slow axes round up to whole swings");
 		helper.assertTrue(ToolSwing.swingTicks(1, 1) == ToolSwing.PERIOD, "one swing minimum");
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 4));
+		golem.setNoAi(true); // a vanilla golem near a neighbour test's chests would set its own interaction state
 		ToolSwing.tick(helper.getLevel(), golem, helper.absolutePos(new BlockPos(3, 1, 3)), 0, 24, false);
 		helper.assertTrue(golem.getState() == ToolSwing.RAISED && ToolSwing.active(golem), "raised on swing start");
 		helper.runAfterDelay(10, () -> {
 			helper.assertTrue(golem.getState() == CopperGolemState.IDLE && !ToolSwing.active(golem), "stale swing cleaned up: " + golem.getState());
+			helper.succeed();
+		});
+	}
+
+	/** {@link ToolSwing#hold}: never IDLE across whole swings and the chop tick, clearCrack keeps the state, a stale hold is cleaned up. */
+	@GameTest(maxTicks = 80)
+	public void toolSwingHoldAndCleanup(GameTestHelper helper) {
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 4));
+		golem.setNoAi(true); // a vanilla golem near a neighbour test's chests would set its own interaction state
+		BlockPos log = helper.absolutePos(new BlockPos(3, 1, 3));
+		int total = 2 * ToolSwing.PERIOD;
+		int[] e = { 0 };
+		helper.onEachTick(() -> {
+			if (e[0] >= total) return;
+			ToolSwing.hold(helper.getLevel(), golem, log, e[0]++, total, true);
+			helper.assertTrue(golem.getState() == ToolSwing.HELD && ToolSwing.active(golem), "hold keeps the state at elapsed " + (e[0] - 1) + ": " + golem.getState());
+		});
+		helper.runAfterDelay(total + 1, () -> {
+			ToolSwing.clearCrack(helper.getLevel(), golem);
+			helper.assertTrue(golem.getState() == ToolSwing.HELD && ToolSwing.active(golem), "clearCrack keeps the held state: " + golem.getState());
+		});
+		helper.runAfterDelay(total + 8, () -> {
+			helper.assertTrue(golem.getState() == CopperGolemState.IDLE && !ToolSwing.active(golem), "stale hold cleaned up: " + golem.getState());
 			helper.succeed();
 		});
 	}
