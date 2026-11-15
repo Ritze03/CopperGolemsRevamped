@@ -354,60 +354,60 @@ public class MenuTest {
 		CopperGolem g = golem(helper, TRANSPORTER);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-		helper.assertTrue(at(menu, 3, 3).is(Items.LEAD) && !glint(at(menu, 3, 3)) && name(at(menu, 3, 3)).equals("Follow: off"), "off " + at(menu, 3, 3));
-		click(menu, player, 3, 3);
-		helper.assertTrue(GolemData.get(g).following && glint(at(menu, 3, 3)) && name(at(menu, 3, 3)).equals("Follow: on"), "on " + at(menu, 3, 3));
-		click(menu, player, 3, 3);
-		helper.assertTrue(!GolemData.get(g).following && !glint(at(menu, 3, 3)), "off again");
+		helper.assertTrue(at(menu, 2, 3).is(Items.LEAD) && !glint(at(menu, 2, 3)) && name(at(menu, 2, 3)).equals("Follow: off"), "off " + at(menu, 2, 3));
+		click(menu, player, 2, 3);
+		helper.assertTrue(GolemData.get(g).following && glint(at(menu, 2, 3)) && name(at(menu, 2, 3)).equals("Follow: on"), "on " + at(menu, 2, 3));
+		click(menu, player, 2, 3);
+		helper.assertTrue(!GolemData.get(g).following && !glint(at(menu, 2, 3)), "off again");
 		helper.succeed();
 	}
 
-	/** Freeze: toggle at (3,5), freezing turns Follow off, Follow is refused while frozen, a profession change unfreezes. */
+	/** Freeze: toggle at (2,5), freezing turns Follow off, Follow is refused while frozen, a profession change unfreezes. */
 	@GameTest
 	public void settingsFreezeToggle(GameTestHelper helper) {
 		for (Identifier id : new Identifier[] {null, SORTER, TRANSPORTER}) {
 			CopperGolem g = golem(helper, id);
 			ServerPlayer player = player(helper, g);
 			GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-			helper.assertTrue(at(menu, 3, 5).is(Items.BLUE_ICE) && !glint(at(menu, 3, 5)) && name(at(menu, 3, 5)).equals("Freeze: off")
-				&& lore(at(menu, 3, 5)).contains("Golem stops all work and stands still") && lore(at(menu, 3, 5)).contains("Use it to safely change its inventory"),
-				id + " freeze off " + at(menu, 3, 5));
-			click(menu, player, 3, 3); // Follow on
-			click(menu, player, 3, 5); // Freeze: follow turns off
+			helper.assertTrue(at(menu, 2, 5).is(Items.BLUE_ICE) && !glint(at(menu, 2, 5)) && name(at(menu, 2, 5)).equals("Freeze: off")
+				&& lore(at(menu, 2, 5)).contains("Golem stops all work and stands still") && lore(at(menu, 2, 5)).contains("Use it to safely change its inventory"),
+				id + " freeze off " + at(menu, 2, 5));
+			click(menu, player, 2, 3); // Follow on
+			click(menu, player, 2, 5); // Freeze: follow turns off
 			GolemData d = GolemData.get(g);
-			helper.assertTrue(d.frozen && !d.following && d.followPlayer == null && glint(at(menu, 3, 5)) && name(at(menu, 3, 5)).equals("Freeze: on"),
+			helper.assertTrue(d.frozen && !d.following && d.followPlayer == null && glint(at(menu, 2, 5)) && name(at(menu, 2, 5)).equals("Freeze: on"),
 				id + " frozen " + d.frozen + "/" + d.following);
-			click(menu, player, 3, 3); // refused
-			helper.assertTrue(!GolemData.get(g).following && name(at(menu, 3, 3)).equals("Follow: off"), id + " follow must be refused while frozen");
+			click(menu, player, 2, 3); // refused
+			helper.assertTrue(!GolemData.get(g).following && name(at(menu, 2, 3)).equals("Follow: off"), id + " follow must be refused while frozen");
 			menu.showTab(Tab.STATUS);
 			boolean next = false;
 			for (int col = 0; col < 9; col++) next |= name(at(menu, 3, col)).startsWith("Frozen");
 			helper.assertTrue(name(at(menu, 2, 4)).endsWith("— Frozen") && next, id + " status " + name(at(menu, 2, 4)));
 			menu.showTab(Tab.SETTINGS);
-			click(menu, player, 3, 5);
+			click(menu, player, 2, 5);
 			helper.assertTrue(!GolemData.get(g).frozen, id + " unfrozen");
-			click(menu, player, 3, 5);
+			click(menu, player, 2, 5);
 			GolemService.changeProfession(helper.getLevel(), g, id == null ? TRANSPORTER : null);
 			helper.assertTrue(!GolemData.get(g).frozen, id + " a profession change clears freeze");
 		}
 		helper.succeed();
 	}
 
-	/** The "Strip logs" toggle exists for the Lumber only (Settings 3,7), default off, flips and persists. */
+	/** The "Strip logs" toggle exists for the Lumber only (Settings 4,4), default off, flips and persists. */
 	@GameTest
 	public void settingsStripLogsToggleIsLumberOnly(GameTestHelper helper) {
 		for (Identifier id : new Identifier[] {null, TRANSPORTER, SORTER}) {
 			CopperGolem g = golem(helper, id);
 			GolemMenu menu = new GolemMenu(1, player(helper, g).getInventory(), g, Tab.SETTINGS);
-			helper.assertTrue(at(menu, 3, 7).isEmpty() || !name(at(menu, 3, 7)).startsWith("Strip logs"), id + " must not offer Strip logs");
+			helper.assertTrue(at(menu, 4, 4).isEmpty() || !name(at(menu, 4, 4)).startsWith("Strip logs"), id + " must not offer Strip logs");
 		}
 		CopperGolem g = golem(helper, LUMBER);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-		helper.assertTrue(at(menu, 3, 7).is(Items.STRIPPED_OAK_LOG) && !glint(at(menu, 3, 7)) && name(at(menu, 3, 7)).equals("Strip logs: off"), "off " + at(menu, 3, 7));
-		click(menu, player, 3, 7);
-		helper.assertTrue(GolemData.get(g).stripLogs && glint(at(menu, 3, 7)) && name(at(menu, 3, 7)).equals("Strip logs: on"), "on " + name(at(menu, 3, 7)));
-		click(menu, player, 3, 7);
+		helper.assertTrue(at(menu, 4, 4).is(Items.STRIPPED_OAK_LOG) && !glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: off"), "off " + at(menu, 4, 4));
+		click(menu, player, 4, 4);
+		helper.assertTrue(GolemData.get(g).stripLogs && glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: on"), "on " + name(at(menu, 4, 4)));
+		click(menu, player, 4, 4);
 		helper.assertTrue(!GolemData.get(g).stripLogs, "off again");
 		helper.succeed();
 	}

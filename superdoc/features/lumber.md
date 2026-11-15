@@ -100,7 +100,7 @@ ticks (0.8 s) per log over the pure vanilla formula (whole swings). Test: `Lumbe
 
 ## Strip logs (setting)
 
-Lumber-only toggle on the Settings tab (3,7), "Strip logs: on/off", icon `stripped_oak_log`, default **off**, persisted as
+Lumber-only toggle on the Settings tab (4,4), "Strip logs: on/off", icon `stripped_oak_log`, default **off**, persisted as
 `GolemData:stripLogs` (codec field `strip_logs`, old saves load off). With it on the golem strips each log with its axe before
 breaking it, so the carry and the output chest get stripped logs. User request. See [gui.md](gui.md) for the toggle.
 

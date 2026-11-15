@@ -6,9 +6,9 @@ setting for 'Freeze', so the golem stops doing anything and the user can modify 
 
 ## Where
 
-- Toggle: Settings tab (3,5), `blue_ice` via `GolemIcon:plain`, glint while on, name "Freeze: on/off", lore "Golem stops
+- Toggle: Settings tab (2,5), `blue_ice` via `GolemIcon:plain`, glint while on, name "Freeze: on/off", lore "Golem stops
   all work and stands still" / "Use it to safely change its inventory". Click: `menu/GolemMenu:toggleFreeze`. Follow sits at
-  (3,3). See [gui.md](gui.md).
+  (2,3). See [gui.md](gui.md).
 - State: `core/GolemData:frozen`, persisted as the optional codec field `frozen` (default false, so old saves load
   unfrozen), saved like `following`.
 - Effect: `core/GolemTicker:tick`.

@@ -336,17 +336,17 @@ final class GolemViews {
 	private static void settings(GolemMenu m, Cell[] cells) {
 		GolemData data = GolemData.get(m.golem());
 		boolean on = data.following;
-		set(cells, 3, 3, icon((on ? GolemIcon.FOLLOW_ON : GolemIcon.FOLLOW_OFF).stack(
+		set(cells, 2, 3, icon((on ? GolemIcon.FOLLOW_ON : GolemIcon.FOLLOW_OFF).stack(
 			Component.literal("Follow: " + (on ? "on" : "off")),
 			lore(on ? "Click to stop following you" : "Click to make the golem follow you"), on),
 			(p, b) -> m.toggleFollow(p)));
 		boolean frozen = data.frozen;
-		set(cells, 3, 5, icon(GolemIcon.plain(Items.BLUE_ICE, Component.literal("Freeze: " + (frozen ? "on" : "off")),
+		set(cells, 2, 5, icon(GolemIcon.plain(Items.BLUE_ICE, Component.literal("Freeze: " + (frozen ? "on" : "off")),
 			lore("Golem stops all work and stands still", "Use it to safely change its inventory"), frozen),
 			(p, b) -> m.toggleFreeze()));
 		if (LumberProfession.ID.equals(m.currentId())) {
 			boolean strip = data.stripLogs;
-			set(cells, 3, 7, icon(GolemIcon.plain(Items.STRIPPED_OAK_LOG, Component.literal("Strip logs: " + (strip ? "on" : "off")),
+			set(cells, 4, 4, icon(GolemIcon.plain(Items.STRIPPED_OAK_LOG, Component.literal("Strip logs: " + (strip ? "on" : "off")),
 				lore("Strips each log with the axe before breaking it", "The carry then holds stripped logs"), strip),
 				(p, b) -> m.toggleStripLogs()));
 		}
