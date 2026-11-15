@@ -469,7 +469,7 @@ public class SmelterTest {
 		helper.assertTrue(menu.slots.get(4 * 9 + 4).mayPickup(p), "a player may take a result");
 		helper.assertTrue(!menu.slots.get(4 * 9 + 2).mayPlace(new ItemStack(Items.STONE)) && !menu.slots.get(4 * 9 + 6).mayPlace(new ItemStack(Items.STONE)), "nothing beside the result row");
 		ItemStack xpLabel = menu.slots.get(2 * 9 + 8).getItem();
-		helper.assertTrue(xpLabel.is(Items.EXPERIENCE_BOTTLE) && xpLabel.getHoverName().getString().equals("XP bottles"), "label at (2,8) " + xpLabel);
+		helper.assertTrue(!xpLabel.is(Items.EXPERIENCE_BOTTLE), "no XP bottle label at (2,8) " + xpLabel);
 		ItemStack label = menu.slots.get(2 * 9 + 4).getItem();
 		helper.assertTrue(label.is(Items.FURNACE) && label.getHoverName().getString().equals("Furnace buffers"), "label at (2,4) " + label);
 		helper.assertTrue(!menu.slots.get(2 * 9 + 3).getItem().is(Items.FURNACE), "no label left at (2,3)");

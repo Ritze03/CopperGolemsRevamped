@@ -32,7 +32,7 @@ Butchers and Smelters keep the experience they earn in a per-golem store and pay
 ## Delivery
 
 - **Smelter**: slot 8 (`SmelterProfession:XP_SLOT`) is the XP bottle slot, at (3,8). Its own slot group `xp` (take-only for
-  players: filter `s -> false`, like the Crafter output), label "XP bottles" at (2,8). Each tick `GolemXp:fillSlot` converts
+  players: filter `s -> false`, like the Crafter output), no label (Why: user found the label redundant, the bottles in the slot are enough). Each tick `GolemXp:fillSlot` converts
   whole bottles from the store into real items there (up to a full stack, only while the slot is empty or holds bottles); the
   remainder and anything that does not fit stays stored. `SmelterLogic:deliverSlots` includes slot 8, so `DELIVER` takes the
   bottles to the output chest together with the 3 shared result slots (slots 9..11, row 4 cols 3..5, see

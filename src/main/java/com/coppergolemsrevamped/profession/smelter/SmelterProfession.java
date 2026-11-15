@@ -39,8 +39,7 @@ public final class SmelterProfession {
 					.labeled(2, 4, "minecraft:furnace", "Furnace buffers",
 						"Slot 1 to 8 = furnace 1 to 8: the items the golem carries to it (results go to the row below)"),
 				// take-out only for players: the golem fills it from its stored XP
-				new SlotGroup("xp", 1, 64, s -> false).at(3, 8)
-					.labeled(2, 8, "minecraft:experience_bottle", "XP bottles", "Filled from the golem's stored XP"),
+				new SlotGroup("xp", 1, 64, s -> false).at(3, 8),
 				// the shared results of all furnaces, take-out only for players like the Crafter output; no label (it would
 				// have to sit below the slots, unlike every other label)
 				new SlotGroup("output", RESULT_SLOTS, 64, s -> false, RESULT_SLOTS).at(4, 3)),

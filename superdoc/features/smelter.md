@@ -10,10 +10,11 @@ delivers the results to an output chest. Id `coppergolemsrevamped:smelter`, `run
   `fuel`, `output` (`Kind.CHEST`). Icons: `assign_input`, `assign_output` are reused, `assign_fuel` (chest with a coal
   badge, base item coal) is new, the area uses the generic `assign_area`.
 - Slots (`SmelterProfession:SLOTS` = 12), in data order: group `furnace` (8 slots 0..7, row 3, columns 0..7, label centred
-  above at (2,4)), group `xp` (slot 8, `XP_SLOT`, at (3,8), take-only for players, label "XP bottles" at (2,8)) and group
+  above at (2,4)), group `xp` (slot 8, `XP_SLOT`, at (3,8), take-only for players, no label: (2,8) is plain filler) and group
   `output` (slots 9..11, `RESULT_FIRST`..`SLOTS-1`, row 4, columns 3..5, take-only for players like the Crafter output,
   no label). Slot `i` (0..7, `MAX_FURNACES`) is the golem's **input** buffer for furnace `i`: raw items to feed and fuel
   to feed or return, never results. Slots 9..11 are the 3 **shared result slots**: every furnace's results, merged by item.
+  Why no XP label (user: found it redundant, the bottles in the slot are enough): no hint is shown while the slot is empty.
   Slot 8 holds the XP bottles made from the golem's stored XP, see [xp-bottles.md](xp-bottles.md). Nothing is shown in the
   golem's hand.
   Why the result slots (user request, from a screenshot of the Inventory tab: "bottom 3 should be the output slots, add two,
