@@ -16,6 +16,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/chest-sorter.md](features/chest-sorter.md): Chest Sorter profession, waxed copper blocks raise the visited-chest limit.
 - [features/cleaner.md](features/cleaner.md): Cleaner profession, picks up item entities in an area (max 16x16) into an output chest.
 - [features/crafter.md](features/crafter.md): Crafter profession, 3x3 template, fetch from input, craft at a table, deliver to output.
+- [features/farmer.md](features/farmer.md): Farmer profession, farms a field (max 9x9): till with a hoe, plant the first seed, harvest, deliver.
 
 ## Rules and meta
 
