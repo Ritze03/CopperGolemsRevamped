@@ -1,9 +1,9 @@
 # Butcher profession
 
 Keeps an animal pen at a fixed size: kills the surplus adults with a sword or axe (Looting works), breeds new animals with
-food from a chest, collects the drops and delivers them to an output chest. Id `coppergolemsrevamped:butcher`,
-`runsVanillaBrain = false`. Closest templates: [cleaner.md](cleaner.md) (area, pickup, delivery) and [lumber.md](lumber.md)
-(tool from a chest, worn-tool swap, `ai/ToolSwing`, hand display).
+food from a chest and delivers the drops to an output chest, in a fixed cycle (breed, kill, deliver). Id `coppergolemsrevamped:butcher`,
+`runsVanillaBrain = false`. Closest templates: [cleaner.md](cleaner.md) (area, delivery) and [lumber.md](lumber.md)
+(phase machine, drops straight into the carry, tool from a chest, worn-tool swap, `ai/ToolSwing`, hand display).
 
 ## Entry points
 
@@ -15,7 +15,7 @@ food from a chest, collects the drops and delivers them to an output chest. Id `
   `CleanerLogic:box`, y range = the clicks plus 2 blocks above), `tools` (CHEST, icon `assign_tools`), `food` (CHEST, generic
   chest icon), `output` (CHEST, `assign_output`). Help texts are passed in the declaration (profession lines and per-assign).
 - `profession/butcher/ButcherLogic:tick` is the loop; `ButcherLogic:status` feeds the Status tab (`ProfessionStatus`),
-  e.g. "Culling cows (11 adults, keeping 8)", "Breeding pigs", "Collecting drops".
+  e.g. "Culling cows (11 adults, keeping 8)", "Breeding pigs", "Delivering to the output chest".
 - Icon `profession_butcher` on base item `iron_sword` (copper-hilted sword with a ham badge, drawn in
   `tools/icons/make_icons.py:sword`).
 
@@ -79,8 +79,8 @@ breed goal makes two in-love animals of a kind walk together and spawn the baby,
 - A kind is bred only while `ButcherLogic:breedAllowed` holds: fewer than `MAX_BABIES` (8) babies and fewer than
   `MAX_POPULATION` (24) animals (adults + babies, protected ones included). Why: so a pen never explodes. Steady state: 8
   adults stay, the babies grow up, the surplus adults are culled and their drops delivered.
-- A kind with a surplus and a weapon is not bred (the golem would feed animals it is about to kill); without a weapon a
-  surplus never comes down, so breeding still goes on within the caps.
+- Breeding comes first in the cycle, also for a kind with a surplus. Why: the user asked for the order breed, then kill; the
+  surplus is culled in the same cycle anyway.
 - Needs two food items in the food slots that the kind accepts (`Animal#isFood`). The first fed animal is the eligible one
   nearest the golem, the second the one nearest to it. One food per animal is consumed, `Animal#setInLove`, then the golem
   walks to the second.
@@ -88,31 +88,56 @@ breed goal makes two in-love animals of a kind walk together and spawn the baby,
   holding the same item, else an empty one, else the first slot is emptied back into the chest first (it checks beforehand
   that the chest can take it). Nothing is fetched when nothing in the chest suits a kind that wants to breed.
 
-## Loop
+## Cycle
 
-Per-golem transient state in a `WeakHashMap`; persistent state is only `GolemData`. One action per tick, in priority order:
+Why a phase machine: user request (a cycle "1. Breed 2. Kill", like Lumber) instead of one action per tick in priority order,
+which interleaved the jobs. Per-golem transient state in a `WeakHashMap` (a reload restarts at BREED); persistent state is
+only `GolemData`. `ButcherLogic:Phase`: **BREED -> KILL -> DELIVER -> (WAIT) -> BREED**. `ButcherLogic:phaseOf` and
+`ButcherLogic:phaseListener` (called on every change) are test hooks, as in Lumber.
 
-1. Area or output chest missing: stop, status "Waiting for targets", retry in 40 ticks. (The tool and food chests are
+0. Area or output chest missing: stop, status "Waiting for targets", retry in 40 ticks. (The tool and food chests are
    optional: without them the golem just cannot fetch.)
-2. Drops (`ItemEntity` inside the box, no pickup delay, fits the carry): chase the nearest, pick up within 1.5 blocks via
-   `CleanerLogic:pickUp` / `fits`.
-3. Fetch a weapon (only with a surplus and no usable weapon).
-4. Cull the nearest surplus adult: needs a weapon and at least `MIN_FREE_CARRY` (2) free carry slots (one kill drops up to
-   two kinds, leather and beef). Why: drops that cannot be picked up stay on the ground and are never lost, but a golem that
-   keeps killing with a full carry would just litter the pen; with a full output chest it stops culling once the carry fills.
-5. Breed (see above).
-6. Deliver the carry to the output chest (`Interact:approach`, `insertAll`, lid animation); leftovers stay and are retried
-   every 40 ticks.
-7. Idle, status "Herd is in balance", rescan every 20 ticks.
+1. **BREED** (`ButcherLogic:breed`): fetch food if needed, feed every eligible pair once within the caps, then move on. No
+   food, nothing eligible or all kinds at cap: the phase is skipped.
+2. **KILL** (`ButcherLogic:kill`): fetch or swap the weapon if needed (only with a surplus and no usable weapon), then
+   cull the nearest surplus adult, again and again, until none is left or the carry has fewer than `MIN_FREE_CARRY` (2)
+   free slots (one kill drops up to two kinds, leather and beef). No weapon: skipped. Why the room rule: the drops go into
+   the carry, so a kill without room would drop them on the ground.
+3. **DELIVER** (`ButcherLogic:deliver`): whenever the carry holds anything, even a little, walk to the output chest
+   (`Interact:approach`, `insertAll`, lid animation) once. Leftovers stay in the carry when the output is full.
+   KILL always ends in DELIVER, so a kill is never followed by BREED directly.
+4. **WAIT**: when the whole cycle did nothing (nothing fed or fetched, no kill, nothing delivered) the golem idles
+   `WAIT_TICKS` (100 = 5 s), status "Herd is in balance" (or "Output chest is full"), then starts over. Why 100: nothing in
+   a pen changes faster (breeding cooldown 5 min, calves 20 min), so the old 20-tick rescan was wasted work; 5 s still
+   notices new animals, food or a weapon quickly. A cycle that did something goes straight to BREED.
 
-Never blocks: no weapon still breeds and collects, no food still culls and collects, a full output keeps the carry.
+Never blocks: no weapon still breeds, no food still kills, a full output keeps the carry.
+
+No ground pickup: the old separate pickup step is gone. Stray drops in the area (breeding XP orbs, items the player threw
+in) are left alone: the Cleaner exists for that, and walking after items would break the cycle. Why not "during DELIVER's
+walk": it is not on the path, so it is not trivial.
+
+### Drops go straight into the carry
+
+Why: user request ("items should just go straight to his inventory, like it does for the Lumber"). Death loot is rolled
+inside `hurtServer` -> `dropAllDeathLoot` -> `dropFromLootTable`, whose consumer calls `Entity:spawnAtLocation`; every
+overload of it funnels into `spawnAtLocation(ServerLevel, ItemStack, Vec3)`. `mixin/EntityMixin` injects at the head of that
+one and calls `ButcherLogic:capture(entity, stack)`: it returns true only while `ButcherLogic:strike` has marked that very
+animal as the victim (`captureVictim`, set just around `hurtServer`, server thread), then the stack is kept and no
+`ItemEntity` is spawned. After the hit `ButcherLogic:storeCaptured` merges the stacks into the carry
+(`TransporterLogic:takeAll`); overflow, which the room rule makes rare, is dropped at the victim as a fallback.
+
+Why this option: the loot is rolled by vanilla with the real weapon in hand, so Looting still applies and no `LootParams`
+are rebuilt by hand; nothing is matched or guessed (capturing "items spawned that tick near the victim" could swallow other
+items); the mixin is one inert-by-default injector. Dropped equipment (`dropEquipment`) is not captured, farm animals
+carry none.
 
 Unreachable animals and items: a chase without getting closer for 200 ticks gives up and ignores the target for 1200 ticks
 (same rule as the Cleaner, `ButcherLogic:chase`). Animals flee after a hit (vanilla panic), so a kill sometimes needs a
 short chase between hits; a swing already started still lands only if the animal is in reach at the snap.
 
 Freeze: `core/GolemTicker` never calls the tick of a frozen golem ([freeze.md](freeze.md)); `ButcherTest:frozenButcherDoesNothing`.
-D9 (no loss or duplication): items only move between slots, chests and carry; food is shrunk by exactly one per fed animal.
+D9 (no loss or duplication): items only move between slots, chests and carry (kill drops: captured, then stored or, on overflow, dropped); food is shrunk by exactly one per fed animal.
 
 ## Tests
 

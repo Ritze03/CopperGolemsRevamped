@@ -319,24 +319,56 @@ public class ButcherTest {
 
 	// ---- edge cases -----------------------------------------------------------------------------------------------
 
-	/** No weapon anywhere: nothing is killed, but breeding and collecting go on. */
+	/** No weapon anywhere: nothing is killed, but breeding goes on. Stray ground items are not collected any more (see butcher.md). */
 	@GameTest(maxTicks = 3000)
-	public void noWeaponStillBreedsAndCollects(GameTestHelper helper) {
+	public void noWeaponStillBreeds(GameTestHelper helper) {
 		Pen p = pen(helper, true);
 		p.food.setItem(0, new ItemStack(Items.CARROT, 8));
 		for (int i = 0; i < 4; i++) animal(helper, p, EntityTypes.PIG, false);
 		for (int i = 0; i < 10; i++) animal(helper, p, EntityTypes.COW, false);
-		Vec3 at = helper.absoluteVec(new Vec3(3.5, 1.2, 3.5));
-		ItemEntity feather = new ItemEntity(helper.getLevel(), at.x, at.y, at.z, new ItemStack(Items.FEATHER, 5));
-		feather.setNoPickUpDelay();
-		helper.getLevel().addFreshEntity(feather);
 		helper.onEachTick(() -> {
 			var cows = animals(helper, p, net.minecraft.world.entity.animal.cow.Cow.class);
 			helper.assertTrue(cows.size() == 10, "a cow was killed without a weapon: " + cows.size());
 		});
 		helper.succeedWhen(() -> {
-			helper.assertTrue(count(p.out, Items.FEATHER) == 5, "feather in the output chest: " + count(p.out, Items.FEATHER));
 			helper.assertTrue(babies(animals(helper, p, net.minecraft.world.entity.animal.pig.Pig.class)) >= 1, "no baby pig");
+		});
+	}
+
+	/** The recorded phases run BREED, KILL, DELIVER; a kill is never followed by BREED without a DELIVER in between. */
+	@GameTest(maxTicks = 1500)
+	public void cycleOrder(GameTestHelper helper) {
+		Pen p = pen(helper, false);
+		setSlot(p, ButcherProfession.TOOL_SLOT, new ItemStack(Items.IRON_SWORD));
+		for (int i = 0; i < 9; i++) animal(helper, p, EntityTypes.COW, false);
+		List<ButcherLogic.Phase> seen = new java.util.ArrayList<>();
+		ButcherLogic.phaseListener = (g, ph) -> {
+			if (g == p.golem) seen.add(ph);
+		};
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(p.out, Items.BEEF) >= 1, "nothing delivered yet");
+			ButcherLogic.phaseListener = null;
+			helper.assertTrue(seen.size() >= 3 && seen.get(0) == ButcherLogic.Phase.BREED && seen.get(1) == ButcherLogic.Phase.KILL
+				&& seen.get(2) == ButcherLogic.Phase.DELIVER, "phases: " + seen);
+			for (int i = 1; i < seen.size(); i++) {
+				helper.assertTrue(!(seen.get(i - 1) == ButcherLogic.Phase.KILL && seen.get(i) != ButcherLogic.Phase.DELIVER), "KILL not followed by DELIVER: " + seen);
+			}
+		});
+	}
+
+	/** Death drops are taken into the carry at the moment of the kill: no item entity ever appears, even with a full output chest. */
+	@GameTest(maxTicks = 1500)
+	public void dropsGoStraightToCarry(GameTestHelper helper) {
+		Pen p = pen(helper, false);
+		setSlot(p, ButcherProfession.TOOL_SLOT, new ItemStack(Items.IRON_SWORD));
+		for (int i = 0; i < 27; i++) p.out.setItem(i, new ItemStack(Items.DIRT, 64)); // nothing can be delivered, the carry keeps the drops
+		for (int i = 0; i < 9; i++) animal(helper, p, EntityTypes.COW, false);
+		helper.onEachTick(() -> helper.assertTrue(groundItems(helper, p) == 0, "an item entity from the kill exists"));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(animals(helper, p, net.minecraft.world.entity.animal.cow.Cow.class).size() == 8, "no kill yet");
+			int beef = GolemData.get(p.golem).items.stream().filter(s -> s.is(Items.BEEF)).mapToInt(ItemStack::getCount).sum();
+			helper.assertTrue(beef >= 1, "no beef in the carry: " + beef);
+			helper.assertTrue(groundItems(helper, p) == 0, "drops on the ground");
 		});
 	}
 

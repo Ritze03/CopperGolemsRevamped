@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
+import java.util.function.BiConsumer;
 
 import org.jspecify.annotations.Nullable;
 
@@ -27,6 +28,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -37,7 +39,6 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
-import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.Weapon;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -48,9 +49,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Butcher work loop. Priorities each tick: pick up drops, fetch a weapon (only when there is something to cull), cull
- * the surplus, breed, deliver, idle. Every branch that does something returns, so one action happens per tick. See
- * superdoc/features/butcher.md for the rules and the reasons behind them.
+ * Butcher work cycle, an explicit phase machine ({@link Phase}): BREED, KILL, DELIVER, then (when the cycle did nothing)
+ * WAIT, then BREED again. Kill drops go straight into the carry ({@link #capture}). See superdoc/features/butcher.md for
+ * the rules and the reasons behind them.
  */
 public final class ButcherLogic {
 	private ButcherLogic() {}
@@ -69,11 +70,15 @@ public final class ButcherLogic {
 	static final int FOOD_PER_PAIR = 2;
 
 	static final int RETRY_TICKS = 40;
-	static final int SCAN_TICKS = 20;
+	/**
+	 * The idle between two cycles that did nothing (5 s). Why: nothing in a pen changes faster (the breeding cooldown is
+	 * 5 minutes, calves need 20), so a rescan every few ticks is wasted work, but new animals, food or a weapon in a
+	 * chest should still be noticed within a few seconds.
+	 */
+	static final int WAIT_TICKS = 100;
 	static final int AFTER_ACTION_TICKS = 5;
 	static final int REPATH_TICKS = 10;
 	static final double SPEED = 1.0;
-	static final double PICKUP_RANGE_SQR = 1.5 * 1.5;
 	/** Squared distance within which the golem hits or feeds an animal (and at most 1.5 blocks apart in height). */
 	static final double REACH_SQR = 2.2 * 2.2;
 	/** Chasing one target this long without getting closer = unreachable (10 s). */
@@ -91,7 +96,21 @@ public final class ButcherLogic {
 		EntityTypes.COW, EntityTypes.MOOSHROOM, EntityTypes.PIG, EntityTypes.SHEEP, EntityTypes.CHICKEN,
 		EntityTypes.RABBIT, EntityTypes.GOAT);
 
+	/** The work cycle: BREED, KILL, DELIVER, then (when the cycle did nothing) WAIT, then BREED again. See butcher.md. */
+	public enum Phase { BREED, KILL, DELIVER, WAIT }
+
+	/** Test hook: called on every phase change (transient state: a reload restarts at BREED). */
+	public static @Nullable BiConsumer<CopperGolem, Phase> phaseListener;
+
+	public static @Nullable Phase phaseOf(CopperGolem golem) {
+		State st = STATES.get(golem);
+		return st == null ? null : st.phase;
+	}
+
 	private static final class State {
+		@Nullable Phase phase;
+		/** The running cycle did something (fed, fetched, killed, delivered): no WAIT after it. */
+		boolean worked;
 		int cooldown;
 		final Interact.Approach walk = new Interact.Approach();
 		@Nullable UUID chasing;
@@ -219,36 +238,83 @@ public final class ButcherLogic {
 		s.skip.values().removeIf(until -> until <= now);
 
 		Map<EntityType<?>, Herd> herds = scan(level, box);
-		ItemStack tool = data.items.get(ButcherProfession.TOOL_SLOT);
-		boolean armed = isWeapon(tool);
+		if (s.phase == Phase.WAIT || s.phase == null) setPhase(s, golem, Phase.BREED);
+		if (s.phase == Phase.BREED) {
+			if (breed(level, golem, data, s, herds, now)) {
+				s.worked = true;
+				return;
+			}
+			setPhase(s, golem, Phase.KILL);
+		}
+		if (s.phase == Phase.KILL) {
+			if (kill(level, golem, data, s, herds, now)) {
+				s.worked = true;
+				return;
+			}
+			endCull(level, golem, s);
+			setPhase(s, golem, Phase.DELIVER);
+		}
+		if (s.phase == Phase.DELIVER && deliver(level, golem, data, s, outPos, out)) return;
+		if (s.phase == Phase.DELIVER) { // nothing carried
+			if (s.worked) {
+				setPhase(s, golem, Phase.BREED);
+			} else {
+				s.doing = "Herd is in balance";
+				setPhase(s, golem, Phase.WAIT);
+				idle(level, golem, s, WAIT_TICKS);
+			}
+		}
+	}
+
+	private static void setPhase(State s, CopperGolem golem, Phase p) {
+		if (s.phase == p) return;
+		s.phase = p;
+		s.chasing = null;
+		s.pairA = s.pairB = null;
+		s.walk.reset();
+		if (p == Phase.BREED) s.worked = false;
+		BiConsumer<CopperGolem, Phase> l = phaseListener;
+		if (l != null) l.accept(golem, p);
+	}
+
+	/** KILL: swap or fetch the weapon if needed, then cull; true while busy. */
+	private static boolean kill(ServerLevel level, CopperGolem golem, GolemData data, State s, Map<EntityType<?>, Herd> herds, long now) {
 		boolean cullNeeded = false;
 		for (Herd h : herds.values()) if (h.surplus() > 0 && !cullable(h, s).isEmpty()) cullNeeded = true;
+		if (!cullNeeded) return false;
+		ItemStack tool = data.items.get(ButcherProfession.TOOL_SLOT);
+		if ((tool.isEmpty() || tool.nextDamageWillBreak()) && fetchWeapon(level, golem, data, s)) return true;
+		return isWeapon(data.items.get(ButcherProfession.TOOL_SLOT)) && freeCarry(data) >= MIN_FREE_CARRY
+			&& cull(level, golem, data, s, herds, now);
+	}
 
-		// 1. drops on the ground
-		if (pickup(level, golem, data, s, box, now)) return;
-		// 2. a weapon, only when there is something to cull
-		if (cullNeeded && (tool.isEmpty() || tool.nextDamageWillBreak()) && fetchWeapon(level, golem, data, s)) return;
-		// 3. cull: needs a weapon and room for the drops
-		if (armed && cullNeeded && freeCarry(data) >= MIN_FREE_CARRY && cull(level, golem, data, s, herds, now)) return;
-		endCull(level, golem, s);
-		// 4. breed
-		if (breed(level, golem, data, s, herds, armed, now)) return;
-		// 5. deliver
-		if (!TransporterLogic.isEmpty(carryView(data))) {
-			s.doing = "Delivering to the output chest";
-			if (!Interact.approach(level, golem, outPos, s.walk, SPEED)) return;
-			golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
-			NonNullList<ItemStack> carry = carryView(data);
-			if (TransporterLogic.insertAll(carry, out)) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
-			writeCarry(data, carry);
-			boolean empty = TransporterLogic.isEmpty(carry);
-			s.cooldown = empty ? Interact.OPEN_TICKS : RETRY_TICKS;
-			if (empty) s.walk.reset();
-			GolemData.save(golem, data);
-			return;
+	/**
+	 * DELIVER: with anything in the carry, walk to the output chest and insert once; what does not fit stays in the
+	 * carry. True while busy or when the visit just ended (the phase has moved on); false when there is nothing carried.
+	 */
+	private static boolean deliver(ServerLevel level, CopperGolem golem, GolemData data, State s, BlockPos outPos, Container out) {
+		NonNullList<ItemStack> carry = carryView(data);
+		if (TransporterLogic.isEmpty(carry)) return false;
+		s.doing = "Delivering to the output chest";
+		if (!Interact.approach(level, golem, outPos, s.walk, SPEED)) return true;
+		golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
+		boolean moved = TransporterLogic.insertAll(carry, out);
+		if (moved) {
+			Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
+			s.worked = true;
 		}
-		s.doing = "Herd is in balance";
-		idle(level, golem, s, SCAN_TICKS);
+		writeCarry(data, carry);
+		GolemData.save(golem, data);
+		// one visit per cycle: leftovers stay in the carry
+		if (s.worked) {
+			setPhase(s, golem, Phase.BREED);
+			s.cooldown = moved ? Interact.OPEN_TICKS : RETRY_TICKS;
+		} else {
+			s.doing = "Output chest is full";
+			setPhase(s, golem, Phase.WAIT);
+			idle(level, golem, s, WAIT_TICKS);
+		}
+		return true;
 	}
 
 	private static void idle(ServerLevel level, CopperGolem golem, State s, int cooldown) {
@@ -289,29 +355,7 @@ public final class ButcherLogic {
 		return out;
 	}
 
-	// ---- picking up drops -----------------------------------------------------------------------------------------
-
-	private static boolean pickup(ServerLevel level, CopperGolem golem, GolemData data, State s, AABB box, long now) {
-		NonNullList<ItemStack> carry = carryView(data);
-		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !e.hasPickUpDelay() && CleanerLogic.fits(carry, e.getItem())
-				&& box.contains(e.position()) && !s.skip.containsKey(e.getUUID()));
-		if (items.isEmpty()) return false;
-		ItemEntity target = items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
-		s.doing = "Collecting drops";
-		endCull(level, golem, s);
-		if (golem.distanceToSqr(target) > PICKUP_RANGE_SQR) {
-			if (!chase(level, golem, s, target, now, SPEED)) golem.getNavigation().stop();
-			return true;
-		}
-		golem.getNavigation().stop();
-		s.chasing = null;
-		CleanerLogic.pickUp(target, carry);
-		writeCarry(data, carry);
-		s.cooldown = AFTER_ACTION_TICKS;
-		GolemData.save(golem, data);
-		return true;
-	}
+	// ---- chasing --------------------------------------------------------------------------------------------------
 
 	/**
 	 * One tick of walking to {@code target}. Distance shrinking by more than {@link #PROGRESS_EPS} (squared) resets the
@@ -403,6 +447,8 @@ public final class ButcherLogic {
 		ItemStack tool = data.items.get(ButcherProfession.TOOL_SLOT);
 		ItemStack prev = golem.getMainHandItem();
 		golem.setItemSlot(EquipmentSlot.MAINHAND, tool);
+		captureVictim = target;
+		captured.clear();
 		try {
 			Holder<Enchantment> looting = level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.LOOTING);
 			s.lastLooting = EnchantmentHelper.getEnchantmentLevel(looting, golem);
@@ -410,8 +456,10 @@ public final class ButcherLogic {
 			DamageSource source = tool.getDamageSource(golem);
 			target.hurtServer(level, source, attackDamage(level, tool, target, source));
 		} finally {
+			captureVictim = null;
 			golem.setItemSlot(EquipmentSlot.MAINHAND, prev);
 		}
+		storeCaptured(level, data, target);
 		s.strikes++;
 		Weapon weapon = tool.get(DataComponents.WEAPON);
 		tool.hurtAndBreak(weapon == null ? 1 : weapon.itemDamagePerAttack(), level, null, broken -> {});
@@ -419,10 +467,43 @@ public final class ButcherLogic {
 		GolemData.save(golem, data);
 	}
 
+	// ---- drops straight into the carry -----------------------------------------------------------------------------
+
+	/** The animal being struck; while set, {@link #capture} takes its item drops. Server thread only, set only inside {@link #strike}. */
+	private static @Nullable Entity captureVictim;
+	private static final List<ItemStack> captured = new ArrayList<>();
+
+	/**
+	 * Called by {@code EntityMixin} before an item entity would be spawned at {@code e}. True when the stack was taken
+	 * (the mixin then spawns nothing). Why this hook and not the ground: the death loot is rolled inside
+	 * {@code hurtServer} with the golem's real tool in hand (so Looting applies), and every item of it goes through
+	 * {@code Entity:spawnAtLocation}; taking it there loses nothing and needs no ItemEntity, no pickup walk and no
+	 * matching of "which items were from the kill".
+	 */
+	public static boolean capture(Entity e, ItemStack stack) {
+		if (e != captureVictim) return false;
+		if (!stack.isEmpty()) captured.add(stack.copy());
+		return true;
+	}
+
+	/** Moves the captured drops into the carry; what does not fit (the KILL room rule makes that rare) is dropped at the victim. */
+	private static void storeCaptured(ServerLevel level, GolemData data, Entity victim) {
+		if (captured.isEmpty()) return;
+		SimpleContainer tmp = new SimpleContainer(captured.size());
+		for (int i = 0; i < captured.size(); i++) tmp.setItem(i, captured.get(i));
+		captured.clear();
+		NonNullList<ItemStack> carry = carryView(data);
+		TransporterLogic.takeAll(tmp, carry);
+		writeCarry(data, carry);
+		for (int i = 0; i < tmp.getContainerSize(); i++) {
+			if (!tmp.getItem(i).isEmpty()) victim.spawnAtLocation(level, tmp.getItem(i));
+		}
+	}
+
 	// ---- breeding -------------------------------------------------------------------------------------------------
 
 	private static boolean breed(ServerLevel level, CopperGolem golem, GolemData data, State s, Map<EntityType<?>, Herd> herds,
-		boolean armed, long now) {
+		long now) {
 		// a pair already in progress: finish it
 		Animal a = animal(level, s.pairA), b = animal(level, s.pairB);
 		if (a != null && b != null && a.isAlive() && b.isAlive() && a.getType() == b.getType() && !a.isBaby() && !b.isBaby()) {
@@ -435,8 +516,6 @@ public final class ButcherLogic {
 
 		for (Herd h : herds.values()) {
 			if (!breedAllowed(h.allAdults, h.babies)) continue;
-			// a pending cull comes first: no point feeding animals that are about to be killed (without a weapon it never comes)
-			if (h.surplus() > 0 && armed) continue;
 			List<Animal> el = new ArrayList<>();
 			for (Animal x : h.adults) if (eligible(x) && !s.skip.containsKey(x.getUUID())) el.add(x);
 			if (el.size() < 2) continue;

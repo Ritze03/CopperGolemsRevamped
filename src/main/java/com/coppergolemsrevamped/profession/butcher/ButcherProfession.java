@@ -14,7 +14,7 @@ import net.minecraft.resources.Identifier;
 
 /**
  * Keeps an animal pen at a fixed size: culls the surplus adults with a sword or axe (Looting applies), breeds new ones
- * with food from a chest and delivers the drops. See superdoc/features/butcher.md.
+ * with food from a chest and delivers the drops, in the cycle breed, kill, deliver. See superdoc/features/butcher.md.
  */
 public final class ButcherProfession {
 	public static final Identifier ID = CopperGolemsRevamped.id("butcher");
