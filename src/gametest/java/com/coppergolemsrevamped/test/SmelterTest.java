@@ -270,7 +270,7 @@ public class SmelterTest {
 		AbstractFurnaceBlockEntity b = furnace(helper, new BlockPos(3, 1, 5), Blocks.FURNACE);
 		for (int i = 0; i < c[2].getContainerSize(); i++) c[2].setItem(i, new ItemStack(Items.COBBLESTONE, 64));
 		GolemData d = GolemData.get(golem);
-		d.items.set(0, new ItemStack(Items.IRON_INGOT, 5)); // slot 0 is busy with undeliverable results
+		d.items.set(SmelterProfession.RESULT_FIRST, new ItemStack(Items.IRON_INGOT, 5)); // undeliverable results already in the result slots
 		GolemData.save(golem, d);
 		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 6));
 		addFuel(c[1], 16);
@@ -442,47 +442,180 @@ public class SmelterTest {
 		});
 	}
 
-	/** Inventory tab: label at (2,4) plus one row of 9 slots at row 3: 8 buffers, then the take-only XP bottle slot (label at (2,8)). */
+	/**
+	 * Inventory tab: furnace label at (2,4), 8 input buffers at row 3 cols 0..7, the take-only XP bottle slot at (3,8)
+	 * (label at (2,8)), and 3 take-only shared result slots at row 4 cols 3..5.
+	 */
 	@GameTest
 	@SuppressWarnings("removal")
-	public void inventoryTabIsOneFullRowOfNine(GameTestHelper helper) {
+	public void inventoryTabLayout(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
 		CopperGolem golem = base(helper, 1, c);
 		ServerPlayer p = helper.makeMockServerPlayerInLevel();
 		p.setPos(golem.position());
+		GolemData d = GolemData.get(golem);
+		d.items.set(SmelterProfession.RESULT_FIRST + 1, new ItemStack(Items.IRON_INGOT, 3));
+		GolemData.save(golem, d);
 		GolemMenu menu = new GolemMenu(1, p.getInventory(), golem, Tab.INVENTORY);
 		for (int col = 0; col < 8; col++) {
 			helper.assertTrue(menu.slots.get(27 + col).mayPlace(new ItemStack(Items.STONE)), "buffer slot at column " + col);
 		}
 		helper.assertTrue(!menu.slots.get(27 + 8).mayPlace(new ItemStack(Items.EXPERIENCE_BOTTLE)), "the XP slot is take-only");
-		ItemStack xpLabel = menu.slots.get(2 * 9 + 8).getItem();
-		helper.assertTrue(xpLabel.is(Items.EXPERIENCE_BOTTLE) && xpLabel.getHoverName().getString().equals("XP bottles"), "label at (2,8) " + xpLabel);
 		for (int col = 0; col < 9; col++) {
+			helper.assertTrue(!menu.slots.get(4 * 9 + col).mayPlace(new ItemStack(Items.STONE)), "row 4 column " + col + " takes nothing from a player");
 			helper.assertTrue(!menu.slots.get(18 + col).mayPlace(new ItemStack(Items.STONE)), "no slot above the row at column " + col);
 		}
+				helper.assertTrue(menu.slots.get(4 * 9 + 4).getItem().is(Items.IRON_INGOT), "result slot 2 is at (4,4): " + menu.slots.get(4 * 9 + 4).getItem());
+		helper.assertTrue(menu.slots.get(4 * 9 + 4).mayPickup(p), "a player may take a result");
+		helper.assertTrue(!menu.slots.get(4 * 9 + 2).mayPlace(new ItemStack(Items.STONE)) && !menu.slots.get(4 * 9 + 6).mayPlace(new ItemStack(Items.STONE)), "nothing beside the result row");
+		ItemStack xpLabel = menu.slots.get(2 * 9 + 8).getItem();
+		helper.assertTrue(xpLabel.is(Items.EXPERIENCE_BOTTLE) && xpLabel.getHoverName().getString().equals("XP bottles"), "label at (2,8) " + xpLabel);
 		ItemStack label = menu.slots.get(2 * 9 + 4).getItem();
 		helper.assertTrue(label.is(Items.FURNACE) && label.getHoverName().getString().equals("Furnace buffers"), "label at (2,4) " + label);
 		helper.assertTrue(!menu.slots.get(2 * 9 + 3).getItem().is(Items.FURNACE), "no label left at (2,3)");
-		helper.assertTrue(GolemData.get(golem).items.size() == 9, "9 slots");
+		helper.assertTrue(GolemData.get(golem).items.size() == 12, "12 slots");
 		helper.succeed();
 	}
 
-	/** A Smelter saved with 8 item slots grows to 9 on its next tick and keeps its items. */
+	/** Results of all furnaces are merged into the shared result slots; a furnace buffer never holds one. */
+	@GameTest(maxTicks = 3000)
+	public void resultsNeverLandInFurnaceBuffers(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		for (int i = 0; i < 3; i++) furnace(helper, new BlockPos(1 + 2 * i, 1, 5), Blocks.FURNACE);
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 12));
+		c[0].setItem(1, new ItemStack(Items.GOLD_ORE, 6));
+		addFuel(c[1], 64);
+		boolean[] sawResult = new boolean[1];
+		helper.onEachTick(() -> {
+			GolemData d = GolemData.get(golem);
+			for (int i = 0; i < SmelterProfession.MAX_FURNACES; i++) {
+				ItemStack st = d.items.get(i);
+				helper.assertTrue(!st.is(Items.IRON_INGOT) && !st.is(Items.GOLD_INGOT), "a result sits in furnace buffer " + i + ": " + st);
+			}
+			for (int i = SmelterProfession.RESULT_FIRST; i < SmelterProfession.SLOTS; i++) {
+				if (d.items.get(i).is(Items.IRON_INGOT) || d.items.get(i).is(Items.GOLD_INGOT)) sawResult[0] = true;
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) == 12 && count(c[2], Items.GOLD_INGOT) == 6,
+				"ingots: " + count(c[2], Items.IRON_INGOT) + " iron, " + count(c[2], Items.GOLD_INGOT) + " gold");
+			helper.assertTrue(sawResult[0], "the results never went through the result slots");
+			helper.assertTrue(heldTotal(golem) == 0, "golem holds " + heldTotal(golem));
+		});
+	}
+
+	/** Three kinds already in the result slots: COLLECT stops, DELIVER is the first phase, then the furnace's ingot is collected. */
+	@GameTest(maxTicks = 1200)
+	public void fullResultRowTriggersDeliver(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		AbstractFurnaceBlockEntity f = furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE);
+		f.setItem(2, new ItemStack(Items.IRON_INGOT, 2));
+		GolemData d = GolemData.get(golem);
+		d.items.set(SmelterProfession.RESULT_FIRST, new ItemStack(Items.COBBLESTONE, 5));
+		d.items.set(SmelterProfession.RESULT_FIRST + 1, new ItemStack(Items.DIRT, 5));
+		d.items.set(SmelterProfession.RESULT_FIRST + 2, new ItemStack(Items.SAND, 5));
+		GolemData.save(golem, d);
+		SmelterLogic.Phase[] first = new SmelterLogic.Phase[1];
+		helper.onEachTick(() -> {
+			// polled, not phaseListener: that static hook is shared with phasesRunInCycleOrder, which runs in parallel
+			if (first[0] == null) first[0] = SmelterLogic.phaseOf(golem);
+			GolemData n = GolemData.get(golem);
+			boolean full = true;
+			for (int i = SmelterProfession.RESULT_FIRST; i < SmelterProfession.SLOTS; i++) full &= !n.items.get(i).isEmpty() && !n.items.get(i).is(Items.IRON_INGOT);
+			if (full) helper.assertTrue(f.getItem(2).getCount() == 2 && held(golem, Items.IRON_INGOT) == 0, "collected into a full result row");
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[2], Items.COBBLESTONE) == 5 && count(c[2], Items.DIRT) == 5 && count(c[2], Items.SAND) == 5, "the full row was not delivered");
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) == 2, "ingots: " + count(c[2], Items.IRON_INGOT));
+			helper.assertTrue(first[0] == SmelterLogic.Phase.DELIVER, "first phase " + first[0]);
+			helper.assertTrue(heldTotal(golem) == 0, "golem holds " + heldTotal(golem));
+		});
+	}
+
+	/** Two furnaces with the same result: they merge into one result slot instead of using two. */
+	@GameTest(maxTicks = 600)
+	public void sameResultsMergeIntoOneSlot(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		AbstractFurnaceBlockEntity a = furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE);
+		AbstractFurnaceBlockEntity b = furnace(helper, new BlockPos(3, 1, 5), Blocks.FURNACE);
+		a.setItem(2, new ItemStack(Items.IRON_INGOT, 3));
+		b.setItem(2, new ItemStack(Items.IRON_INGOT, 4));
+		for (int i = 0; i < c[2].getContainerSize(); i++) c[2].setItem(i, new ItemStack(Items.COBBLESTONE, 64));
+		helper.succeedWhen(() -> {
+			GolemData d = GolemData.get(golem);
+			int slots = 0;
+			int ingots = 0;
+			for (int i = SmelterProfession.RESULT_FIRST; i < SmelterProfession.SLOTS; i++) {
+				if (d.items.get(i).is(Items.IRON_INGOT)) {
+					slots++;
+					ingots += d.items.get(i).getCount();
+				}
+			}
+			helper.assertTrue(slots == 1 && ingots == 7, "ingots " + ingots + " in " + slots + " slots");
+		});
+	}
+
+	/** A Smelter saved with 8 item slots grows to 12 on its next tick and keeps its items. */
 	@GameTest(maxTicks = 100)
-	public void eightSlotSmelterGrowsToNine(GameTestHelper helper) {
+	public void eightSlotSmelterGrowsToTwelve(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
 		CopperGolem golem = base(helper, 1, c);
 		GolemData d = GolemData.get(golem);
 		d.items = NonNullList.withSize(8, ItemStack.EMPTY);
-		d.items.set(0, new ItemStack(Items.IRON_INGOT, 5));
-		d.items.set(7, new ItemStack(Items.GOLD_INGOT, 3));
+		d.items.set(0, new ItemStack(Items.IRON_ORE, 5));
+		d.items.set(7, new ItemStack(Items.GOLD_ORE, 3));
 		GolemData.save(golem, d);
 		helper.succeedWhen(() -> {
 			GolemData n = GolemData.get(golem);
-			helper.assertTrue(n.items.size() == 9, "size " + n.items.size());
-			helper.assertTrue(n.items.get(0).is(Items.IRON_INGOT) && n.items.get(0).getCount() == 5, "slot 0 " + n.items.get(0));
-			helper.assertTrue(n.items.get(7).is(Items.GOLD_INGOT) && n.items.get(7).getCount() == 3, "slot 7 " + n.items.get(7));
+			helper.assertTrue(n.items.size() == 12, "size " + n.items.size());
+			helper.assertTrue(n.items.get(0).is(Items.IRON_ORE) && n.items.get(0).getCount() == 5, "slot 0 " + n.items.get(0));
+			helper.assertTrue(n.items.get(7).is(Items.GOLD_ORE) && n.items.get(7).getCount() == 3, "slot 7 " + n.items.get(7));
 			helper.assertTrue(n.items.get(8).isEmpty(), "slot 8 empty");
+		});
+	}
+
+	/**
+	 * A Smelter saved with 9 slots, results in its furnace buffers (4 kinds, one more than the result slots), raw ore and
+	 * fuel: grows to 12, nothing is lost anywhere (golem + chests), and no result stays in a buffer except the one that did not fit.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void nineSlotSmelterMigratesWithoutLoss(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		GolemData d = GolemData.get(golem);
+		d.items = NonNullList.withSize(9, ItemStack.EMPTY);
+		d.items.set(0, new ItemStack(Items.IRON_INGOT, 5));
+		d.items.set(1, new ItemStack(Items.DIAMOND, 2));
+		d.items.set(2, new ItemStack(Items.EMERALD, 3));
+		d.items.set(3, new ItemStack(Items.APPLE, 4));
+		d.items.set(4, new ItemStack(Items.IRON_ORE, 7));
+		d.items.set(5, new ItemStack(Items.COAL, 6));
+		GolemData.save(golem, d);
+		boolean[] checked = new boolean[1];
+		helper.onEachTick(() -> {
+			GolemData n = GolemData.get(golem);
+			if (n.items.size() < 12) return;
+			if (!checked[0]) {
+				checked[0] = true;
+				int inBuffers = 0;
+				for (int i = 0; i < 4; i++) inBuffers += n.items.get(i).isEmpty() ? 0 : 1;
+				int inResults = 0;
+				for (int i = SmelterProfession.RESULT_FIRST; i < SmelterProfession.SLOTS; i++) inResults += n.items.get(i).isEmpty() ? 0 : 1;
+				helper.assertTrue(inResults == 3 && inBuffers == 1, "results moved: " + inResults + " in the result slots, " + inBuffers + " left in buffers");
+				helper.assertTrue(n.items.get(4).is(Items.IRON_ORE) && n.items.get(4).getCount() == 7, "raw ore stays: " + n.items.get(4));
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(checked[0] && GolemData.get(golem).items.size() == 12, "size " + GolemData.get(golem).items.size());
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) == 5 && count(c[2], Items.DIAMOND) == 2 && count(c[2], Items.EMERALD) == 3,
+				"results delivered: " + count(c[2], Items.IRON_INGOT) + "/" + count(c[2], Items.DIAMOND) + "/" + count(c[2], Items.EMERALD));
+			helper.assertTrue(held(golem, Items.APPLE) + count(c[0], Items.APPLE) + count(c[2], Items.APPLE) == 4, "apples lost");
+			helper.assertTrue(held(golem, Items.IRON_ORE) + count(c[0], Items.IRON_ORE) == 7, "ore lost");
+			helper.assertTrue(held(golem, Items.COAL) + count(c[1], Items.COAL) == 6, "coal lost");
+			helper.assertTrue(heldTotal(golem) == 0, "golem still holds " + heldTotal(golem));
 		});
 	}
 }

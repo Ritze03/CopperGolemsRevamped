@@ -31,14 +31,16 @@ Butchers and Smelters keep the experience they earn in a per-golem store and pay
 
 ## Delivery
 
-- **Smelter**: slot 8 (`SmelterProfession:XP_SLOT`, the 9th) is the XP bottle slot. Its own slot group `xp` (take-only for
+- **Smelter**: slot 8 (`SmelterProfession:XP_SLOT`) is the XP bottle slot, at (3,8). Its own slot group `xp` (take-only for
   players: filter `s -> false`, like the Crafter output), label "XP bottles" at (2,8). Each tick `GolemXp:fillSlot` converts
   whole bottles from the store into real items there (up to a full stack, only while the slot is empty or holds bottles); the
-  remainder and anything that does not fit stays stored. `kindOf` reads slot 8 as RESULT, so `DELIVER` takes the bottles to the
-  output chest with the other results. Why a slot: the user wanted to see the bottle count in the 9th slot. This replaced
-  the old shared overflow role: results are collected only into their own furnace's buffer again (a furnace whose buffer is
-  busy waits for the next pass; every result is collected each cycle anyway).
-  Old data with another item in slot 8 is never lost: it is a RESULT too, `DELIVER` moves it out first and the bottles follow.
+  remainder and anything that does not fit stays stored. `SmelterLogic:deliverSlots` includes slot 8, so `DELIVER` takes the
+  bottles to the output chest together with the 3 shared result slots (slots 9..11, row 4 cols 3..5, see
+  [smelter.md](smelter.md)). Why a slot: the user wanted to see the bottle count in the slot at the right end of the
+  furnace row. Why the results got their own 3 slots (user request: output slots "for reliability/speed"): the bottle slot
+  stays exactly this one job, and the furnace buffers hold input only.
+  Old data with another item in slot 8 is never lost: `SmelterLogic:sweepXpSlot` moves it into the result slots (and
+  `DELIVER` takes whatever is left there), then the bottles follow.
 - **Butcher**: no bottle slot; at DELIVER (`ButcherLogic:deliver`, also entered with an empty carry when whole bottles are
   ready) `GolemXp:deliver` creates `floor(xp / 7)` bottles and inserts them into the output chest with the carry; the store is
   reduced only by what was inserted. Why simpler than a slot: the Butcher's inventory has no spare slot and the carry is for loot.

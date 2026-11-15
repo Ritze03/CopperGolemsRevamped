@@ -52,8 +52,10 @@ public final class SmelterLogic {
 
 	static final int SLOTS = SmelterProfession.SLOTS;
 	static final int FURNACES = SmelterProfession.MAX_FURNACES;
-	/** Last slot: the XP bottles the golem makes from its stored XP. Always delivered (kind RESULT), never fed. */
+	/** The XP bottles the golem makes from its stored XP. Always delivered, never fed. */
 	static final int XP_SLOT = SmelterProfession.XP_SLOT;
+	/** First of the 3 shared result slots (RESULT_FIRST..SLOTS-1): every furnace's results, merged, delivered to the output chest. */
+	static final int RESULT_FIRST = SmelterProfession.RESULT_FIRST;
 	static final int RETRY_TICKS = 40;
 	static final int ACTION_TICKS = 10;
 	static final int RESCAN_TICKS = 100;
@@ -79,8 +81,11 @@ public final class SmelterLogic {
 	private static final RecipeManager.CachedCheck<SingleRecipeInput, BlastingRecipe> BLAST = RecipeManager.createCheck(RecipeType.BLASTING);
 	private static final RecipeManager.CachedCheck<SingleRecipeInput, SmokingRecipe> SMOKE = RecipeManager.createCheck(RecipeType.SMOKING);
 
-	/** What a buffer slot holds. Transient; after a restart it is derived from the item ({@link #kindOf}). */
-	enum Kind { RAW, FUEL, RESULT }
+	/**
+	 * What a furnace buffer holds (buffers are input only, results live in the result slots). Transient; after a restart
+	 * it is derived from the item ({@link #kindOf}).
+	 */
+	enum Kind { RAW, FUEL }
 
 	/**
 	 * Order of a cycle: empty the furnaces first so products come out sooner, then restock. A phase without work is
@@ -121,9 +126,9 @@ public final class SmelterLogic {
 		@Nullable List<Move> moves;
 		final BlockPos[] fur = new BlockPos[FURNACES];
 		long scanAt;
-		final Kind[] kind = new Kind[SLOTS];
-		final ItemStack[] seen = new ItemStack[SLOTS];
-		final long[] changedAt = new long[SLOTS];
+		final Kind[] kind = new Kind[FURNACES];
+		final ItemStack[] seen = new ItemStack[FURNACES];
+		final long[] changedAt = new long[FURNACES];
 		final Map<BlockPos, Long> skip = new HashMap<>();
 		long outBlockedUntil, inBlockedUntil, fuelBlockedUntil;
 		final Interact.Approach walk = new Interact.Approach();
@@ -193,18 +198,60 @@ public final class SmelterLogic {
 	}
 
 	/**
-	 * What slot i holds. The flag set when the golem filled it wins; without one (restart, a player's edit) it is derived:
-	 * smeltable -> RAW, fuel -> FUEL, anything else -> RESULT (delivered). Why derived this way: an unknown item must
-	 * never be pushed into a furnace it does not fit, and an unusable one must reach a chest.
+	 * What furnace buffer i (0..7) holds. The flag set when the golem filled it wins; without one (restart, a player's
+	 * edit) it is derived: smeltable -> RAW, fuel -> FUEL, anything else -> RAW too (it fits no furnace, so RETURN takes
+	 * it back to the input chest). Why only two kinds: results no longer live in the buffers, so a restart cannot mistake
+	 * stone for a result; only an item that is both smeltable and fuel (logs) is still read as RAW.
 	 */
 	private static @Nullable Kind kindOf(Env e, int i) {
 		ItemStack st = slot(e, i);
 		if (st.isEmpty()) return null;
-		if (i == XP_SLOT) return Kind.RESULT; // bottles, or an item an older version left here
 		Kind k = e.s.kind[i];
 		if (k != null) return k;
 		if (smeltsAnywhere(e.level, st)) return Kind.RAW;
-		return isFuel(st) ? Kind.FUEL : Kind.RESULT;
+		return isFuel(st) ? Kind.FUEL : Kind.RAW;
+	}
+
+	/** Slots DELIVER empties into the output chest: the XP bottle slot and the result slots (the non-empty ones). */
+	private static List<Integer> deliverSlots(Env e) {
+		List<Integer> idxs = new ArrayList<>();
+		if (!slot(e, XP_SLOT).isEmpty()) idxs.add(XP_SLOT);
+		for (int i = RESULT_FIRST; i < SLOTS; i++) if (!slot(e, i).isEmpty()) idxs.add(i);
+		return idxs;
+	}
+
+	/** How many of {@code src} fit into the result slots now (room in same-item stacks, plus empty slots). */
+	static int resultSpace(GolemData d, ItemStack src) {
+		int max = src.getMaxStackSize();
+		int space = 0;
+		for (int i = RESULT_FIRST; i < SLOTS && i < d.items.size(); i++) {
+			ItemStack st = d.items.get(i);
+			if (st.isEmpty()) space += max; else if (same(st, src)) space += Math.max(0, max - st.getCount());
+		}
+		return space;
+	}
+
+	/** Puts up to {@code n} of {@code src} into the result slots, merging same items first; returns how many went in. */
+	static int addResult(GolemData d, ItemStack src, int n) {
+		int max = src.getMaxStackSize();
+		int left = n;
+		for (int pass = 0; pass < 2; pass++) {
+			for (int i = RESULT_FIRST; i < SLOTS && i < d.items.size() && left > 0; i++) {
+				ItemStack st = d.items.get(i);
+				if (pass == 0 && same(st, src)) {
+					int t = Math.min(left, max - st.getCount());
+					if (t > 0) {
+						st.grow(t);
+						left -= t;
+					}
+				} else if (pass == 1 && st.isEmpty()) {
+					int t = Math.min(left, max);
+					d.items.set(i, src.copyWithCount(t));
+					left -= t;
+				}
+			}
+		}
+		return n - left;
 	}
 
 	private static boolean skipped(State s, @Nullable BlockPos p, long now) {
@@ -425,28 +472,16 @@ public final class SmelterLogic {
 		return (fs.isEmpty() || same(fs, st)) && st.getMaxStackSize() - fs.getCount() > 0;
 	}
 
-	/** Room for {@code incoming} in buffer i as a RESULT stack. */
-	private static boolean resultRoom(Env e, int i, ItemStack incoming) {
-		ItemStack st = slot(e, i);
-		if (st.isEmpty()) return true;
-		return kindOf(e, i) == Kind.RESULT && same(st, incoming) && st.getCount() < st.getMaxStackSize();
-	}
-
 	private static boolean fuelLeftover(AbstractFurnaceBlockEntity f) {
 		ItemStack fs = f.getItem(1);
 		return !fs.isEmpty() && !isFuel(fs);
 	}
 
-	/** Buffer a result of furnace i goes to: its own; -1 when it has no room (the furnace keeps it until the next delivery). */
-	private static int resultSlot(Env e, int i, ItemStack incoming) {
-		return resultRoom(e, i, incoming) ? i : -1;
-	}
-
 	private static boolean collectable(Env e, int i) {
 		AbstractFurnaceBlockEntity f = usable(e, i);
 		if (f == null) return false;
-		if (!f.getItem(2).isEmpty() && resultSlot(e, i, f.getItem(2)) >= 0) return true;
-		return fuelLeftover(f) && resultSlot(e, i, f.getItem(1)) >= 0;
+		if (!f.getItem(2).isEmpty() && resultSpace(e.data, f.getItem(2)) > 0) return true;
+		return fuelLeftover(f) && resultSpace(e.data, f.getItem(1)) > 0;
 	}
 
 	private static boolean chestOk(Env e, @Nullable BlockPos pos, @Nullable Container c) {
@@ -484,12 +519,11 @@ public final class SmelterLogic {
 				return nearest(e, ph, i -> collectable(e, i));
 			case DELIVER:
 				if (!chestOk(e, e.outPos, e.out) || e.now < e.s.outBlockedUntil) return null;
-				for (int i = 0; i < SLOTS; i++) if (kindOf(e, i) == Kind.RESULT) return new Work(ph, e.outPos, -1);
-				return null;
+				return deliverSlots(e).isEmpty() ? null : new Work(ph, e.outPos, -1);
 			default:
-				for (int i = 0; i < SLOTS; i++) {
+				for (int i = 0; i < FURNACES; i++) {
 					Kind k = kindOf(e, i);
-					if (k == null || k == Kind.RESULT || e.now - e.s.changedAt[i] < RETURN_TICKS) continue;
+					if (k == null || e.now - e.s.changedAt[i] < RETURN_TICKS) continue;
 					if (k == Kind.RAW && !feedable(e, i) && chestOk(e, e.inPos, e.in) && e.now >= e.s.inBlockedUntil) {
 						return new Work(ph, e.inPos, i);
 					}
@@ -521,16 +555,16 @@ public final class SmelterLogic {
 
 	public static void tick(ServerLevel level, CopperGolem golem, GolemData data) {
 		State s = STATES.computeIfAbsent(golem, g -> new State());
+		// before the cooldown: until the list has grown GolemMenu:stillValid closes an open menu, so it must be one tick
+		if (data.items.size() < SLOTS) {
+			migrate(level, data);
+			GolemData.save(golem, data);
+		}
 		if (s.cooldown > 0) {
 			s.cooldown--;
 			return;
 		}
-		if (data.items.size() < SLOTS) {
-			NonNullList<ItemStack> grown = NonNullList.withSize(SLOTS, ItemStack.EMPTY);
-			for (int i = 0; i < data.items.size(); i++) grown.set(i, data.items.get(i));
-			data.items = grown;
-			GolemData.save(golem, data);
-		}
+		if (sweepXpSlot(data)) GolemData.save(golem, data);
 		if (GolemXp.fillSlot(data, XP_SLOT)) GolemData.save(golem, data);
 		long now = level.getGameTime();
 		s.skip.values().removeIf(until -> until <= now);
@@ -540,7 +574,7 @@ public final class SmelterLogic {
 		Env e = new Env(level, golem, data, s, now, in, in == null ? null : TransporterLogic.containerAt(level, in),
 			fuel, fuel == null ? null : TransporterLogic.containerAt(level, fuel),
 			out, out == null ? null : TransporterLogic.containerAt(level, out));
-		for (int i = 0; i < SLOTS; i++) {
+		for (int i = 0; i < FURNACES; i++) {
 			ItemStack cur = slot(e, i);
 			if (cur.isEmpty()) s.kind[i] = null;
 			if (!ItemStack.matches(cur, s.seen[i])) {
@@ -575,15 +609,42 @@ public final class SmelterLogic {
 		GolemData.save(golem, data);
 	}
 
+	/**
+	 * Grows an older golem's list (8 or 9 slots) to {@code SLOTS}, items kept. Results an older version left in the
+	 * furnace buffers move to the result slots: what is neither smeltable nor fuel is a result for sure (a smeltable one
+	 * such as stone is not told from raw items and is simply fed or returned, never lost). Whatever does not fit the
+	 * result slots stays in its buffer, where RETURN takes it back to the input chest.
+	 */
+	private static void migrate(ServerLevel level, GolemData data) {
+		NonNullList<ItemStack> grown = NonNullList.withSize(SLOTS, ItemStack.EMPTY);
+		for (int i = 0; i < data.items.size(); i++) grown.set(i, data.items.get(i));
+		data.items = grown;
+		for (int i = 0; i < FURNACES; i++) {
+			ItemStack st = data.items.get(i);
+			if (st.isEmpty() || smeltsAnywhere(level, st) || isFuel(st)) continue;
+			int n = addResult(data, st, st.getCount());
+			st.shrink(n);
+			if (st.isEmpty()) data.items.set(i, ItemStack.EMPTY);
+		}
+	}
+
+	/** An item an older version left in the XP slot (not a bottle) moves to the result slots; true if anything moved. */
+	private static boolean sweepXpSlot(GolemData data) {
+		ItemStack st = data.items.get(XP_SLOT);
+		if (st.isEmpty() || st.is(net.minecraft.world.item.Items.EXPERIENCE_BOTTLE)) return false;
+		int n = addResult(data, st, st.getCount());
+		st.shrink(n);
+		if (st.isEmpty()) data.items.set(XP_SLOT, ItemStack.EMPTY);
+		return n > 0;
+	}
+
 	private static String idleStatus(Env e) {
 		if (e.data.assignments.get(SmelterProfession.FURNACES + "_a") == null) return "No furnace area set";
 		int n = 0;
 		for (int i = 0; i < FURNACES; i++) if (e.s.fur[i] != null) n++;
 		if (n == 0) return "No furnaces in the area";
 		if (usableCount(e) == 0) return "No reachable furnaces";
-		boolean holdsResults = false;
-		for (int i = 0; i < SLOTS; i++) holdsResults |= kindOf(e, i) == Kind.RESULT;
-		if (holdsResults) return "Output chest is full or missing";
+		if (!deliverSlots(e).isEmpty()) return "Output chest is full or missing";
 		boolean cooking = false;
 		boolean noFuel = false;
 		for (int i = 0; i < FURNACES; i++) {
@@ -656,8 +717,7 @@ public final class SmelterLogic {
 				return ACTION_TICKS;
 			}
 			case DELIVER -> {
-				List<Integer> idxs = new ArrayList<>();
-				for (int i = 0; i < SLOTS; i++) if (kindOf(e, i) == Kind.RESULT) idxs.add(i);
+				List<Integer> idxs = deliverSlots(e);
 				boolean moved = moveOut(e, idxs, e.out);
 				boolean left = false;
 				for (int i : idxs) left |= !e.data.items.get(i).isEmpty();
@@ -729,7 +789,7 @@ public final class SmelterLogic {
 	}
 
 	/**
-	 * Takes the result (or the fuel slot's leftover, e.g. the empty bucket of lava) of furnace i into its buffer and moves
+	 * Takes the result (or the fuel slot's leftover, e.g. the empty bucket of lava) of furnace i into the shared result slots and moves
 	 * the furnace's stored XP into the golem's store ({@link #takeFurnaceXp}).
 	 */
 	private static boolean collect(Env e, int i) {
@@ -738,20 +798,16 @@ public final class SmelterLogic {
 			e.s.scanAt = 0;
 			return false;
 		}
-		boolean result = !f.getItem(2).isEmpty() && resultSlot(e, i, f.getItem(2)) >= 0;
+		boolean result = !f.getItem(2).isEmpty() && resultSpace(e.data, f.getItem(2)) > 0;
 		int idx = result ? 2 : 1;
 		ItemStack src = f.getItem(idx);
 		if (src.isEmpty() || !(result || fuelLeftover(f))) return false;
-		int dst = resultSlot(e, i, src);
-		if (dst < 0) return false;
-		ItemStack st = e.data.items.get(dst);
-		int full = Math.min(src.getCount(), src.getMaxStackSize() - st.getCount());
+		int full = Math.min(src.getCount(), resultSpace(e.data, src));
 		if (full <= 0) return false;
 		int n = Math.min(full, TransferBudget.remaining(e.level, e.golem));
 		if (n <= 0) return true;
 		TransferBudget.spend(e.level, e.golem, n);
-		if (st.isEmpty()) e.data.items.set(dst, src.copyWithCount(n)); else st.grow(n);
-		e.s.kind[dst] = Kind.RESULT;
+		addResult(e.data, src, n);
 		ItemStack rest = src.copyWithCount(src.getCount() - n);
 		f.setItem(idx, rest.isEmpty() ? ItemStack.EMPTY : rest);
 		f.setChanged();
