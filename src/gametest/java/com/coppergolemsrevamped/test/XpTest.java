@@ -47,23 +47,27 @@ public class XpTest {
 		return new AABB(helper.absoluteVec(new Vec3(-16, -4, -16)), helper.absoluteVec(new Vec3(24, 12, 24)));
 	}
 
-	/** 14 iron ore (about 9.8 XP): at least one bottle in the output, no orbs anywhere, less than one bottle of XP left stored. */
+	/**
+	 * 14 gold ore (exactly 14 XP: recipe XP 1.0, no random rounding): 2 bottles in the output, no orbs anywhere, nothing left stored.
+	 * Why gold and not iron ore (0.7 XP): the fraction is rounded up at random for every furnace collection, so the total
+	 * varied from run to run and sometimes stayed under the 7 XP of one bottle (flaky "bottles in the output: 0").
+	 */
 	@GameTest(maxTicks = 3800)
 	public void smelterMakesBottlesFromFurnaceXp(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
 		CopperGolem golem = SmelterTest.base(helper, 1, c);
 		AbstractFurnaceBlockEntity[] f = {SmelterTest.furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE),
 			SmelterTest.furnace(helper, new BlockPos(3, 1, 5), Blocks.BLAST_FURNACE)};
-		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 14));
+		c[0].setItem(0, new ItemStack(Items.GOLD_ORE, 14));
 		SmelterTest.addFuel(c[1], 64);
 		AABB box = around(helper);
 		helper.onEachTick(() -> helper.assertTrue(orbs(helper, box) == 0, "an experience orb appeared"));
 		helper.succeedWhen(() -> {
-			helper.assertTrue(SmelterTest.count(c[2], Items.IRON_INGOT) == 14, "ingots: " + SmelterTest.count(c[2], Items.IRON_INGOT));
-			helper.assertTrue(bottles(c[2]) >= 1, "bottles in the output: " + bottles(c[2]));
+			helper.assertTrue(SmelterTest.count(c[2], Items.GOLD_INGOT) == 14, "ingots: " + SmelterTest.count(c[2], Items.GOLD_INGOT));
+			helper.assertTrue(bottles(c[2]) == 2, "bottles in the output: " + bottles(c[2]));
 			helper.assertTrue(GolemData.get(golem).xp < GolemXp.XP_PER_BOTTLE, "stored XP: " + GolemData.get(golem).xp);
 			int xp = GolemData.get(golem).xp + 7 * (bottles(c[2]));
-			helper.assertTrue(xp >= 6 && xp <= 14, "XP total (14 ore x 0.7 = 9.8): " + xp);
+			helper.assertTrue(xp == 14, "XP total (14 ore x 1.0): " + xp);
 			for (var fu : f) {
 				helper.assertTrue(((com.coppergolemsrevamped.mixin.AbstractFurnaceAccessor) fu).cgr$recipesUsed().isEmpty(), "furnace XP map not emptied");
 			}

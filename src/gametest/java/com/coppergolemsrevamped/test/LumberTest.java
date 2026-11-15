@@ -367,9 +367,10 @@ public class LumberTest {
 
 	/**
 	 * The whole cycle in order: T is empty, the chest holds an axe, saplings, bone meal. Phases (from the phase listener, so
-	 * no phase is missed) go PICKUP, DELIVER (fresh start), PLANT, BONEMEAL, FELL, PICKUP, DELIVER, PLANT; every step follows
-	 * the cycle (PICKUP always into DELIVER, DELIVER always into PLANT, FELL always into PICKUP). Foreign saplings (birch)
-	 * dropped after the felling start end up in the input chest (surplus), the logs in the output chest.
+	 * no phase is missed) go PICKUP, DELIVER (fresh start), PLANT, BONEMEAL, FELL, DELIVER, PLANT, BONEMEAL; every step follows
+	 * the cycle (PICKUP always into DELIVER, DELIVER always into PLANT, FELL always straight into DELIVER: no wait after the
+	 * last log). Foreign saplings (birch) put into the carry when the felling starts end up in the input chest (surplus),
+	 * the logs in the output chest.
 	 */
 	@GameTest(maxTicks = 5000)
 	public void fullCycleOrder(GameTestHelper helper) {
@@ -389,12 +390,13 @@ public class LumberTest {
 			if (helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS)) helper.assertTrue(!golem.blockPosition().equals(at), "golem stands in the sapling");
 			if (!dropped[0] && seq.contains(LumberLogic.Phase.FELL)) {
 				dropped[0] = true;
-				helper.spawnItem(Items.BIRCH_SAPLING, new Vec3(4.5, 1.0, 5.5));
-				helper.spawnItem(Items.BIRCH_SAPLING, new Vec3(2.5, 1.0, 5.5));
+				GolemData d = GolemData.get(golem);
+				d.items.set(LumberProfession.CARRY_FROM, new ItemStack(Items.BIRCH_SAPLING, 2));
+				GolemData.save(golem, d);
 			}
 		});
 		List<LumberLogic.Phase> expect = List.of(LumberLogic.Phase.PICKUP, LumberLogic.Phase.DELIVER, LumberLogic.Phase.PLANT, LumberLogic.Phase.BONEMEAL,
-			LumberLogic.Phase.FELL, LumberLogic.Phase.PICKUP, LumberLogic.Phase.DELIVER, LumberLogic.Phase.PLANT);
+			LumberLogic.Phase.FELL, LumberLogic.Phase.DELIVER, LumberLogic.Phase.PLANT, LumberLogic.Phase.BONEMEAL);
 		helper.succeedWhen(() -> {
 			helper.assertTrue(seq.size() >= expect.size(), "phases so far: " + seq);
 			helper.assertTrue(seq.subList(0, expect.size()).equals(expect), "phase order: " + seq);
@@ -403,7 +405,7 @@ public class LumberTest {
 				boolean ok = switch (a) {
 					case PICKUP -> b == LumberLogic.Phase.DELIVER;
 					case DELIVER -> b == LumberLogic.Phase.PLANT;
-					case FELL -> b == LumberLogic.Phase.PICKUP;
+					case FELL -> b == LumberLogic.Phase.DELIVER;
 					case PLANT -> b != LumberLogic.Phase.DELIVER && b != LumberLogic.Phase.PLANT;
 					case BONEMEAL -> b == LumberLogic.Phase.FELL || b == LumberLogic.Phase.PICKUP;
 				};
@@ -464,6 +466,45 @@ public class LumberTest {
 			helper.assertTrue(golem.getHealth() >= health, "golem took damage: " + golem.getHealth());
 		});
 		helper.succeedWhen(() -> helper.assertTrue(count(out, Items.OAK_LOG) >= 3, "oak logs in output: " + count(out, Items.OAK_LOG)));
+	}
+
+	/**
+	 * Waiting for natural growth (BONEMEAL, no bone meal anywhere): drops that appear around the sapling (2 sticks,
+	 * 2 apples, 1 sapling, all at least 2 blocks from T; one stick in the ring next to T that must be left alone) are picked up
+	 * into the carry while the sapling is still a sapling; the golem is never in the sapling's volume, and the phase stays BONEMEAL.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void collectsDropsWhileWaitingForGrowth(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		CopperGolem golem = lumber(helper);
+		BlockPos at = helper.absolutePos(T);
+		boolean[] spawned = {false};
+		helper.onEachTick(() -> {
+			if (!helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS)) return;
+			helper.assertTrue(!LumberLogic.inVolume(golem.blockPosition(), at, List.of(at)), "golem is in the sapling volume at " + golem.blockPosition());
+			if (!spawned[0] && LumberLogic.phaseOf(golem) == LumberLogic.Phase.BONEMEAL) {
+				spawned[0] = true;
+				helper.spawnItem(Items.STICK, new Vec3(1.5, 1.0, 2.5));
+				helper.spawnItem(Items.STICK, new Vec3(6.5, 1.0, 1.5));
+				helper.spawnItem(Items.APPLE, new Vec3(5.5, 1.0, 6.5));
+				helper.spawnItem(Items.APPLE, new Vec3(1.5, 1.0, 6.5));
+				helper.spawnItem(Items.OAK_SAPLING, new Vec3(6.5, 1.0, 6.5));
+				helper.spawnItem(Items.STICK, new Vec3(4.5, 1.0, 3.5)); // right next to T: left for later
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(spawned[0], "still waiting for the BONEMEAL phase");
+			helper.assertTrue(helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS), "the sapling grew before the check");
+			helper.assertTrue(LumberLogic.phaseOf(golem) == LumberLogic.Phase.BONEMEAL, "phase " + LumberLogic.phaseOf(golem));
+			int[] n = new int[3];
+			for (ItemStack st : GolemData.get(golem).items) {
+				if (st.is(Items.STICK)) n[0] += st.getCount();
+				if (st.is(Items.APPLE)) n[1] += st.getCount();
+				if (st.is(Items.OAK_SAPLING)) n[2] += st.getCount();
+			}
+			helper.assertTrue(n[0] == 2 && n[1] == 2 && n[2] == 1, "carried sticks/apples/saplings: " + n[0] + "/" + n[1] + "/" + n[2]);
+		});
 	}
 
 	/** A golem that starts inside the sapling steps out and waits at least 2 blocks from it (no bone meal: natural growth). */

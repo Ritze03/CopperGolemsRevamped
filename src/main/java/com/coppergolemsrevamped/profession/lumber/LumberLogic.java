@@ -372,7 +372,9 @@ public final class LumberLogic {
 			return;
 		}
 		if (boneMeal(s, level, golem, data, t, now)) return;
-		if (!standOutside(s, level, golem, t, footprintCells(level, t, s), WAIT_MIN, WAIT_MAX, now)) return;
+		List<BlockPos> fp = footprintCells(level, t, s);
+		if (collect(s, level, golem, data, t, fp, now)) return; // waiting for growth: stragglers from decaying leaves
+		if (!standOutside(s, level, golem, t, fp, WAIT_MIN, WAIT_MAX, now)) return;
 		idle(s, golem);
 	}
 
@@ -384,7 +386,7 @@ public final class LumberLogic {
 			s.anchored = false;
 			s.mustDeliver = false;
 			ToolSwing.end(level, golem);
-			setPhase(s, golem, Phase.PICKUP, now);
+			setPhase(s, golem, Phase.DELIVER, now);
 			return;
 		}
 		boolean fetch = in != null && wantsFetch(data, in, true, false, false, false);
@@ -416,7 +418,7 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.DELIVER, now);
 			return;
 		}
-		if (collect(s, level, golem, data, t, now)) return;
+		if (collect(s, level, golem, data, t, isGrowing(level, t, s) ? footprintCells(level, t, s) : null, now)) return;
 		if (now - s.lastSeen >= PICKUP_QUIET) {
 			setPhase(s, golem, Phase.DELIVER, now);
 			return;
@@ -729,7 +731,7 @@ public final class LumberLogic {
 	}
 
 	/** Is the golem's feet block inside the sapling / trunk volume (a footprint column, around T's height)? */
-	static boolean inVolume(BlockPos feet, BlockPos t, List<BlockPos> f) {
+	public static boolean inVolume(BlockPos feet, BlockPos t, List<BlockPos> f) {
 		return footDist(feet, f) == 0 && feet.getY() >= t.getY() - 1 && feet.getY() <= t.getY() + 2;
 	}
 
@@ -925,11 +927,12 @@ public final class LumberLogic {
 	// ---- ground drops ---------------------------------------------------------------------------------------------
 
 	/** Walk to a drop lying around T and pick it up (the Cleaner's chase and give-up pattern). True when this tick was used. */
-	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, long now) {
+	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable List<BlockPos> growing, long now) {
 		AABB box = new AABB(t.getX() - ITEM_RADIUS, t.getY() - ITEM_BELOW, t.getZ() - ITEM_RADIUS,
 			t.getX() + ITEM_RADIUS + 1, t.getY() + ITEM_ABOVE, t.getZ() + ITEM_RADIUS + 1);
 		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !e.hasPickUpDelay() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem()));
+			e -> e.isAlive() && !e.hasPickUpDelay() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem())
+				&& (growing == null || footDist(e.blockPosition(), growing) >= WAIT_MIN));
 		if (items.isEmpty()) {
 			s.chasing = null;
 			return false;
@@ -962,11 +965,23 @@ public final class LumberLogic {
 		}
 		if (--s.chaseRepath <= 0 || golem.getNavigation().isDone()) {
 			Path path = golem.getNavigation().createPath(target, 0);
+			if (path != null && growing != null && crosses(path, t, growing)) { // never walk over a growing sapling
+				s.skip.put(target.getUUID(), now + SKIP_TICKS);
+				s.chasing = null;
+				golem.getNavigation().stop();
+				return true;
+			}
 			// a null path is transient (spawn tick, mid-air): no progress, so the timeout decides
 			if (path != null) golem.getNavigation().moveTo(path, SPEED);
 			s.chaseRepath = REPATH_TICKS;
 		}
 		return true;
+	}
+
+	/** Does the path pass through the sapling / trunk volume of the footprint {@code f}? */
+	private static boolean crosses(Path path, BlockPos t, List<BlockPos> f) {
+		for (int i = 0; i < path.getNodeCount(); i++) if (inVolume(path.getNode(i).asBlockPos(), t, f)) return true;
+		return false;
 	}
 
 	// ---- chest fetching -------------------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Lumber profession
 
-Works one assigned tree in a fixed cycle (plant, bone meal, fell, pick up, deliver), felling it from the ground. Needs an
+Works one assigned tree in a fixed cycle (plant, bone meal / wait and collect, fell, deliver), felling it from the ground. Needs an
 axe, which wears out. Id `coppergolemsrevamped:lumber`, `runsVanillaBrain = false`.
 
 ## Entry points
@@ -104,9 +104,26 @@ Leaves are **not** broken. After the logs are gone they decay naturally and drop
 ground, which the golem collects (below). Why: user spec "fell the tree"; shearing or axing hundreds of leaves would
 take minutes and the vanilla decay does it for free. Leaves that block the golem are not handled.
 
-## Collecting drops (PICKUP)
+## Collecting drops (waiting, and PICKUP)
 
-After the felling the golem picks up item entities in a box around T (horizontal radius 6, from 1 below to 4 above T):
+Since 2026-11 the golem does **not** wait after the last log: FELL goes straight to DELIVER (the logs are already in the
+carry), then PLANT, then BONEMEAL. Drops are collected **while the sapling grows**, in BONEMEAL whenever it is not applying
+bone meal (no bone meal at all, or between two applications). Before this change BONEMEAL without bone meal only idled and
+a separate PICKUP phase after FELL waited up to 150 ticks (`PICKUP_QUIET`) for leaf drops, which the user saw as an idle wait.
+Why collect while waiting: leaves decay for a long time after the felling, so the stragglers (saplings, sticks, apples) land
+during the growth wait anyway; the walk to the chests is not delayed. Items collected while waiting stay in the carry
+and go out at the next DELIVER (after the next felling); a full carry just stops the collecting (`fitsSome`), nothing is lost
+(FELL delivers mid-tree when needed). Rule while a sapling stands (`LumberLogic:collect` with the footprint): an item is
+ignored when it lies closer than `WAIT_MIN` (2) blocks to the footprint (picked up later), and an item whose path
+(`LumberLogic:crosses`) passes the sapling volume (`inVolume`) is skipped for `SKIP_TICKS`. Why: pathing over a sapling cell
+is possible (no collision) and the trunk growing around the golem would suffocate it; a skipped item costs nothing, it is
+retried after the skip or the next cycle. After a pickup the golem walks back to its waiting spot (`standOutside`), so the growth logic is unchanged.
+Test: `LumberTest:collectsDropsWhileWaitingForGrowth`.
+
+PICKUP still exists, but only as the cleanup phase: a fresh state with no tree, PLANT that cannot plant (no saplings, a 2x2 site
+waiting for four) and a vanished sapling go through it, the same collection and end rule as below. Picking up around T:
+
+The box: the golem picks up item entities in a box around T (horizontal radius 6, from 1 below to 4 above T):
 nearest first, `createPath` + `moveTo` like the Cleaner (see [cleaner.md](cleaner.md)), pickup within 1.5 blocks, same
 give-up rule (no progress for 200 ticks: that item entity is ignored for 1200 ticks, a null path is no progress). Any
 item is taken if at least part of it fits (`LumberLogic:fitsSome`). A sapling goes to the sapling slot when the same item
@@ -186,11 +203,11 @@ optional). `LumberLogic:tick` detects the tree and runs the current `LumberLogic
 
 1. **PLANT**: a sapling or tree already there skips it (sapling -> BONEMEAL, tree -> FELL). Else fetch saplings from the
    input chest (`wantsFetch`, below 16 in hand), then plant (1x1 or 2x2). Nothing plantable -> PICKUP.
-2. **BONEMEAL**: fetch bone meal (below 4 in hand, up to 16), apply one per 10 ticks. No bone meal: wait for natural
-   growth (outside the footprint). The sapling disappearing -> PICKUP. A tree appearing -> FELL (checked every tick).
+2. **BONEMEAL**: fetch bone meal (below 4 in hand, up to 16), apply one per 10 ticks. Otherwise (no bone meal, or between
+   applications) collect drops, then wait for natural growth (outside the footprint). The sapling disappearing -> PICKUP. A tree appearing -> FELL (checked every tick).
 3. **FELL**: fetch / swap the axe at the input chest (worn axe swap), fell the whole tree. A full carry delivers mid-tree
-   (`State.mustDeliver`, nothing lost, D9) and the felling continues. Tree gone -> PICKUP.
-4. **PICKUP**: collect drops, end rule above.
+   (`State.mustDeliver`, nothing lost, D9) and the felling continues. Tree gone -> DELIVER at once.
+4. **PICKUP** (cleanup only, see above): collect drops, end rule above, then DELIVER.
 5. **DELIVER** (`LumberLogic:deliverStep`), always, even with a small carry (nothing to carry = no trip): carried saplings
    and bone meal first top up the supply slots (`topUpSupplies`); the surplus saplings / bone meal go to the **input
    chest**, everything else (logs, sticks, apples, other items) and whatever the input chest could not take (not assigned,
@@ -212,8 +229,9 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
   on the square, four left in the golem.
 - `collectsGroundDrops`: (fresh start in PICKUP) item entities (sapling, sticks, one in a far corner) end in supply slot / output chest.
 - `bonemealGrowsTheSaplingThenFellsIt`: 64 bone meal in the chest, sapling on T: logs reach the output, bone meal used.
-- `fullCycleOrder`: phases recorded by the listener: PICKUP, DELIVER, PLANT, BONEMEAL, FELL, PICKUP, DELIVER, PLANT, with
-  PICKUP always followed by DELIVER and DELIVER by PLANT; surplus birch saplings end in the input chest, logs in the output.
+- `fullCycleOrder`: phases recorded by the listener: PICKUP, DELIVER, PLANT, BONEMEAL, FELL, DELIVER, PLANT, BONEMEAL, with
+  FELL always followed by DELIVER (no wait) and DELIVER by PLANT; surplus birch saplings (put in the carry) end in the input chest, logs in the output.
+- `collectsDropsWhileWaitingForGrowth`: sapling, no bone meal; drops spawned once in BONEMEAL (2 sticks, 2 apples, a sapling, plus a stick next to T that is left alone) end in the carry while it is still a sapling; never in the sapling volume.
 - `twoByTwoSiteWaitsForFourSaplings`: marked 2x2 site, 3 spruce saplings plant nothing, a 4th plants all four.
 - `neverStandsInTheSapling` (bone meal run: never in T's column while a sapling stands, health unchanged) and
   `stepsOutOfTheSapling` (spawned inside, waits >= 2 blocks away).
@@ -231,7 +249,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
   found.
 - Leaves are never cleared, so they can block the golem's path or a stand spot.
 - The tree needs a standable ground spot within reach of T (1 block, or 2 as fallback); otherwise it is skipped.
-- Any item in the drop box is picked up, including items a player dropped there.
+- Any item in the drop box (not next to a growing sapling, see above) is picked up, including items a player dropped there.
 - With nothing in the supply slots and no saplings in the input chest, saplings that drop from leaves are taken into
   the supply slot (if free) and used for the next planting; other kinds go to carry and the output chest.
 - Efficiency/Unbreaking are not specifically handled or tested (durability goes through the vanilla overload).
