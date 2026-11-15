@@ -26,8 +26,8 @@ public final class ProfessionHelp {
 			"Picks up dropped items inside the area and brings them to the output chest.",
 			"The 9 slots are what it carries."),
 		"crafter", List.of(
-			"9 input slots, one per crafting-grid cell, hold the recipe; 1 output slot holds the result.",
-			"It fetches the ingredients from the input chest, crafts at the table until the output stack is full, then delivers it to the output chest."),
+			"Left 3x3 = the recipe template (never used up). Middle 3x3 = 9 input slots, one per grid cell, each holds only that cell's item. Right = 1 output slot.",
+			"It fills the input slots from the input chest, crafts at the table until the output stack is full, then delivers it to the output chest."),
 		"farmer", List.of(
 			"Works one field with one tool: a hoe farms crops, an axe only melons and pumpkins.",
 			"Put the tool in the tool slot, seeds in the seed slot. Seeds go back to the seed chest, the harvest to the output chest."),

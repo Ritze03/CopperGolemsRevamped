@@ -96,17 +96,22 @@ public class GolemMenu extends AbstractContainerMenu {
 		List<Profession.SlotGroup> groups = profession == null ? List.of() : profession.slots();
 
 		buildControls();
-		// per-slot filter / max stack from the declaration, in slot order; each group starts on a new row, width cells per row
+		// per-slot filter / max stack from the declaration, in slot order; group origins come from Profession#layout
 		List<Predicate<ItemStack>> filters = new ArrayList<>();
 		List<Integer> maxStacks = new ArrayList<>();
+		List<Profession.SlotRule> rules = new ArrayList<>();
+		List<Integer> slotInGroup = new ArrayList<>();
+		List<Boolean> quick = new ArrayList<>();
+		List<int[]> origins = profession == null ? List.of() : profession.layout();
 		List<List<Integer>> groupCells = new ArrayList<>();
-		int nextRow = 1;
 		int shown = 0;
 		boolean cut = false;
-		for (Profession.SlotGroup g : groups) {
+		for (int gi = 0; gi < groups.size(); gi++) {
+			Profession.SlotGroup g = groups.get(gi);
+			int[] origin = origins.get(gi);
 			List<Integer> cells = new ArrayList<>();
 			for (int i = 0; i < g.count(); i++) {
-				int cell = (nextRow + i / g.width()) * COLS + i % g.width();
+				int cell = (1 + origin[0] + i / g.width()) * COLS + origin[1] + i % g.width();
 				if (cut || cell >= rows * COLS) {
 					cut = true; // keep the shown slots a prefix of the declared order
 					continue;
@@ -114,11 +119,12 @@ public class GolemMenu extends AbstractContainerMenu {
 				itemOfCell[cell] = filters.size();
 				filters.add(g.filter());
 				maxStacks.add(g.maxStack());
+				rules.add(g.rule());
+				slotInGroup.add(i);
 				cells.add(cell);
 				shown++;
 			}
-			groupCells.add(cells);
-			nextRow += g.rows() + 1; // one filler row separates consecutive groups
+			groupCells.add(g.quickMove() ? cells : List.of());
 		}
 		this.itemCount = shown;
 		for (int gi = groupCells.size() - 1; gi >= 0; gi--) quickMoveCells.addAll(groupCells.get(gi));
@@ -132,7 +138,7 @@ public class GolemMenu extends AbstractContainerMenu {
 				addSlot(new HeldSlot(held, x, y));
 			} else if (itemOfCell[cell] >= 0) {
 				int k = itemOfCell[cell];
-				addSlot(new GroupSlot(items, k, x, y, maxStacks.get(k), filters.get(k)));
+				addSlot(new GroupSlot(items, k, x, y, maxStacks.get(k), filters.get(k), rules.get(k), slotInGroup.get(k), golem));
 			} else {
 				iconCell[cell] = true;
 				if (controls[cell] == null) icons.setItem(cell, GolemIcon.filler());
@@ -315,7 +321,8 @@ public class GolemMenu extends AbstractContainerMenu {
 	/**
 	 * Like {@code moveItemStackTo} over the profession slots only (they are not contiguous in cell space): first merge
 	 * into matching non-empty slots, then fill empty ones, both respecting {@code mayPlace} and the slot max.
-	 * Groups are tried last-declared first, so shift-click fills working storage before a recipe template.
+	 * Groups are tried last-declared first, so shift-click fills working storage before a recipe template; a group
+	 * declared {@code noQuickMove} is skipped.
 	 */
 	private boolean moveIntoProfession(ItemStack stack) {
 		boolean moved = false;
@@ -399,16 +406,24 @@ public class GolemMenu extends AbstractContainerMenu {
 	private static class GroupSlot extends Slot {
 		private final int maxStack;
 		private final Predicate<ItemStack> filter;
+		private final Profession.@Nullable SlotRule rule;
+		private final int slotInGroup;
+		private final CopperGolem golem;
 
-		GroupSlot(Container c, int index, int x, int y, int maxStack, Predicate<ItemStack> filter) {
+		GroupSlot(Container c, int index, int x, int y, int maxStack, Predicate<ItemStack> filter,
+			Profession.@Nullable SlotRule rule, int slotInGroup, CopperGolem golem) {
 			super(c, index, x, y);
 			this.maxStack = maxStack;
 			this.filter = filter;
+			this.rule = rule;
+			this.slotInGroup = slotInGroup;
+			this.golem = golem;
 		}
 
 		@Override
 		public boolean mayPlace(ItemStack stack) {
-			return container.canPlaceItem(getContainerSlot(), stack) && filter.test(stack);
+			return container.canPlaceItem(getContainerSlot(), stack) && filter.test(stack)
+				&& (rule == null || rule.mayPlace(GolemData.get(golem).items, slotInGroup, stack));
 		}
 
 		@Override
