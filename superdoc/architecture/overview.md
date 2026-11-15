@@ -8,8 +8,8 @@ duplicating them. Index of all pages: [../README.md](../README.md).
 Copper Golems Revamped is a Fabric mod for Minecraft 26.3 (Mojang names, unobfuscated; mod id
 `coppergolemsrevamped`) that makes Copper Golems useful. Right-clicking a golem with an empty hand opens a
 server-side GUI (works on vanilla clients) where the player picks a profession, assigns its targets (chests, blocks, areas) and toggles follow
-mode. Six professions are planned: Chest Sorter, Lumber, Crafter, Transporter, Farmer, Cleaner.
-**Phase A is built: the foundation plus the Transporter.** A golem with no profession keeps vanilla behaviour.
+mode. All six professions are implemented: Chest Sorter, Lumber, Crafter, Transporter, Farmer, Cleaner.
+A golem with no profession keeps vanilla behaviour.
 
 ## Data flow
 

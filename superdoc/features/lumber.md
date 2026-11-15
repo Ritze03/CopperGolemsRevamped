@@ -94,7 +94,25 @@ persistent state is only `GolemData`, saved after every mutation. Per tick:
 7. Else idle, rescan every 20 ticks.
 
 Give-up as in the Farmer: no progress for 200 ticks toward a target (tree stand spot or chest) skips it for 1200
-ticks; a null path is no progress; while airborne the golem waits. `LumberLogic:isSkipped` is the test hook.
+ticks; a null path is no progress. `LumberLogic:isSkipped` is the test hook.
+
+Robustness rules (QC fixes):
+
+- **Airborne wait is bounded.** While airborne `LumberLogic:walk` counts the same 200 ticks and then skips the
+  target. Why: the golem used to wait forever when floating in water (same fix as `FarmerLogic:walkTo`).
+- **A denied break never leaves the golem hanging.** `Result.DENIED` in `LumberLogic:fell` only clears the pending
+  break, with no cooldown. Why: `tick` returns early on a cooldown, so the golem would not be held or climb out for
+  40 ticks and would drop up to ~6 blocks in the shaft (fall damage). Without a cooldown the next tick either holds
+  it (still felling) or exits the shaft (tree gone / block changed).
+- **No stand spot is not a lock.** When leaving the shaft finds no free neighbour of T, T is skipped for 1200 ticks
+  and a hanging golem is lowered to T's level (no fall); a golem already on T's level carries on as idle/deliver.
+  Why: `exitShaft` did nothing and the golem repeated it every tick forever.
+- **Tools come one at a time.** `LumberLogic:fetchableTool` only offers chest slots with exactly one item. Why: a
+  stacked axe (possible via commands) kept `wantsFetch` true while the fetch took nothing, a refetch loop.
+- **State follows the tree.** The transient `State` stores the tree spot it was built for; `tick` starts a fresh
+  state when the assigned tree differs. `GolemService:changeProfession` does not clear the map. Why: after a
+  profession change the golem would keep an old `clearedTopY`, skip entries and `mustDeliver`; a different tree spot
+  is the case where that matters, and a same-tree return only repeats one harmless delivery.
 
 ## Tests (`LumberTest`)
 
@@ -107,6 +125,12 @@ ticks; a null path is no progress; while airborne the golem waits. `LumberLogic:
   while the tree is felled.
 - `fullCarryDeliversMidTreeAndContinues`: carry full (8 stacks cobblestone, 63 logs): the golem delivers while
   half way up, comes back, finishes, replants; output holds all 512 cobblestone and 67 logs.
+- `guardDeniesWrongPosition`: `LumberLogic:breakBlock` with a real golem two blocks from a log and diagonal to one
+  returns DENIED and both survive; the log in front is broken (control that the hook works).
+- `deniedInShaftDoesNotDrop`: stone replaces the next block while the golem hangs in the shaft: it never sags for
+  more than one tick, takes no damage, ends outside the column and the sapling is planted. (The DENIED branch of
+  `fell` itself is a race that the loop re-evaluation normally pre-empts; this test covers the exit/hold guarantee.)
+- `noStandSpotDoesNotLock`: all four neighbours of T are stone: after 300 ticks T is skipped and nothing broke.
 - `noAxeNoWork`: only saplings and shears around: the tree is intact after 300 ticks.
 - `breakTimeFollowsAxeSpeed`: 26.3 axe speeds on oak log (2 / 6 / 8) and the tick formula.
 - `lumberDeclaration`: slot filters, inventory size 12, at most 6 GUI rows, assign keys and kinds.
@@ -121,4 +145,6 @@ ticks; a null path is no progress; while airborne the golem waits. `LumberLogic:
   lower part is air and the logs above are no longer found; they stay as floating logs.
 - If T is assigned as something other than sapling/log (e.g. dirt), the golem does nothing there.
 - Efficiency/Unbreaking are not specifically handled or tested (durability goes through the vanilla overload).
+- With an empty sapling slot and no saplings in the input chest, saplings that drop from leaves go to carry and are
+  delivered to the output chest, not planted (the slot is only filled from the input chest or by hand in the GUI).
 - The tree must have a free, supported neighbour of T to stand on; otherwise T is ignored for 1200 ticks.

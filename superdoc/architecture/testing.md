@@ -24,6 +24,10 @@ not part of `check`.
 - `CrafterTest:craftsSticksFromTemplate`, `noCraftWithoutTable`, `templateDropsOnProfessionChange`,
   `bufferDropsOnProfessionChange`, `noCraftWhenTableReplaced`, `deliversBufferWhenTemplateCleared`,
   `templateSlotHoldsOne`: Crafter loop, drops and menu slot rules (see [crafter.md](../features/crafter.md)).
+- `LumberTest:fellsOakDeliversAndReplants`, `onlyBreaksFrontOrAbove`, `fullCarryDeliversMidTreeAndContinues`,
+  `noAxeNoWork`, `guardDeniesWrongPosition`, `deniedInShaftDoesNotDrop`, `noStandSpotDoesNotLock`,
+  `breakTimeFollowsAxeSpeed`, `lumberDeclaration`: Lumber felling, break rule/guard, delivery, shaft safety, see
+  [lumber.md](../features/lumber.md).
 - `FarmerTest:harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
   `harvestWithNearlyFullCarryLosesNothing`, `stemSeedsIgnored`, `fieldLimit9`, `seedDefinition`: Farmer loop, item
   conservation, seed definition and field limit (see [farmer.md](../features/farmer.md)). The nearly-full-carry test
@@ -31,15 +35,16 @@ not part of `check`.
   tests run in parallel).
 
 Total: `@GameTest` methods counted with `grep -rc '@GameTest' src/gametest` (TransporterTest 1, GolemDataTest 2,
-ChestSorterTest 3, CleanerTest 8, CrafterTest 7, FarmerTest 7 = 28), so the log says `All 29 required tests passed` (see Gotchas).
+ChestSorterTest 3, CleanerTest 8, CrafterTest 7, FarmerTest 7, LumberTest 9 = 37), so the log says `All 38 required tests passed` (see Gotchas).
 
 ## Client tests (headless sway only)
 
 `GolemGuiClientTest` (`fabric-client-gametest` entrypoint, `enableClientGameTests = true` in
 `build.gradle`) launches the real client, creates a singleplayer world, spawns a golem next to the
-player, opens `GolemMenuOpener:open` on the server thread and screenshots the chest menu seven times:
+player, opens `GolemMenuOpener:open` on the server thread and screenshots the chest menu eight times:
 no profession, Transporter with items and an assignment, the Transporter first control slot hovered (tooltip),
-Chest Sorter (12 waxed copper blocks), Cleaner (area and output assigned) and Crafter (template, buffer, three assigns) and Farmer (hoe, seeds, carry, every assign).
+Chest Sorter (12 waxed copper blocks), Cleaner (area and output assigned) and Crafter (template, buffer, three assigns) Farmer (hoe, seeds, carry, every assign) and Lumber.
+Toasts are cleared before each screenshot so the held-item cell is visible.
 Window 1280x720, GUI scale 3. Screenshots land in `build/run/clientGameTest/screenshots/`.
 Task: `runClientGameTest`. It is not wired into `check`/`build` (the `runGameTest` server task is).
 

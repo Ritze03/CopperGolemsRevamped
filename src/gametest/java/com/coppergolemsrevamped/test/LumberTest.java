@@ -182,6 +182,80 @@ public class LumberTest {
 		});
 	}
 
+	/**
+	 * The guard in {@link LumberLogic#breakBlock}: a golem two blocks from a log, or diagonal to it, may not break it
+	 * (DENIED, block survives); the log directly in front is broken (positive control that the hook works).
+	 */
+	@GameTest
+	public void guardDeniesWrongPosition(GameTestHelper helper) {
+		world(helper);
+		BlockPos far = new BlockPos(3, 1, 3), diag = new BlockPos(4, 1, 4), front = new BlockPos(5, 1, 2);
+		helper.setBlock(far, Blocks.OAK_LOG);
+		helper.setBlock(diag, Blocks.OAK_LOG);
+		helper.setBlock(front, Blocks.OAK_LOG);
+		CopperGolem golem = lumber(helper);
+		GolemData data = GolemData.get(golem);
+		data.items.set(LumberProfession.TOOL_FROM, new ItemStack(Items.IRON_AXE));
+		helper.assertTrue(LumberLogic.breakBlock(helper.getLevel(), golem, data, Direction.WEST, helper.absolutePos(far)) == LumberLogic.Result.DENIED, "two blocks away not denied");
+		helper.assertTrue(LumberLogic.breakBlock(helper.getLevel(), golem, data, Direction.WEST, helper.absolutePos(diag)) == LumberLogic.Result.DENIED, "diagonal not denied");
+		helper.assertBlockPresent(Blocks.OAK_LOG, far);
+		helper.assertBlockPresent(Blocks.OAK_LOG, diag);
+		helper.assertTrue(LumberLogic.breakBlock(helper.getLevel(), golem, data, Direction.NORTH, helper.absolutePos(front)) == LumberLogic.Result.BROKEN, "block in front not broken");
+		helper.assertBlockPresent(Blocks.AIR, front);
+		helper.succeed();
+	}
+
+	/**
+	 * The block above the golem turns to stone while it hangs in the shaft: the golem is held or climbs out, never left
+	 * hanging unheld (no multi-tick fall, no damage), ends outside the column and replants.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void deniedInShaftDoesNotDrop(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 5, 0);
+		chest(helper, IN).setItem(0, new ItemStack(Items.IRON_AXE));
+		chest(helper, IN).setItem(1, new ItemStack(Items.OAK_SAPLING, 4));
+		CopperGolem golem = lumber(helper);
+		float health = golem.getHealth();
+		BlockPos at = helper.absolutePos(T);
+		boolean[] replaced = { false };
+		int[] fall = { 0 };
+		double[] lastY = { golem.getY() };
+		helper.onEachTick(() -> {
+			if (!replaced[0] && golem.getBlockY() >= at.getY() + 2 && golem.getBlockX() == at.getX() && golem.getBlockZ() == at.getZ()) {
+				helper.getLevel().setBlockAndUpdate(new BlockPos(at.getX(), golem.getBlockY() + 1, at.getZ()), Blocks.STONE.defaultBlockState());
+				replaced[0] = true;
+			}
+			// held or snapped out: at most one tick of gravity sag in the column, never a fall of several ticks
+			boolean inColumn = golem.getBlockX() == at.getX() && golem.getBlockZ() == at.getZ();
+			fall[0] = inColumn && golem.getY() < lastY[0] - 0.02 ? fall[0] + 1 : 0;
+			lastY[0] = golem.getY();
+			helper.assertTrue(fall[0] < 2 && golem.getHealth() == health, "golem fell in the shaft for " + fall[0] + " ticks, health " + golem.getHealth());
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(replaced[0], "stone was never placed");
+			helper.assertBlockPresent(Blocks.OAK_SAPLING, T);
+			helper.assertTrue(golem.getBlockX() != at.getX() || golem.getBlockZ() != at.getZ(), "golem still in the column");
+		});
+	}
+
+	/** All four neighbours of T are stone: no stand spot. The tree is skipped (not retried every tick) and nothing breaks. */
+	@GameTest(maxTicks = 600)
+	public void noStandSpotDoesNotLock(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 3, 1);
+		for (Direction d : Direction.Plane.HORIZONTAL) helper.setBlock(T.relative(d), Blocks.STONE);
+		chest(helper, IN).setItem(0, new ItemStack(Items.IRON_AXE));
+		chest(helper, IN).setItem(1, new ItemStack(Items.OAK_SAPLING, 4));
+		CopperGolem golem = lumber(helper);
+		helper.runAfterDelay(300, () -> {
+			helper.assertTrue(LumberLogic.isSkipped(golem, helper.absolutePos(T), helper.getLevel().getGameTime()), "tree not skipped");
+			for (int k = 0; k < 3; k++) helper.assertBlockPresent(Blocks.OAK_LOG, T.above(k));
+			helper.assertBlockPresent(LEAVES.getBlock(), T.above(3));
+			helper.succeed();
+		});
+	}
+
 	/** Break time = ceil(hardness * 30 / speed): faster axes cut faster; the 26.3 axe speeds on an oak log. */
 	@GameTest
 	public void breakTimeFollowsAxeSpeed(GameTestHelper helper) {
