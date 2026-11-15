@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.test;
 
 import com.coppergolemsrevamped.CopperGolemsRevamped;
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.WalkTo;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
@@ -188,37 +189,44 @@ public class CoreFeedbackTest {
 
 	// ---- 5 / 6. walk-to ----
 
-	@GameTest(maxTicks = 400)
+	@GameTest(maxTicks = 700)
 	public void walkToStopsNextToBlock(GameTestHelper helper) {
 		floor(helper);
 		BlockPos chest = new BlockPos(7, 1, 7);
 		helper.setBlock(chest, Blocks.CHEST);
-		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(1, 1, 1));
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(0, 1, 0));
 		GolemService.changeProfession(helper.getLevel(), golem, TRANSPORTER);
 		WalkTo.toBlock(helper.getLevel(), golem, helper.absolutePos(chest));
 		helper.assertTrue(WalkTo.active(golem), "walk must start");
 		helper.succeedWhen(() -> {
 			helper.assertTrue(!WalkTo.active(golem), "still walking");
-			double d = horizontal(golem, helper.absolutePos(chest));
-			helper.assertTrue(d > 0.8 && d < 2.5, "distance to the chest: " + d);
+			BlockPos abs = helper.absolutePos(chest);
+			helper.assertTrue(Interact.inReach(golem, abs) || Interact.nearReach(golem, abs),
+				"golem must end in Interact reach of the chest, distance " + horizontal(golem, abs) + " at " + golem.position() + " chest " + abs + " tick " + helper.getTick());
 		});
 	}
 
-	@GameTest(maxTicks = 1200)
-	public void areaAssignWalksOutline(GameTestHelper helper) {
+	/** Area assign stores the area but starts no walk; a block assign still starts one. */
+	@GameTest
+	public void areaAssignDoesNotWalkBlockAssignDoes(GameTestHelper helper) {
 		floor(helper);
-		BlockPos a = helper.absolutePos(new BlockPos(2, 0, 2));
-		BlockPos b = helper.absolutePos(new BlockPos(7, 0, 6));
-		BlockPos[] corners = {a, new BlockPos(b.getX(), 0, a.getZ()).atY(a.getY()), b, new BlockPos(a.getX(), 0, b.getZ()).atY(a.getY())};
+		helper.setBlock(new BlockPos(2, 0, 2), Blocks.STONE);
+		helper.setBlock(new BlockPos(7, 0, 6), Blocks.STONE);
+		helper.setBlock(new BlockPos(7, 1, 7), Blocks.CHEST);
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 4));
-		GolemService.changeProfession(helper.getLevel(), golem, TRANSPORTER);
-		WalkTo.outline(helper.getLevel(), golem, a, b);
-		boolean[] seen = new boolean[4];
-		helper.succeedWhen(() -> {
-			for (int i = 0; i < 4; i++) if (horizontal(golem, corners[i]) <= 1.5) seen[i] = true;
-			for (int i = 0; i < 4; i++) helper.assertTrue(seen[i], "corner " + i + " not visited yet");
-			helper.assertTrue(!WalkTo.active(golem), "outline still running");
-		});
+		GolemService.changeProfession(helper.getLevel(), golem, CopperGolemsRevamped.id("cleaner"));
+		@SuppressWarnings("removal")
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		AssignMode.arm(player, golem, "area");
+		helper.assertTrue(AssignMode.onClick(player, helper.absolutePos(new BlockPos(2, 0, 2))), "first corner click");
+		AssignMode.onClick(player, helper.absolutePos(new BlockPos(7, 0, 6)));
+		helper.assertTrue(GolemData.get(golem).assignments.containsKey("area_b"), "area must be stored");
+		helper.assertTrue(!WalkTo.active(golem), "an area assign must start no WalkTo");
+		AssignMode.arm(player, golem, "output");
+		AssignMode.onClick(player, helper.absolutePos(new BlockPos(7, 1, 7)));
+		helper.assertTrue(WalkTo.active(golem), "a block assign must still start a WalkTo");
+		WalkTo.cancel(golem);
+		helper.succeed();
 	}
 
 	@GameTest(maxTicks = 600)

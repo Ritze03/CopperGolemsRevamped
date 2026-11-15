@@ -14,11 +14,10 @@ import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
 
 /**
  * Transient walk-to override: a queue of stand positions the golem walks to in order, run by GolemTicker before
- * everything else. Used as visual confirmation after an assignment (walk next to the block, or once around an area).
+ * everything else. Used as visual confirmation after an assignment (walk to the block) and by the menu "Show" button.
  * Each waypoint has its own timeout and is skipped when there is no path, so an unreachable one never blocks.
  * Not persisted: a restart simply drops the walk.
  */
@@ -38,14 +37,23 @@ public final class WalkTo {
 		int waited;
 		int fails;
 		boolean started;
+		/** Block walk: driven by {@link Interact#approach} (the professions' reach rule); null for an outline walk. */
+		@Nullable BlockPos block;
+		final Interact.Approach approach = new Interact.Approach();
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
-	/** Walk to the free horizontal neighbour of {@code block} nearest to the golem; does nothing if there is none. */
+	/** Total ticks a block walk may take before it gives up (Interact's own fallback ends it sooner when stuck). */
+	public static final int BLOCK_TIMEOUT_TICKS = 600;
+
+	/**
+	 * Walk until the golem is in reach of {@code block} exactly as a profession would be before opening it
+	 * ({@link Interact#approach}: 1-block stand position, 2-block fallback).
+	 */
 	public static void toBlock(ServerLevel level, CopperGolem golem, BlockPos block) {
-		BlockPos stand = standNextTo(level, block, golem.position());
-		if (stand != null) set(golem, List.of(stand));
+		set(golem, List.of(block));
+		STATES.get(golem).block = block.immutable();
 	}
 
 	/** Walk the rectangle spanned by the two corners once: its 4 corners in order, then back to the first. */
@@ -81,6 +89,12 @@ public final class WalkTo {
 		if (target == null) {
 			cancel(golem);
 			return false;
+		}
+		if (s.block != null) {
+			if (Interact.approach(level, golem, s.block, s.approach, SPEED) || ++s.waited > BLOCK_TIMEOUT_TICKS) {
+				return next(golem, s);
+			}
+			return true;
 		}
 		if (reached(golem, target)) return next(golem, s);
 		if (++s.waited > TIMEOUT_TICKS) return next(golem, s);
@@ -123,22 +137,6 @@ public final class WalkTo {
 		BlockState floor = level.getBlockState(p.below());
 		return feet.getCollisionShape(level, p).isEmpty() && head.getCollisionShape(level, p.above()).isEmpty()
 			&& floor.isFaceSturdy(level, p.below(), Direction.UP);
-	}
-
-	/** The standable horizontal neighbour of {@code block} nearest to {@code from}, or null. */
-	static @Nullable BlockPos standNextTo(ServerLevel level, BlockPos block, Vec3 from) {
-		BlockPos best = null;
-		double bestDist = Double.MAX_VALUE;
-		for (Direction d : Direction.Plane.HORIZONTAL) {
-			BlockPos n = block.relative(d);
-			if (!standable(level, n)) continue;
-			double dist = Vec3.atBottomCenterOf(n).distanceToSqr(from);
-			if (dist < bestDist) {
-				bestDist = dist;
-				best = n;
-			}
-		}
-		return best;
 	}
 
 	/** Ground in the column: highest standable position between {@code top} and {@code bottom}, else {@code fallbackY}. */
