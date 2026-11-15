@@ -61,8 +61,12 @@ public class ChunkLoadTest {
 	 * next chunk is inside another test's bounds, and that test's {@code succeed()} discards every entity in its
 	 * bounds, including a golem teleported in (flaky "no ticket at ..." with a golem that was discarded before its
 	 * first tick). Above the structures nothing reaches it.
+	 * <p>
+	 * Why maxTicks 3000: GameTests tick as fast as the server can, but the next chunk is generated on worker
+	 * threads, in a batch of 50 parallel tests that can take longer than 200 ticks (~1 s) of wall time. The wait is
+	 * for a condition, so the bound is only a safety net.
 	 */
-	@GameTest(maxTicks = 200)
+	@GameTest(maxTicks = 3000)
 	public void ticketMovesWithGolem(GameTestHelper helper) {
 		ServerLevel level = helper.getLevel();
 		CopperGolem golem = working(helper);
@@ -75,7 +79,8 @@ public class ChunkLoadTest {
 			if (!moved[0]) {
 				// our own ticket (radius 3) loads and ticks the next chunk; a golem teleported into a chunk that is
 				// not entity-ticking yet would not tick either
-				helper.assertTrue(level.isPositionEntityTicking(target), "waiting for the next chunk to tick");
+				helper.assertTrue(level.isPositionEntityTicking(target), "waiting for the next chunk to tick: " + to
+					+ ", ticket level there: " + storage(level).getTicketLevelAt(to.pack(), true) + ", golem holds: " + GolemChunkLoader.holds(golem));
 				golem.setNoGravity(true);
 				golem.teleportTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
 				moved[0] = true;
