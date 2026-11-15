@@ -68,14 +68,19 @@ public final class AssignMode {
 			if (level.isClientSide() || hand != InteractionHand.MAIN_HAND || !(player instanceof ServerPlayer sp)) {
 				return InteractionResult.PASS;
 			}
-			Pending p = PENDING.get(sp.getUUID());
-			if (p == null) return InteractionResult.PASS;
-			click(sp, p, hit.getBlockPos());
-			return InteractionResult.SUCCESS;
+			return onClick(sp, hit.getBlockPos()) ? InteractionResult.SUCCESS : InteractionResult.PASS;
 		});
 		ServerTickEvents.END_SERVER_TICK.register(AssignMode::tick);
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> PENDING.clear());
 		ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> PENDING.remove(handler.getPlayer().getUUID()));
+	}
+
+	/** Main-hand block click of an armed player; false when the player has nothing armed. Also the test entry point. */
+	public static boolean onClick(ServerPlayer player, BlockPos pos) {
+		Pending p = PENDING.get(player.getUUID());
+		if (p == null) return false;
+		click(player, p, pos);
+		return true;
 	}
 
 	public static void arm(ServerPlayer player, CopperGolem golem, String assignKey) {
@@ -128,7 +133,6 @@ public final class AssignMode {
 			return;
 		}
 		String label = spec.label().getString();
-		boolean outline = false;
 		if (spec.kind() == Kind.AREA) {
 			if (p.first == null) {
 				p.first = pos.immutable();
@@ -144,16 +148,14 @@ public final class AssignMode {
 				msg(player, "Area capped to " + spec.maxSize() + "x" + spec.maxSize() + " (max)");
 			}
 			pos = second;
-			outline = true;
 		} else {
 			data.assignments.put(spec.key(), pos.immutable());
 			msg(player, label + " set to " + fmt(pos));
 		}
 		GolemData.save(p.golem, data);
-		// visual confirmation: walk next to the block, or once around the area
-		if (p.golem.level() instanceof ServerLevel level) {
-			if (outline) WalkTo.outline(level, p.golem, p.first, pos);
-			else WalkTo.toBlock(level, p.golem, pos);
+		// visual confirmation: walk next to the block (areas get none, user request)
+		if (spec.kind() != Kind.AREA && p.golem.level() instanceof ServerLevel level) {
+			WalkTo.toBlock(level, p.golem, pos);
 		}
 		PENDING.remove(id);
 	}

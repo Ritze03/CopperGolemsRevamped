@@ -13,8 +13,8 @@ for the golem API.
 3. Main-hand block right-clicks of that player are consumed (`InteractionResult.SUCCESS`, so the
    target block's own GUI never opens) and validated; off-hand events are ignored.
 4. On success the position goes into `GolemData.assignments` and `GolemData.save` is called.
-5. The golem walks to the target as visual confirmation: next to the block (nearest free horizontal neighbour), or once
-   around the area outline (see Walk-to below).
+5. After a chest/table/block assign the golem walks next to the block as visual confirmation (see Walk-to below).
+   An area assign only stores the area and confirms in chat.
 
 ## Validation per `Kind`
 
@@ -34,13 +34,18 @@ for the golem API.
 ## Walk-to (visual confirmation)
 
 After a successful assignment `AssignMode:click` starts `ai/WalkTo` on the golem: a queue of stand positions run by
-`GolemTicker:tick` before follow mode and the profession tick, until done. Chest/table/block: one stand position,
-the standable horizontal neighbour of the block nearest to the golem (free feet and head space, sturdy floor), nothing
-happens when there is none. Area: the 4 corners of the (capped) rectangle in order and back to the first
-(`WalkTo:outline`), each on the highest standable position near the clicked Y range. Arrived = within 1 block
+`GolemTicker:tick` before follow mode and the profession tick, until done. Chest/table/block (`WalkTo:toBlock`, also
+the menu's Show button): driven by `Interact:approach`, the same walk the professions use (1-block stand position,
+2-block fallback, see [../architecture/interaction.md](../architecture/interaction.md)); it ends only when `Interact`
+counts the golem in reach, or after `WalkTo.BLOCK_TIMEOUT_TICKS` (600). Why: the old "within 1 block of a stand
+position" check stopped the golem too early (user: "it stops too early", should be the transporter's algorithm).
+Area assigns start no walk. `WalkTo:outline` (4 corners of the rectangle in order and back
+to the first, each on the highest standable position near the clicked Y range) is kept only for the menu's Targets-tab
+"Show" button. Outline arrived = within 1 block
 horizontally. Each waypoint has its own timeout (`WalkTo.TIMEOUT_TICKS` = 200) and is skipped when `moveTo` finds no
 path, so an unreachable corner never blocks. Transient (weak map, not saved); a profession change cancels it.
-Why: the user wanted the golem to show what it was just given ("walks right in front of it", "walk the outline once").
+Why: the user wanted the golem to show what it was just given ("walks right in front of it"). The automatic area
+outline walk was removed at the user's request ("remove the walking around the marked area thingy again").
 
 ## Cancel / timeout / range
 
