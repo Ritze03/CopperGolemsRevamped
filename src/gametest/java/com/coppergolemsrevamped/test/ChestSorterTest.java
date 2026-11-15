@@ -25,6 +25,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import com.coppergolemsrevamped.CopperGolemsRevamped;
 
 public class ChestSorterTest {
 	/** Exposes the protected method the mixin targets. */
@@ -112,5 +116,53 @@ public class ChestSorterTest {
 		for (Item i : no) helper.assertTrue(!g.filter().test(new ItemStack(i)), "must reject " + i);
 		helper.assertTrue(!g.filter().test(ItemStack.EMPTY), "must reject empty");
 		helper.succeed();
+	}
+
+	private static void floor(GameTestHelper helper) {
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+	}
+
+	/** Items from a copper chest end up in the wooden chest; {@code first} is a profession to hold beforehand. */
+	private static void sortScenario(GameTestHelper helper, Block copper, String first, boolean destHasItem) {
+		floor(helper);
+		BlockPos src = new BlockPos(1, 1, 3);
+		BlockPos dst = new BlockPos(6, 1, 3);
+		helper.setBlock(src, copper);
+		helper.setBlock(dst, Blocks.CHEST);
+		ChestBlockEntity from = helper.getBlockEntity(src, ChestBlockEntity.class);
+		ChestBlockEntity to = helper.getBlockEntity(dst, ChestBlockEntity.class);
+		from.setItem(0, new ItemStack(Items.COBBLESTONE, 10));
+		if (destHasItem) to.setItem(0, new ItemStack(Items.COBBLESTONE, 1));
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 4));
+		if (first != null) {
+			GolemService.changeProfession(helper.getLevel(), golem, CopperGolemsRevamped.id(first));
+			golem.getNavigation().moveTo(golem.getX(), golem.getY(), golem.getZ() + 1, 1.0);
+		}
+		GolemService.changeProfession(helper.getLevel(), golem, ChestSorterProfession.ID);
+		helper.succeedWhen(() -> {
+			int inFrom = 0;
+			for (int i = 0; i < from.getContainerSize(); i++) inFrom += from.getItem(i).getCount();
+			int inTo = 0;
+			for (int i = 0; i < to.getContainerSize(); i++) inTo += to.getItem(i).getCount();
+			int expected = 10 + (destHasItem ? 1 : 0);
+			helper.assertTrue(inFrom == 0 && inTo == expected, "source " + inFrom + ", destination " + inTo
+				+ ", golem hand " + golem.getMainHandItem() + ", cooldown "
+				+ golem.getBrain().getMemory(MemoryModuleType.TRANSPORT_ITEMS_COOLDOWN_TICKS));
+		});
+	}
+
+	@GameTest(maxTicks = 1200)
+	public void sortsFreshGolem(GameTestHelper helper) {
+		sortScenario(helper, Blocks.COPPER_CHEST.weathering().unaffected(), null, false);
+	}
+
+	@GameTest(maxTicks = 1200)
+	public void sortsWaxedOxidizedSourceIntoMatchingChest(GameTestHelper helper) {
+		sortScenario(helper, Blocks.COPPER_CHEST.waxed().oxidized(), null, true);
+	}
+
+	@GameTest(maxTicks = 1200)
+	public void sortsAfterBeingTransporter(GameTestHelper helper) {
+		sortScenario(helper, Blocks.COPPER_CHEST.weathering().unaffected(), "transporter", false);
 	}
 }
