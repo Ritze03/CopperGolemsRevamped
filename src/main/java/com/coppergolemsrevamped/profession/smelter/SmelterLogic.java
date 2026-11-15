@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.profession.smelter;
 
 import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.core.GolemData;
+import com.coppergolemsrevamped.core.GolemXp;
 import com.coppergolemsrevamped.mixin.AbstractFurnaceAccessor;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -25,6 +26,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.util.Mth;
+import net.minecraft.world.item.crafting.AbstractCookingRecipe;
 import net.minecraft.world.item.crafting.BlastingRecipe;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.item.crafting.RecipeType;
@@ -48,8 +51,8 @@ public final class SmelterLogic {
 
 	static final int SLOTS = SmelterProfession.SLOTS;
 	static final int FURNACES = SmelterProfession.MAX_FURNACES;
-	/** Last slot: shared overflow for results that do not fit their furnace's buffer. Always delivered, never fed. */
-	static final int OVERFLOW = SmelterProfession.OVERFLOW;
+	/** Last slot: the XP bottles the golem makes from its stored XP. Always delivered (kind RESULT), never fed. */
+	static final int XP_SLOT = SmelterProfession.XP_SLOT;
 	static final int RETRY_TICKS = 40;
 	static final int ACTION_TICKS = 10;
 	static final int RESCAN_TICKS = 100;
@@ -192,7 +195,7 @@ public final class SmelterLogic {
 	private static @Nullable Kind kindOf(Env e, int i) {
 		ItemStack st = slot(e, i);
 		if (st.isEmpty()) return null;
-		if (i == OVERFLOW) return Kind.RESULT;
+		if (i == XP_SLOT) return Kind.RESULT; // bottles, or an item an older version left here
 		Kind k = e.s.kind[i];
 		if (k != null) return k;
 		if (smeltsAnywhere(e.level, st)) return Kind.RAW;
@@ -429,10 +432,9 @@ public final class SmelterLogic {
 		return !fs.isEmpty() && !isFuel(fs);
 	}
 
-	/** Buffer a result of furnace i goes to: its own, else the shared overflow slot; -1 when neither has room. */
+	/** Buffer a result of furnace i goes to: its own; -1 when it has no room (the furnace keeps it until the next delivery). */
 	private static int resultSlot(Env e, int i, ItemStack incoming) {
-		if (resultRoom(e, i, incoming)) return i;
-		return resultRoom(e, OVERFLOW, incoming) ? OVERFLOW : -1;
+		return resultRoom(e, i, incoming) ? i : -1;
 	}
 
 	private static boolean collectable(Env e, int i) {
@@ -524,6 +526,7 @@ public final class SmelterLogic {
 			data.items = grown;
 			GolemData.save(golem, data);
 		}
+		if (GolemXp.fillSlot(data, XP_SLOT)) GolemData.save(golem, data);
 		long now = level.getGameTime();
 		s.skip.values().removeIf(until -> until <= now);
 		BlockPos in = data.assignments.get(SmelterProfession.INPUT);
@@ -674,9 +677,8 @@ public final class SmelterLogic {
 	}
 
 	/**
-	 * Takes the result (or the fuel slot's leftover, e.g. the empty bucket of lava) of furnace i into its buffer and pops
-	 * the furnace's stored XP at the furnace. The map is cleared afterwards (vanilla does that only for a player), so the XP
-	 * is paid once and the map cannot grow forever.
+	 * Takes the result (or the fuel slot's leftover, e.g. the empty bucket of lava) of furnace i into its buffer and moves
+	 * the furnace's stored XP into the golem's store ({@link #takeFurnaceXp}).
 	 */
 	private static void collect(Env e, int i) {
 		AbstractFurnaceBlockEntity f = usable(e, i);
@@ -698,10 +700,30 @@ public final class SmelterLogic {
 		ItemStack rest = src.copyWithCount(src.getCount() - n);
 		f.setItem(idx, rest.isEmpty() ? ItemStack.EMPTY : rest);
 		if (result) {
-			f.getRecipesToAwardAndPopExperience(e.level, Vec3.atCenterOf(f.getBlockPos()));
-			((AbstractFurnaceAccessor) f).cgr$recipesUsed().clear();
+			GolemXp.add(e.data, takeFurnaceXp(e.level, f));
 		}
 		f.setChanged();
+	}
+
+	/**
+	 * The XP the furnace has stored, computed like vanilla's {@code createExperience} (recipe XP x count, the fraction is
+	 * rounded up with that probability), then the map is cleared (vanilla does that only for a player), so it is paid once
+	 * and cannot grow forever. No orbs are spawned: the golem keeps the XP ({@link GolemXp}).
+	 */
+	private static int takeFurnaceXp(ServerLevel level, AbstractFurnaceBlockEntity f) {
+		var used = ((AbstractFurnaceAccessor) f).cgr$recipesUsed();
+		int total = 0;
+		for (var en : used.reference2IntEntrySet()) {
+			var holder = level.recipeAccess().byKey(en.getKey());
+			if (holder.isEmpty() || !(holder.get().value() instanceof AbstractCookingRecipe r)) continue;
+			float xp = en.getIntValue() * r.experience();
+			int whole = Mth.floor(xp);
+			float frac = Mth.frac(xp);
+			if (frac != 0.0F && level.getRandom().nextFloat() < frac) whole++;
+			total += whole;
+		}
+		used.clear();
+		return total;
 	}
 
 	/** Moves the stacks at {@code idxs} into {@code dst}; what does not fit stays in its slot (nothing lost). */

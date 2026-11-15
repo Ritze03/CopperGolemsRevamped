@@ -49,7 +49,7 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | `CopperGolemsRevamped` | Mod entrypoint; initialises attachments, chunk loader, professions, assign mode |
 | `core/` | `GolemData` attachment, `ModAttachments`, `GolemService` (profession change, spawn chest prefill, auto profession name, item hand-over to the player, drops), `GolemTicker` (brain gate) |
 | `chunk/` | `GolemChunkLoader`: persistent chunk ticket per profession golem, see [chunk-loading.md](../features/chunk-loading.md) |
-| `mixin/` | `AbstractFurnaceAccessor`: furnace stored-XP map for the Smelter; `CopperGolemMixin`: interact, brain gate, death and statue drops; `EntityMixin`: lets the Butcher take a struck animal's death loot into its carry; `GolemSpawnMixin`: records the spawn copper chest (build pattern); `TransportItemsBetweenContainersMixin`: Chest Sorter visited-chest limit |
+| `mixin/` | `AbstractFurnaceAccessor`: furnace stored-XP map for the Smelter; `AnimalMixin`: Butcher takes the breeding XP; `EntityPushMixin` + `LivingEntityPushMixin`: animals do not push a Butcher; `CopperGolemMixin`: interact, brain gate, death and statue drops; `EntityMixin`: lets the Butcher take a struck animal's death loot into its carry; `GolemSpawnMixin`: records the spawn copper chest (build pattern); `TransportItemsBetweenContainersMixin`: Chest Sorter visited-chest limit |
 | `profession/` | `Profession` declaration record, `Professions` registry, `ProfessionHelp` (help texts) |
 | `profession/transporter/` | Transporter declaration and work loop |
 | `profession/chest_sorter/` | Chest Sorter declaration and visited-chest limit, see [chest-sorter.md](../features/chest-sorter.md) |
@@ -89,6 +89,7 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change Lumber tree detection, the break rule or the felling step: `profession/lumber/LumberLogic:detectTree`, `LumberLogic:breakAllowed`, `LumberLogic:breakBlock`, `LumberLogic:breakTicks`, see [lumber.md](../features/lumber.md).
 - Change the Butcher animal rules, the 8-adult / breeding caps or how Looting is applied: `profession/butcher/ButcherLogic:FARM_ANIMALS`, `ButcherLogic:isProtected`, `ButcherLogic:surplus`, `ButcherLogic:breedAllowed`, `ButcherLogic:strike`, `ButcherLogic:Phase` (the cycle), `ButcherLogic:capture` + `mixin/EntityMixin` (drops into the carry), see [butcher.md](../features/butcher.md).
 - Change the Crafter recipe matching or loop: `profession/crafter/CrafterLogic:plan`, `CrafterLogic:decide`, see [crafter.md](../features/crafter.md).
+- Change stored XP, the 7-XP bottle conversion or where XP is earned and delivered: `core/GolemXp`, `GolemData:xp`, `SmelterLogic:takeFurnaceXp`, `ButcherLogic:takeBreedingXp`, see [xp-bottles.md](../features/xp-bottles.md).
 - Change the Smelter furnace scan, split or never-block rules: `profession/smelter/SmelterLogic:rescan`, `SmelterLogic:planFetch`, `SmelterLogic:pick`, see [smelter.md](../features/smelter.md).
 - Change the Chest Sorter chest limit: `profession/chest_sorter/ChestSorterProfession:visitedLimit`, mixin `mixin/TransportItemsBetweenContainersMixin`.
 - Change death/statue drops: `core/GolemService:dropAll`, hooks in `mixin/CopperGolemMixin`.

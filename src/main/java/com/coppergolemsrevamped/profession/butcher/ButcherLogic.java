@@ -3,6 +3,7 @@ package com.coppergolemsrevamped.profession.butcher;
 import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.core.GolemData;
+import com.coppergolemsrevamped.core.GolemXp;
 import com.coppergolemsrevamped.profession.cleaner.CleanerLogic;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -294,11 +295,12 @@ public final class ButcherLogic {
 	 */
 	private static boolean deliver(ServerLevel level, CopperGolem golem, GolemData data, State s, BlockPos outPos, Container out) {
 		NonNullList<ItemStack> carry = carryView(data);
-		if (TransporterLogic.isEmpty(carry)) return false;
+		if (TransporterLogic.isEmpty(carry) && GolemXp.bottlesReady(data) <= 0) return false;
 		s.doing = "Delivering to the output chest";
 		if (!Interact.approach(level, golem, outPos, s.walk, SPEED)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
 		boolean moved = TransporterLogic.insertAll(carry, out);
+		moved |= GolemXp.deliver(data, out);
 		if (moved) {
 			Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
 			s.worked = true;
@@ -391,16 +393,25 @@ public final class ButcherLogic {
 
 	// ---- culling --------------------------------------------------------------------------------------------------
 
+	/**
+	 * Victim order: the animal already being hit, then adults on a breeding cooldown ({@code getAge() > 0}), then the
+	 * nearest. Why the cooldown ones: they cannot breed for 5 minutes, so culling them keeps the breedable adults in the pen.
+	 */
+	static boolean betterVictim(CopperGolem golem, State s, Animal a, Animal than) {
+		boolean ae = a.getUUID().equals(s.engaged), te = than.getUUID().equals(s.engaged);
+		if (ae != te) return ae;
+		boolean ac = a.getAge() > 0, tc = than.getAge() > 0;
+		if (ac != tc) return ac;
+		return golem.distanceToSqr(a) < golem.distanceToSqr(than);
+	}
+
 	private static boolean cull(ServerLevel level, CopperGolem golem, GolemData data, State s, Map<EntityType<?>, Herd> herds, long now) {
 		Animal target = null;
 		Herd herd = null;
 		for (Herd h : herds.values()) {
 			if (h.surplus() <= 0) continue;
 			for (Animal a : cullable(h, s)) {
-				boolean engaged = a.getUUID().equals(s.engaged);
-				boolean better = target == null || (engaged && !target.getUUID().equals(s.engaged))
-					|| (!target.getUUID().equals(s.engaged) && golem.distanceToSqr(a) < golem.distanceToSqr(target));
-				if (better) {
+				if (target == null || betterVictim(golem, s, a, target)) {
 					target = a;
 					herd = h;
 				}
@@ -460,6 +471,7 @@ public final class ButcherLogic {
 			golem.setItemSlot(EquipmentSlot.MAINHAND, prev);
 		}
 		storeCaptured(level, data, target);
+		if (!target.isAlive()) GolemXp.add(data, target.getExperienceReward(level, golem)); // as if a player had killed it
 		s.strikes++;
 		Weapon weapon = tool.get(DataComponents.WEAPON);
 		tool.hurtAndBreak(weapon == null ? 1 : weapon.itemDamagePerAttack(), level, null, broken -> {});
@@ -498,6 +510,49 @@ public final class ButcherLogic {
 		for (int i = 0; i < tmp.getContainerSize(); i++) {
 			if (!tmp.getItem(i).isEmpty()) victim.spawnAtLocation(level, tmp.getItem(i));
 		}
+	}
+
+	// ---- one-sided push ---------------------------------------------------------------------------------------------
+
+	/** The Butcher that must not be moved by the push in progress (set by {@code EntityPushMixin}). Server thread only. */
+	public static @Nullable Entity pushImmune;
+
+	/** The Butcher of the pair when one of {@code a}, {@code b} is a Butcher golem and the other an {@link Animal}, else null. */
+	public static @Nullable Entity butcherAmongAnimal(Entity a, Entity b) {
+		if (a instanceof CopperGolem g && b instanceof Animal && isButcher(g)) return g;
+		if (b instanceof CopperGolem g && a instanceof Animal && isButcher(g)) return g;
+		return null;
+	}
+
+	private static boolean isButcher(CopperGolem g) {
+		return ButcherProfession.ID.equals(GolemData.get(g).profession);
+	}
+
+	// ---- breeding XP -------------------------------------------------------------------------------------------------
+
+	/** An animal this golem put in love; remembered so the breeding orbs can be taken for it. */
+	private record Fed(CopperGolem golem, long until) {}
+
+	/** A little longer than love mode lasts (600 ticks); entries also go when used. Server thread only. */
+	private static final int LOVE_TRACK_TICKS = 1200;
+	private static final Map<UUID, Fed> fedBy = new HashMap<>();
+
+	/**
+	 * Called by {@code AnimalMixin} where vanilla would spawn the breeding orb for {@code mother} and {@code father}. True
+	 * when one of them was fed by a Butcher: the orb's XP goes to that golem's store and no orb is spawned.
+	 * Why: vanilla spawns the 1-7 XP orb on breeding even without a player (only the advancement needs one).
+	 */
+	public static boolean takeBreedingXp(ServerLevel level, Animal a, Animal b, int xp) {
+		long now = level.getGameTime();
+		fedBy.values().removeIf(f -> f.until < now);
+		Fed f = fedBy.remove(a.getUUID());
+		Fed g = fedBy.remove(b.getUUID());
+		if (f == null) f = g;
+		if (f == null || f.golem.isRemoved()) return false;
+		GolemData d = GolemData.get(f.golem);
+		GolemXp.add(d, xp);
+		GolemData.save(f.golem, d);
+		return true;
 	}
 
 	// ---- breeding -------------------------------------------------------------------------------------------------
@@ -552,6 +607,7 @@ public final class ButcherLogic {
 		food.shrink(1);
 		if (food.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
 		a.setInLove(null);
+		fedBy.put(a.getUUID(), new Fed(golem, level.getGameTime() + LOVE_TRACK_TICKS));
 		s.chasing = null;
 		s.cooldown = AFTER_ACTION_TICKS;
 		GolemData.save(golem, data);

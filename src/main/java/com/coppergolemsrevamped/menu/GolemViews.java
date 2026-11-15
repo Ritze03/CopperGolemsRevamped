@@ -143,6 +143,10 @@ final class GolemViews {
 			row.add(GolemIcon.plain(hand.getItem(), Component.literal("Holding " + hand.getHoverName().getString()),
 				lore("The golem carries this itself", "Read-only"), false));
 		}
+		if (data.xp > 0) {
+			row.add(GolemIcon.plain(Items.EXPERIENCE_BOTTLE, Component.literal("Stored XP: " + data.xp),
+				lore("Delivered as bottles of 7 XP"), false));
+		}
 		row.add(GolemIcon.plain(Items.COMPASS, Component.literal(ProfessionStatus.next(m.golem(), data, prof)), List.of(), false));
 		int[] cols = statusColumns(row.size());
 		for (int k = 0; k < row.size(); k++) set(cells, 3, cols[k], icon(row.get(k)));

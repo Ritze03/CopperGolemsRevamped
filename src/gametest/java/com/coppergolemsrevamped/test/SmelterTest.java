@@ -37,25 +37,25 @@ public class SmelterTest {
 	private static final BlockPos FUEL_POS = new BlockPos(3, 1, 1);
 	private static final BlockPos OUT_POS = new BlockPos(6, 1, 1);
 
-	private static int count(ChestBlockEntity chest, Item item) {
+	static int count(ChestBlockEntity chest, Item item) {
 		int n = 0;
 		for (int i = 0; i < chest.getContainerSize(); i++) if (chest.getItem(i).is(item)) n += chest.getItem(i).getCount();
 		return n;
 	}
 
-	private static int total(ChestBlockEntity chest) {
+	static int total(ChestBlockEntity chest) {
 		int n = 0;
 		for (int i = 0; i < chest.getContainerSize(); i++) n += chest.getItem(i).getCount();
 		return n;
 	}
 
-	private static int held(CopperGolem g, Item item) {
+	static int held(CopperGolem g, Item item) {
 		int n = 0;
 		for (ItemStack s : GolemData.get(g).items) if (s.is(item)) n += s.getCount();
 		return n;
 	}
 
-	private static int heldTotal(CopperGolem g) {
+	static int heldTotal(CopperGolem g) {
 		int n = 0;
 		for (ItemStack s : GolemData.get(g).items) n += s.getCount();
 		return n;
@@ -66,7 +66,7 @@ public class SmelterTest {
 	}
 
 	/** The three chests, a Smelter golem and the area (0,1,5)..(7,y1,6); furnaces are placed by the test. */
-	private static CopperGolem base(GameTestHelper helper, int areaTopY, ChestBlockEntity[] chests) {
+	static CopperGolem base(GameTestHelper helper, int areaTopY, ChestBlockEntity[] chests) {
 		floor(helper);
 		helper.setBlock(IN_POS, Blocks.CHEST);
 		helper.setBlock(FUEL_POS, Blocks.CHEST);
@@ -86,23 +86,23 @@ public class SmelterTest {
 		return golem;
 	}
 
-	private static AbstractFurnaceBlockEntity furnace(GameTestHelper helper, BlockPos pos, Block type) {
+	static AbstractFurnaceBlockEntity furnace(GameTestHelper helper, BlockPos pos, Block type) {
 		helper.setBlock(pos, type);
 		return helper.getBlockEntity(pos, AbstractFurnaceBlockEntity.class);
 	}
 
-	private static void addFuel(ChestBlockEntity fuel, int coal) {
+	static void addFuel(ChestBlockEntity fuel, int coal) {
 		fuel.setItem(0, new ItemStack(Items.COAL, coal));
 	}
 
-	private static double orbValue(GameTestHelper helper) {
+	static double orbValue(GameTestHelper helper) {
 		AABB box = new AABB(helper.absoluteVec(new Vec3(-1, 0, -1)), helper.absoluteVec(new Vec3(9, 8, 9)));
 		double v = 0;
 		for (ExperienceOrb o : helper.getLevel().getEntitiesOfClass(ExperienceOrb.class, box)) v += o.getValue();
 		return v;
 	}
 
-	/** 3 furnaces, 24 ore: 8 each, 24 ingots arrive, XP popped and the stored-XP map cleared. */
+	/** 3 furnaces, 24 ore: 8 each, 24 ingots arrive, the XP is kept (no orbs) and the stored-XP map cleared. */
 	@GameTest(maxTicks = 3800)
 	public void evenSplitAcrossThreeFurnaces(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
@@ -119,7 +119,9 @@ public class SmelterTest {
 		helper.succeedWhen(() -> {
 			helper.assertTrue(count(c[2], Items.IRON_INGOT) == 24, "ingots in the output chest: " + count(c[2], Items.IRON_INGOT));
 			helper.assertTrue(max[0] == 8 && max[1] == 8 && max[2] == 8, "each furnace gets 8, saw " + max[0] + "," + max[1] + "," + max[2]);
-			helper.assertTrue(orbValue(helper) >= 10, "XP popped: " + orbValue(helper));
+			helper.assertTrue(orbValue(helper) == 0, "no orbs: " + orbValue(helper));
+			int xp = GolemData.get(golem).xp + 7 * count(c[2], Items.EXPERIENCE_BOTTLE);
+			helper.assertTrue(xp >= 10, "XP kept (24 ore, about 17): " + xp);
 			helper.assertTrue(heldTotal(golem) == 0 && total(c[0]) == 0, "nothing left over");
 			for (int i = 0; i < 3; i++) {
 				helper.assertTrue(((com.coppergolemsrevamped.mixin.AbstractFurnaceAccessor) f[i]).cgr$recipesUsed().isEmpty(), "stored XP map cleared " + i);
@@ -180,6 +182,48 @@ public class SmelterTest {
 			helper.assertTrue(seen[1], "the ore went into the furnace");
 			helper.assertTrue(!seen[3], "the ore must never enter the smoker");
 			helper.assertTrue(heldTotal(golem) == 0, "golem still holds " + heldTotal(golem));
+		});
+	}
+
+
+	/** Blast furnace + furnace, ore and beef: the ore reaches the blast furnace, the beef never does, all of it is cooked and delivered. */
+	@GameTest(maxTicks = 3000)
+	public void blastFurnaceAndFurnaceSplit(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		AbstractFurnaceBlockEntity blast = furnace(helper, new BlockPos(1, 1, 5), Blocks.BLAST_FURNACE);
+		AbstractFurnaceBlockEntity fur = furnace(helper, new BlockPos(3, 1, 5), Blocks.FURNACE);
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 8));
+		c[0].setItem(1, new ItemStack(Items.BEEF, 4));
+		addFuel(c[1], 64);
+		boolean[] seen = new boolean[4]; // blast ore, blast beef, furnace ore, furnace beef
+		helper.onEachTick(() -> {
+			seen[0] |= blast.getItem(0).is(Items.IRON_ORE);
+			seen[1] |= blast.getItem(0).is(Items.BEEF);
+			seen[2] |= fur.getItem(0).is(Items.IRON_ORE);
+			seen[3] |= fur.getItem(0).is(Items.BEEF);
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) == 8 && count(c[2], Items.COOKED_BEEF) == 4,
+				"output: " + count(c[2], Items.IRON_INGOT) + " iron, " + count(c[2], Items.COOKED_BEEF) + " beef");
+			helper.assertTrue(seen[0], "the ore went into the blast furnace");
+			helper.assertTrue(seen[2], "the ore was shared with the furnace");
+			helper.assertTrue(!seen[1], "beef must never enter the blast furnace");
+			helper.assertTrue(seen[3], "the beef went into the furnace");
+		});
+	}
+
+	/** An area with a blast furnace only: iron ore is smelted end to end (fuel, collect, deliver). */
+	@GameTest(maxTicks = 2500)
+	public void blastFurnaceAloneWorksEndToEnd(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		furnace(helper, new BlockPos(2, 1, 5), Blocks.BLAST_FURNACE);
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 8));
+		addFuel(c[1], 16);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(c[2], Items.IRON_INGOT) == 8, "ingots: " + count(c[2], Items.IRON_INGOT));
+			helper.assertTrue(total(c[0]) == 0, "input chest drained");
 		});
 	}
 
@@ -398,7 +442,7 @@ public class SmelterTest {
 		});
 	}
 
-	/** Inventory tab: label at (2,4) plus one full row of 9 buffer slots at row 3, columns 0..8. */
+	/** Inventory tab: label at (2,4) plus one row of 9 slots at row 3: 8 buffers, then the take-only XP bottle slot (label at (2,8)). */
 	@GameTest
 	@SuppressWarnings("removal")
 	public void inventoryTabIsOneFullRowOfNine(GameTestHelper helper) {
@@ -407,9 +451,12 @@ public class SmelterTest {
 		ServerPlayer p = helper.makeMockServerPlayerInLevel();
 		p.setPos(golem.position());
 		GolemMenu menu = new GolemMenu(1, p.getInventory(), golem, Tab.INVENTORY);
-		for (int col = 0; col < 9; col++) {
+		for (int col = 0; col < 8; col++) {
 			helper.assertTrue(menu.slots.get(27 + col).mayPlace(new ItemStack(Items.STONE)), "buffer slot at column " + col);
 		}
+		helper.assertTrue(!menu.slots.get(27 + 8).mayPlace(new ItemStack(Items.EXPERIENCE_BOTTLE)), "the XP slot is take-only");
+		ItemStack xpLabel = menu.slots.get(2 * 9 + 8).getItem();
+		helper.assertTrue(xpLabel.is(Items.EXPERIENCE_BOTTLE) && xpLabel.getHoverName().getString().equals("XP bottles"), "label at (2,8) " + xpLabel);
 		for (int col = 0; col < 9; col++) {
 			helper.assertTrue(!menu.slots.get(18 + col).mayPlace(new ItemStack(Items.STONE)), "no slot above the row at column " + col);
 		}

@@ -38,8 +38,20 @@ is culled (`ButcherLogic:surplus`). Why per kind: the user's wording ("leave at 
 per kind is the lead's default (a mixed pen would otherwise lose a whole species). Why protected animals do not count: a
 named cow is a pet, not part of the herd, so the herd still keeps 8 killable-class adults next to it.
 
-Kill order: the nearest surplus adult to the golem first (cheapest walking). An animal being hit stays the target until it
-dies, as long as the kind still has a surplus.
+Kill order (`ButcherLogic:betterVictim`): the animal already being hit, then adults on a breeding cooldown (`getAge() > 0`
+for an adult), then the nearest to the golem. Why the cooldown ones first (user request: "always prioritize unbreedable
+animals"): they cannot breed for 5 minutes, so culling them keeps the breedable adults in the pen. The count rule (keep 8)
+and every exclusion are unchanged. An animal being hit stays the target until it dies, as long as the kind still has a surplus.
+
+## Pushing
+
+The Butcher only pushes animals away; animals do not push it (user request: "He shouldn't be pushed by them. Players should
+still be able to push him"). Players and non-animal entities push it as in vanilla. `Entity:push(Entity)` moves both
+entities, each only if its `isPushable()` holds, and both directions (the animal's `pushEntities` and the golem's) end in it.
+`mixin/EntityPushMixin` marks the Butcher in `ButcherLogic.pushImmune` for the duration of a push between a Butcher and an
+`Animal` (`ButcherLogic:butcherAmongAnimal`), and `mixin/LivingEntityPushMixin` makes `isPushable` false for that entity
+while marked, so only the animal gets its push. Why not make the golem never pushable: players must still push it. Tests:
+`crowdDoesNotMoveTheButcher` (6 cows, frozen golem moves < 0.05), `pushIsOneSidedOnlyAgainstAnimals`.
 
 ## Weapon, hits and Looting
 
@@ -67,8 +79,9 @@ Why not just rely on the display copy: stale after a swap. Why not keep the real
 showing a display copy that can never drop (death or statue conversion would drop a real tool).
 Test hooks: `ButcherLogic:lastLooting` (the level read at the last strike), `handWasReal`, `strikes`.
 
-No XP: `dropExperience` needs `lastHurtByPlayerMemoryTime > 0`, which a golem kill never sets, so animals killed by the
-golem give no orbs. Breeding orbs from vanilla's breed goal stay on the ground and are ignored.
+XP: `dropExperience` needs `lastHurtByPlayerMemoryTime > 0`, which a golem kill never sets, so a kill gives no orbs. The
+golem adds the victim's `getExperienceReward` to its XP store itself, and the breeding orb is taken too; the store is paid
+out as XP bottles, see [xp-bottles.md](xp-bottles.md).
 
 ## Breeding
 
@@ -103,7 +116,7 @@ only `GolemData`. `ButcherLogic:Phase`: **BREED -> KILL -> DELIVER -> (WAIT) -> 
    cull the nearest surplus adult, again and again, until none is left or the carry has fewer than `MIN_FREE_CARRY` (2)
    free slots (one kill drops up to two kinds, leather and beef). No weapon: skipped. Why the room rule: the drops go into
    the carry, so a kill without room would drop them on the ground.
-3. **DELIVER** (`ButcherLogic:deliver`): whenever the carry holds anything, even a little, walk to the output chest
+3. **DELIVER** (`ButcherLogic:deliver`): whenever the carry holds anything or whole XP bottles are ready, even a little, walk to the output chest
    (`Interact:approach`, `insertAll`, lid animation) once. Leftovers stay in the carry when the output is full.
    KILL always ends in DELIVER, so a kill is never followed by BREED directly.
 4. **WAIT**: when the whole cycle did nothing (nothing fed or fetched, no kill, nothing delivered) the golem idles
@@ -113,7 +126,7 @@ only `GolemData`. `ButcherLogic:Phase`: **BREED -> KILL -> DELIVER -> (WAIT) -> 
 
 Never blocks: no weapon still breeds, no food still kills, a full output keeps the carry.
 
-No ground pickup: the old separate pickup step is gone. Stray drops in the area (breeding XP orbs, items the player threw
+No ground pickup: the old separate pickup step is gone. Stray drops in the area (items the player threw
 in) are left alone: the Cleaner exists for that, and walking after items would break the cycle. Why not "during DELIVER's
 walk": it is not on the path, so it is not trivial.
 

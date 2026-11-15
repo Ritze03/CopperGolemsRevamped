@@ -16,6 +16,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.ChestBlock;
@@ -117,6 +118,19 @@ public final class GolemService {
 	}
 
 	private static void drop(ServerLevel level, CopperGolem golem, GolemData data, @Nullable ServerPlayer player) {
+		// stored XP: whole bottles like the items, the remainder below one bottle as orbs (xp-bottles.md)
+		for (ItemStack s : GolemXp.takeBottles(data)) {
+			if (player != null) {
+				give(player, s);
+				if (!s.isEmpty()) player.spawnAtLocation(level, s);
+			} else {
+				golem.spawnAtLocation(level, s);
+			}
+		}
+		if (data.xp > 0) {
+			ExperienceOrb.award(level, player != null ? player.position() : golem.position(), data.xp);
+			data.xp = 0;
+		}
 		for (int i = 0; i < data.items.size(); i++) {
 			ItemStack s = data.items.get(i);
 			data.items.set(i, ItemStack.EMPTY);

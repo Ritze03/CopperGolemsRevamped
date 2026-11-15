@@ -44,7 +44,7 @@ public class ButcherTest {
 	private static final BlockPos FOOD = new BlockPos(0, 1, 3);
 	private static final BlockPos OUT = new BlockPos(0, 1, 4);
 
-	private static final class Pen {
+	static final class Pen {
 		ChestBlockEntity tools, food, out;
 		CopperGolem golem;
 		GolemData data;
@@ -52,7 +52,7 @@ public class ButcherTest {
 		int placed;
 	}
 
-	private static Pen pen(GameTestHelper helper, boolean withFoodChest) {
+	static Pen pen(GameTestHelper helper, boolean withFoodChest) {
 		Pen p = new Pen();
 		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
 		for (int i = 0; i < 8; i++) {
@@ -81,7 +81,7 @@ public class ButcherTest {
 		return p;
 	}
 
-	private static <T extends Animal> T animal(GameTestHelper helper, Pen p, EntityType<T> type, boolean baby) {
+	static <T extends Animal> T animal(GameTestHelper helper, Pen p, EntityType<T> type, boolean baby) {
 		int i = p.placed++;
 		T a = helper.spawn(type, new BlockPos(1 + i % 5, 1, 1 + (i / 5) % 5));
 		a.setPersistenceRequired();
@@ -89,7 +89,7 @@ public class ButcherTest {
 		return a;
 	}
 
-	private static <T extends Animal> List<T> animals(GameTestHelper helper, Pen p, Class<T> cls) {
+	static <T extends Animal> List<T> animals(GameTestHelper helper, Pen p, Class<T> cls) {
 		return helper.getLevel().getEntitiesOfClass(cls, p.all, Animal::isAlive);
 	}
 
@@ -101,13 +101,13 @@ public class ButcherTest {
 		return l.stream().filter(Animal::isBaby).count();
 	}
 
-	private static int count(ChestBlockEntity chest, Item item) {
+	static int count(ChestBlockEntity chest, Item item) {
 		int n = 0;
 		for (int i = 0; i < chest.getContainerSize(); i++) if (chest.getItem(i).is(item)) n += chest.getItem(i).getCount();
 		return n;
 	}
 
-	private static int total(ChestBlockEntity chest) {
+	static int total(ChestBlockEntity chest) {
 		int n = 0;
 		for (int i = 0; i < chest.getContainerSize(); i++) n += chest.getItem(i).getCount();
 		return n;
@@ -126,7 +126,7 @@ public class ButcherTest {
 		return sword;
 	}
 
-	private static void setSlot(Pen p, int slot, ItemStack s) {
+	static void setSlot(Pen p, int slot, ItemStack s) {
 		p.data.items.set(slot, s);
 		GolemData.save(p.golem, p.data);
 	}
@@ -153,7 +153,7 @@ public class ButcherTest {
 			helper.assertTrue(p.data.items.subList(ButcherProfession.CARRY_FROM, p.data.items.size()).stream().allMatch(ItemStack::isEmpty), "carry not delivered");
 			int beef = count(p.out, Items.BEEF), leather = count(p.out, Items.LEATHER);
 			helper.assertTrue(beef >= 4, "beef (at least one per kill): " + beef);
-			helper.assertTrue(beef + leather == total(p.out), "unexpected items in the output chest");
+			helper.assertTrue(beef + leather + count(p.out, Items.EXPERIENCE_BOTTLE) == total(p.out), "unexpected items in the output chest");
 			// the weapon is in the golem's slot exactly once, nowhere else
 			helper.assertTrue(p.data.items.get(ButcherProfession.TOOL_SLOT).is(Items.IRON_SWORD), "no sword in the tool slot");
 			helper.assertTrue(total(p.tools) == 0, "the tool chest still holds items");
@@ -445,6 +445,81 @@ public class ButcherTest {
 			&& !ButcherLogic.isFood(new ItemStack(Items.COBBLESTONE)), "food filter");
 		helper.assertTrue(p.assigns().size() == 4 && p.assigns().get(0).maxSize() == 16, "assigns: area (16), tools, food, output");
 		helper.assertTrue(!p.help().isEmpty() && p.assigns().stream().noneMatch(a -> a.help().isEmpty()), "help texts");
+		helper.succeed();
+	}
+
+	// ---- victim order: breeding cooldown first -------------------------------------------------------------------------
+
+	/** 10 adult cows, 3 on a breeding cooldown: exactly 2 are culled and both are cooldown cows (they cannot breed anyway). */
+	@GameTest(maxTicks = 3000)
+	public void cooldownAnimalsAreCulledFirst(GameTestHelper helper) {
+		Pen p = pen(helper, false);
+		setSlot(p, ButcherProfession.TOOL_SLOT, new ItemStack(Items.IRON_SWORD));
+		var cows = new java.util.ArrayList<net.minecraft.world.entity.animal.cow.Cow>();
+		for (int i = 0; i < 10; i++) cows.add(animal(helper, p, EntityTypes.COW, false));
+		// the cooldown cows are spawned last (farthest from the golem), so "nearest first" alone would not pick them
+		for (int i = 7; i < 10; i++) cows.get(i).setAge(6000);
+		helper.onEachTick(() -> {
+			for (int i = 0; i < 7; i++) helper.assertTrue(cows.get(i).isAlive(), "a breedable cow was culled before the cooldown ones: " + i);
+		});
+		helper.succeedWhen(() -> {
+			long dead = cows.stream().filter(c -> !c.isAlive()).count();
+			helper.assertTrue(dead == 2, "killed: " + dead);
+			helper.assertTrue(cows.subList(7, 10).stream().filter(c -> !c.isAlive()).count() == 2, "both victims have the cooldown");
+		});
+	}
+
+	// ---- one-sided push --------------------------------------------------------------------------------------------
+
+	/** 6 cows crowd a frozen Butcher: it does not move, the cows are pushed away. */
+	@GameTest(maxTicks = 300)
+	public void crowdDoesNotMoveTheButcher(GameTestHelper helper) {
+		Pen p = pen(helper, false);
+		p.data.frozen = true;
+		GolemData.save(p.golem, p.data);
+		Vec3 start = p.golem.position();
+		var cows = new java.util.ArrayList<net.minecraft.world.entity.animal.cow.Cow>();
+		Vec3 centre = new Vec3(6.5, 1, 6.5);
+		double[][] off = {{0.3, 0}, {-0.3, 0}, {0, 0.3}, {0, -0.3}, {0.25, 0.25}, {-0.25, -0.25}};
+		for (double[] o : off) {
+			var c = helper.spawnWithNoFreeWill(EntityTypes.COW, centre.add(o[0], 0, o[1]));
+			c.setPersistenceRequired();
+			cows.add(c);
+		}
+		Vec3[] cowStart = cows.stream().map(net.minecraft.world.entity.Entity::position).toArray(Vec3[]::new);
+		helper.runAfterDelay(100, () -> {
+			helper.assertTrue(p.golem.position().distanceTo(start) < 0.05, "the Butcher moved " + p.golem.position().distanceTo(start));
+			double maxMoved = 0;
+			for (int i = 0; i < cows.size(); i++) maxMoved = Math.max(maxMoved, cows.get(i).position().distanceTo(cowStart[i]));
+			helper.assertTrue(maxMoved > 0.2, "no cow was pushed, max " + maxMoved);
+			helper.succeed();
+		});
+	}
+
+	/** Pair rules, called directly: an animal does not move a Butcher but is moved; a player moves it; a non-Butcher golem is pushed as in vanilla. */
+	@GameTest(maxTicks = 100)
+	public void pushIsOneSidedOnlyAgainstAnimals(GameTestHelper helper) {
+		Pen p = pen(helper, false);
+		var cow = helper.spawnWithNoFreeWill(EntityTypes.COW, new Vec3(5.5, 1, 6.5));
+		cow.setDeltaMovement(Vec3.ZERO);
+		p.golem.setDeltaMovement(Vec3.ZERO);
+		cow.push(p.golem);
+		helper.assertTrue(p.golem.getDeltaMovement().lengthSqr() == 0, "a cow pushed the Butcher: " + p.golem.getDeltaMovement());
+		helper.assertTrue(cow.getDeltaMovement().lengthSqr() > 0, "the cow was not pushed");
+		cow.setDeltaMovement(Vec3.ZERO);
+		p.golem.push(cow); // the golem's own tick against the cow
+		helper.assertTrue(p.golem.getDeltaMovement().lengthSqr() == 0, "the Butcher was moved by pushing a cow");
+		helper.assertTrue(cow.getDeltaMovement().lengthSqr() > 0, "the cow was not pushed by the Butcher");
+		@SuppressWarnings("removal")
+		net.minecraft.server.level.ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		player.setPos(p.golem.getX() - 0.3, p.golem.getY(), p.golem.getZ());
+		player.push(p.golem);
+		helper.assertTrue(p.golem.getDeltaMovement().lengthSqr() > 0, "a player cannot push the Butcher");
+		var other = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new Vec3(3.5, 1, 3.5));
+		other.setDeltaMovement(Vec3.ZERO);
+		cow.setPos(other.getX() - 0.3, other.getY(), other.getZ());
+		cow.push(other);
+		helper.assertTrue(other.getDeltaMovement().lengthSqr() > 0, "a golem without the Butcher profession is not pushed as in vanilla");
 		helper.succeed();
 	}
 }

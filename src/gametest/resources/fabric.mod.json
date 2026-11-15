@@ -18,7 +18,8 @@
 			"com.coppergolemsrevamped.test.LumberTest",
 			"com.coppergolemsrevamped.test.ChunkLoadTest",
 			"com.coppergolemsrevamped.test.FreezeTest",
-			"com.coppergolemsrevamped.test.SmelterTest"
+			"com.coppergolemsrevamped.test.SmelterTest",
+			"com.coppergolemsrevamped.test.XpTest"
 		],
 		"fabric-client-gametest": [
 			"com.coppergolemsrevamped.test.GolemGuiClientTest",
