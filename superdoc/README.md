@@ -6,6 +6,7 @@ Agent-facing documentation for the project. Start at the overview.
 
 - [architecture/overview.md](architecture/overview.md): start-here hub: big picture, data flow, module map, where to look for X.
 - [architecture/vanilla-copper-golem.md](architecture/vanilla-copper-golem.md): vanilla 26.3 copper golem and Fabric API reference (signatures, mixin targets).
+- [architecture/interaction.md](architecture/interaction.md): `ai/Interact`, shared 1-block reach/stand position and visible chest lids for all professions.
 - [architecture/testing.md](architecture/testing.md): GameTests, how to run them, and the test-count gotcha.
 
 ## Features

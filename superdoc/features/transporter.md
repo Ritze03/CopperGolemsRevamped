@@ -17,15 +17,21 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
 1. Cooldown running: decrement, return.
 2. Either assignment missing, or either block no longer a container: stop navigation, retry in 40 ticks.
 3. Target = A when carry is empty, else B.
-4. Not in reach: `moveTo(target centre, speed 1.0)`, re-path every 20 ticks or when navigation is done.
-   No stuck recovery, it keeps re-pathing.
+4. Not in reach: `Interact:approach` walks to a stand position within 1 block of the chest (2 blocks as
+   fallback if none is reachable), see [../architecture/interaction.md](../architecture/interaction.md).
 5. In reach: stop, look at chest, then
-   - carry empty: `takeAll(A, carry)`; nothing moved (A empty) -> wait 40 ticks; else wait 5.
-   - carry non-empty: `insertAll(carry, B)`; leftovers stay in carry and mean B is full -> wait 40; else wait 5.
+   - carry empty: `takeAll(A, carry)`; nothing moved (A empty) -> wait 40 ticks; else open A's lid
+     (`Interact:openChest`, `TAKE`) and wait 20 (`Interact.OPEN_TICKS`).
+   - carry non-empty: `insertAll(carry, B)`; leftovers stay in carry and mean B is full -> wait 40; else open B's lid
+     (`INSERT`) and wait 20.
 6. `GolemData.save` after each take/insert.
 
-Reach (`TransporterLogic:inReach`): horizontal distance to chest centre <= 2.0 and
-`chestY - golemBlockY` in [-2, +1] (vanilla reach: chest 2 blocks below to 1 above).
+Reach is `Interact:inReach` (1 block, plus diagonal-up and below), fallback `Interact:nearReach` (2 blocks).
+`TransporterLogic:inReach` (horizontal <= 2.0 to the chest centre, `chestY - golemBlockY` in [-2, +1]) is kept
+unchanged for Crafter, Farmer and Lumber until they move to `Interact`.
+
+Why wait 20 ticks after a successful move: the lid is open for `Interact.OPEN_TICKS`, and the golem should stand
+there while it is (otherwise it walks off and the lid closes early on distance).
 
 Why: navigation is driven by the profession itself because the vanilla brain does not tick for a
 Transporter (`GolemTicker` skips it). `PathNavigation` is ticked in `Mob#serverAiStep` before
@@ -43,7 +49,7 @@ Transporter (`GolemTicker` skips it). `PathNavigation` is ticked in `Mob#serverA
   stack size), then fills empty slots; shrinks the source.
 - `insertAll(NonNullList<ItemStack> carry, Container dst): boolean` same into a container
   (`canPlaceItem`, container max stack size respected); remainder stays in `carry`.
-- `containerAt(Level, BlockPos): @Nullable Container`, `inReach(CopperGolem, BlockPos)`, `isEmpty(list)`.
+- `containerAt(Level, BlockPos): @Nullable Container`, `inReach(CopperGolem, BlockPos)` (legacy 2-block), `isEmpty(list)`.
 
 Why a hand-written merge loop instead of `HopperBlockEntity.addItem(from, to, stack, dir)`: that
 method has hopper side effects (cooldown, `from`-sided logic) and needs a source container; the
@@ -57,8 +63,9 @@ count. Non-chest blocks fall back to `level.getBlockEntity(pos) instanceof Conta
 
 ## Not done
 
-Chest open/close animation (`ContainerUser`) and showing the carried item in the golem's hand were
-skipped: the vanilla empty-hand interaction throws the held item, which would duplicate carry.
+Showing the carried item in the golem's hand was skipped: the vanilla empty-hand interaction throws the held
+item, which would duplicate carry. (The chest lid animation is done, see
+[../architecture/interaction.md](../architecture/interaction.md).)
 
 ## Follow mode (`ai/FollowMode:tick`)
 

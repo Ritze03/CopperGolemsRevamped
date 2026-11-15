@@ -43,7 +43,7 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | `profession/crafter/` | Crafter declaration and fetch/craft/deliver loop, see [crafter.md](../features/crafter.md) |
 | `profession/farmer/` | Farmer declaration and till/plant/harvest/deliver loop, see [farmer.md](../features/farmer.md) |
 | `profession/lumber/` | Lumber declaration and fell/replant/deliver loop, see [lumber.md](../features/lumber.md) |
-| `ai/` | `FollowMode` |
+| `ai/` | `FollowMode`; `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md) |
 | `assign/` | `AssignMode`: armed next-click target assignment |
 | `menu/` | `GolemMenu` (chest-type layout built from the profession declaration, click handling), `GolemIcon` (icon stacks), containers over `GolemData`, `GolemMenuOpener` |
 | `src/main/resources/assets/` | Icon models and `minecraft/items/*` overrides; also zipped as the optional resource pack |
@@ -60,6 +60,7 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Add a GUI control or icon: `menu/GolemMenu:buildControls`, `menu/GolemIcon`, see [gui.md](../features/gui.md).
 - Change how targets are assigned or validated: `assign/AssignMode:click`, `assign/AssignMode:matches`.
 - Change when the vanilla brain runs: `core/GolemTicker:tick`.
+- Change where golems stand to interact, or the chest-lid animation: `ai/Interact:approach`, `Interact:standPos`, `Interact:openChest`, see [interaction.md](interaction.md).
 - Change the Transporter's item moving: `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`.
 - Change the Cleaner area or pickup rules: `profession/cleaner/CleanerLogic:box`, `CleanerLogic:tick`.
 - Change the Farmer field, seed or hoe rules: `profession/farmer/FarmerLogic:cells`, `FarmerLogic:isSeed`, `FarmerLogic:tick`, see [farmer.md](../features/farmer.md).

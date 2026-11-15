@@ -27,8 +27,10 @@ Transient per-golem timers in a `WeakHashMap` (same style as the Transporter); p
    skipped: path to the nearest;
    within 1.5 blocks, move as much as fits into carry and discard the entity or leave the remainder on it
    (no duplication). Cooldown 5 ticks.
-3. Else carry non-empty: go to the output chest (`TransporterLogic:inReach`) and `TransporterLogic:insertAll`.
-   Leftovers (chest full) stay and are retried every 40 ticks.
+3. Else carry non-empty: `Interact:approach` to the output chest (1-block stand position, 2-block fallback, see
+   [../architecture/interaction.md](../architecture/interaction.md)), `TransporterLogic:insertAll`, and if anything
+   moved open the chest lid (`Interact:openChest`, `INSERT`) and wait 20 ticks. Leftovers (chest full) stay and are
+   retried every 40 ticks. Item pickup keeps its own 1.5-block range.
 4. Else idle, rescan every 20 ticks.
 
 When only skipped items remain, step 3 delivers the carry (see "Unreachable items").
@@ -36,7 +38,7 @@ When only skipped items remain, step 3 delivers the carry (see "Unreachable item
 Only entities whose centre is inside the box are ever touched: `getEntitiesOfClass` matches any bbox that
 *intersects* the box, so the filter adds `box.contains(e.position())` (otherwise an item up to ~0.125 outside the
 edge was collected). Pickup reuses `TransporterLogic:takeAll` (via a one-slot
-`SimpleContainer`), `insertAll`, `containerAt`, `inReach`, `isEmpty`; nothing is copied.
+`SimpleContainer`), `insertAll`, `containerAt`, `isEmpty`; nothing is copied.
 Items with a pickup delay are skipped so freshly dropped/thrown items are not grabbed mid-air.
 
 ## Unreachable items (give-up rule)
@@ -69,4 +71,5 @@ check; the cost is up to 10 s wasted per unreachable item (then 1 min ignored).
   in the box and the outside entities are unchanged. maxTicks 1200.
 - `areaLimit16`: AREA spec has maxSize 16; `areaFits` true for 16x16, false for 17x16 and 16x17; `box` height
   is Y range + 2 and null when unset.
+- `opensOutputChestWhenDelivering`: the lid is seen open only while the golem is on a 1-block stand position, and is closed at the end.
 - `pickupWorksFromSpawnTick`: golem configured on the spawn tick, diamonds 3+ blocks away (pathing needed) must reach the chest.
