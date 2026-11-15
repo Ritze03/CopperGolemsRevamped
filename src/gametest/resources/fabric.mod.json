@@ -12,6 +12,7 @@
 			"com.coppergolemsrevamped.test.MenuTest",
 			"com.coppergolemsrevamped.test.ChestSorterTest",
 			"com.coppergolemsrevamped.test.CleanerTest",
+			"com.coppergolemsrevamped.test.ButcherTest",
 			"com.coppergolemsrevamped.test.CrafterTest",
 			"com.coppergolemsrevamped.test.FarmerTest",
 			"com.coppergolemsrevamped.test.LumberTest",

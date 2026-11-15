@@ -56,14 +56,19 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `fullCycleOrder`, `twoByTwoSiteWaitsForFourSaplings`,
   `neverStandsInTheSapling`, `stepsOutOfTheSapling`, `breakAllowedRules`, `detectTreeRules`,
   `breakTimeFollowsAxeSpeed`, `chopsInSwingsAndReturnsToIdle`, `toolSwingRulesAndCleanup`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
+- `ButcherTest` (15): `cullsSurplusKeepsEightAdultsAndCalves` (12 cows + 3 calves), `namedAndLeashedAreNeverTouched`, `protectionRules`, `countingRules`,
+  `lootingThreeIsAppliedToTheKill` / `noLootingWithoutTheEnchantment` (the Looting level the loot function reads, and that the real tool is in hand during
+  the hit), `durabilityGoesToTheRealStack`, `wornWeaponIsSwappedNotLost`, `breedsPigsWithCarrots`, `noBreedingAtTheBabyCap`,
+  `noWeaponStillBreedsAndCollects`, `noCullingWithoutCarryRoom`, `fullOutputStopsCullingKeepsTheCarry`, `frozenButcherDoesNothing`,
+  `butcherDeclaration` ([butcher.md](../features/butcher.md)). Each test builds a walled 6x6 pen with the chests in the wall.
 - `FreezeTest` (5): `frozenTransporterMovesNothing` (200 ticks, chests unchanged, golem within 0.5 blocks),
   `unfreezingResumesTheWork`, `freezingClosesAnOpenLidAndStops`, `frozenSurvivesSaveLoad`, `frozenChestSorterDoesNotSort`
   ([freeze.md](../features/freeze.md)).
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 121 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 122 required tests passed` (see Gotchas). Update the numbers here when
+Total: 136 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 137 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

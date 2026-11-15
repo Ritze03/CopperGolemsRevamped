@@ -210,7 +210,7 @@ first; a group declared `noQuickMove` is skipped; the output group accepts nothi
 ## Hand display (golems visibly hold their tool)
 
 `core/GolemHandDisplay:sync`, called by `GolemTicker` every 10 ticks, shows a one-item copy of the first non-empty stack of a
-`shownInHand()` group in the golem's main hand: Lumber and Farmer their tool, Transporter and Cleaner the first carried stack.
+`shownInHand()` group in the golem's main hand: Lumber, Farmer and Butcher their tool, Transporter and Cleaner the first carried stack.
 It is display only and built so it can never duplicate or reach a player:
 
 - The copy carries the `DisplayItems` marker and the hand's drop chance is set to 0 (`Mob#setDropChance`): death and statue
@@ -300,6 +300,7 @@ item, so the pack is optional (decision D18).
 | `profession_crafter`, `assign_crafting_table` | `crafting_table` | crafting table |
 | `profession_farmer` | `iron_hoe` | iron hoe |
 | `profession_lumber` | `iron_axe` | iron axe |
+| `profession_butcher` | `iron_sword` | copper-hilted sword with a ham badge |
 | `follow_on`, `follow_off` | `lead` | lead (glint when on) |
 | `assign_chest`, `assign_input`, `assign_output`, `icon_inventory` | `chest` | chest (its override copies vanilla's special seasonal model) |
 | `assign_block` | `target` | target block |

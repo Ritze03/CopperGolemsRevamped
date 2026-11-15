@@ -1,0 +1,20 @@
+{
+	"model": {
+		"type": "minecraft:select",
+		"property": "minecraft:custom_model_data",
+		"index": 0,
+		"cases": [
+			{
+				"when": "coppergolemsrevamped:profession_butcher",
+				"model": {
+					"type": "minecraft:model",
+					"model": "coppergolemsrevamped:item/gui/profession_butcher"
+				}
+			}
+		],
+		"fallback": {
+			"type": "minecraft:model",
+			"model": "minecraft:item/iron_sword"
+		}
+	}
+}

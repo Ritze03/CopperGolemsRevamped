@@ -401,6 +401,38 @@ def gear():
     return cv
 
 
+HAM = [                                            # 7x7 ham on the bone, the meat badge
+    "..kkk..",
+    ".kQRRk.",
+    "kQRRRRk",
+    "kRReeRk",
+    "kReeeRk",
+    ".kkeek.",
+    "...kFFk",
+]
+
+
+def sword(cv):
+    """Diagonal copper-hilted sword, tip up-right (blade on x + y = 15), outlined dark."""
+    px = {}
+    for x in range(6, 15):
+        px[(x, 15 - x)] = "5"
+        px[(x - 1, 15 - x)] = "4"
+    px[(14, 1)] = "6"
+    for x, y in ((3, 8), (4, 9), (5, 10), (6, 11), (7, 12)):
+        px[(x, y)] = "C"
+    for x, y in ((4, 10), (5, 11), (6, 12)):
+        px[(x, y)] = "c"
+    for x, y, ch in ((4, 11, "W"), (3, 12, "v"), (2, 13, "W"), (1, 14, "C")):
+        px[(x, y)] = ch
+    for (x, y) in list(px):
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if 0 <= nx < 16 and 0 <= ny < 16 and (nx, ny) not in px:
+                cv[ny][nx] = "k"
+    for (x, y), ch in px.items():
+        cv[y][x] = ch
+
+
 def fromrows(rows):
     return [list(r) for r in rows]
 
@@ -451,6 +483,11 @@ def build():
     stamp(cv, 0, 0, AXE_HEAD)
     stamp(cv, 9, 9, LOG)
     icons["profession_lumber"] = cv
+
+    cv = blank()                                   # 7b sword + ham
+    sword(cv)
+    stamp(cv, 9, 9, HAM)
+    icons["profession_butcher"] = cv
 
     for name, col, badge in (("follow_on", "d", CHECK), ("follow_off", "2", CROSS)):
         cv = blank()                               # 8/9 footprints + on/off badge

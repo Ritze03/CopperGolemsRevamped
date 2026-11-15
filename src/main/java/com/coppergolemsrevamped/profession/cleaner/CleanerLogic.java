@@ -157,7 +157,7 @@ public final class CleanerLogic {
 	}
 
 	/** Some part of {@code stack} can go into carry (empty slot or same item with room). */
-	static boolean fits(NonNullList<ItemStack> carry, ItemStack stack) {
+	public static boolean fits(NonNullList<ItemStack> carry, ItemStack stack) {
 		for (ItemStack c : carry) {
 			if (c.isEmpty()) return true;
 			if (ItemStack.isSameItemSameComponents(c, stack) && c.getCount() < c.getMaxStackSize()) return true;
@@ -166,7 +166,7 @@ public final class CleanerLogic {
 	}
 
 	/** Moves as much of the entity's stack as fits into carry; the entity keeps the remainder or is discarded. */
-	static void pickUp(ItemEntity entity, NonNullList<ItemStack> carry) {
+	public static void pickUp(ItemEntity entity, NonNullList<ItemStack> carry) {
 		SimpleContainer tmp = new SimpleContainer(1);
 		tmp.setItem(0, entity.getItem().copy());
 		TransporterLogic.takeAll(tmp, carry);

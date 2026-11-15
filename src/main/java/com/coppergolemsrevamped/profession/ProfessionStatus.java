@@ -4,6 +4,7 @@ import com.coppergolemsrevamped.ai.WalkTo;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Profession.Kind;
+import com.coppergolemsrevamped.profession.butcher.ButcherLogic;
 import com.coppergolemsrevamped.profession.crafter.CrafterLogic;
 import com.coppergolemsrevamped.profession.lumber.LumberLogic;
 import com.coppergolemsrevamped.profession.lumber.LumberLogic.Phase;
@@ -43,6 +44,7 @@ public final class ProfessionStatus {
 		if (missing(p, data) != null) return "Waiting for targets";
 		return switch (p.id().getPath()) {
 			case "transporter" -> "Moving items from A to B";
+			case "butcher" -> ButcherLogic.status(golem);
 			case "cleaner" -> "Picking up loose items";
 			case "farmer" -> "Farming the field";
 			case "crafter" -> CrafterLogic.preview(level, data).isEmpty()
