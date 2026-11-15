@@ -5,83 +5,109 @@ chest. Id `coppergolemsrevamped:crafter`, `runsVanillaBrain = false`.
 
 ## Entry points
 
-- `profession/crafter/CrafterProfession:init` declares it. Slot groups: `template` (9 slots, max stack 1, any item,
-  GUI width 3 = a 3x3 square, see [gui.md](gui.md)) and `buffer` (9 slots x 64, width 9). `GolemData.items` indices
-  0..8 are the template, 9..17 the buffer.
+- `profession/crafter/CrafterProfession:init` declares it. `GolemData.items`: indices 0..8 = `template` (max stack 1,
+  any item), 9..17 = `input` (one slot per grid cell, max 64), 18 = `output` (one stack). Constants:
+  `CrafterProfession:FIRST_INPUT`, `OUTPUT_SLOT`, `TOTAL_SLOTS` (19).
 - Assigns: `input` (`Kind.CHEST`), `table` (`Kind.CRAFTING_TABLE`, gets the `assign_crafting_table` icon),
   `output` (`Kind.CHEST`).
-- `profession/crafter/CrafterLogic:tick` is the loop. Public helpers: `recipeFor`, `plan`, `craftOnce`, `fetchSets`,
-  `fetch`, `sets`, `buffer` / `storeBuffer`.
+- `profession/crafter/CrafterLogic:tick` is the loop. Helpers: `plan`, `canCraft`, `craft`, `fetch`, `deliver`.
+- GUI: template 3x3 at columns 0..2, input 3x3 at columns 4..6 (input slot `i` mirrors template cell `i`), output at
+  column 8 in the middle row; 4 rows. See [gui.md](gui.md).
 
-## Template: defines the recipe, never consumed
+## The three slot groups
 
-The template holds real items (the user can put any item in; `maxStack` 1). It only says which recipe to craft. The
-golem never takes anything out of it, and it is dropped like any other inventory when the profession changes
-(`GolemService:changeProfession`) or the golem dies.
-Why: user spec: "a 3x3 'crafting template' of real items that only defines the recipe; the golem doesn't consume
-them" and D13: "stored, never consumed, and dropped like any other inventory".
+- **Template** (0..8): real items that only define the recipe, never consumed, dropped like any inventory when the
+  profession changes (`GolemService:changeProfession`) or the golem dies. Shift-click never fills it
+  (`SlotGroup:noQuickMove`). Why: user spec "a 3x3 crafting template of real items that only defines the recipe; the
+  golem doesn't consume them" and D13.
+- **Input** (9..17): slot `i` holds only the item of template cell `i` (same item and components,
+  `ItemStack.isSameItemSameComponents`); a slot whose template cell is empty stays unused. Enforced for players by
+  `Profession.SlotRule` on the group, so shift-click and manual placing both route correctly. A repeater
+  (torch, redstone, torch / stone x3) fills six slots: 3 stone stacks, 2 torch stacks, 1 redstone stack.
+  Why: user feedback from play-testing: with the old shared 9-slot buffer the golem filled every slot with raw
+  ingredients and froze when full; "each slot of their crafting inventory should be for a single item of the grid".
+- **Output** (18): one stack, take-out only for players (filter rejects everything). The golem crafts into it.
 
 ## Recipe matching
 
-`CrafterLogic:templateInput` builds a `CraftingInput` from template slot `i` = grid row `i / 3`, column `i % 3`
-(one copy of each stack), trimmed with `CraftingInput.ofPositioned(3, 3, ...).input()` like the vanilla crafting menu
-does, so a recipe drawn anywhere in the grid matches. The recipe comes from the server's recipe manager:
-`RecipeManager.createCheck(RecipeType.CRAFTING)` -> `CachedCheck:getRecipeFor(input, ServerLevel)`. That check
-memoises the last matching recipe (an unchanged template costs one `matches` call) and still sees a `/reload`, which
-a hand-rolled content cache would not. `CraftingRecipe:assemble(input)` gives the result,
-`CraftingRecipe:getRemainingItems(input)` the remainders (e.g. empty buckets for milk). No recipe (or an empty
-template) = the golem idles and retries every 40 ticks.
-
-Ingredient matching is `ItemStack.isSameItemSameComponents` against the template's stacks, not item-only.
-Why: the result was assembled from the template's exact stacks; fetching identical stacks guarantees the same
-result and keeps variants (dyed armor, potions) from being mixed. Cost: a template item with components needs that
-exact variant in the input chest.
+`CrafterLogic:plan` builds a `CraftingInput` from the template (cell `i` = grid row `i / 3`, column `i % 3`, one copy
+per stack), trimmed with `CraftingInput.ofPositioned(3, 3, ...)` like the vanilla crafting menu, so a recipe drawn
+anywhere in the grid matches. The recipe comes from `RecipeManager.createCheck(RecipeType.CRAFTING)` ->
+`CachedCheck:getRecipeFor`: it memoises the last matching recipe and still sees a `/reload`. `CraftingRecipe:assemble`
+gives the result, `getRemainingItems` the leftovers, mapped back to template cells through `Positioned:left/top`. The
+`Plan` carries the result, the 9 template stacks and the 9 per-cell leftovers. No recipe = see "No recipe" below.
 
 ## Loop
 
-Stateless decision each tick (`CrafterLogic:decide`) from the buffer, the input chest and the recipe; only timers and
-the walk-progress counters are transient (`WeakHashMap`, like the Transporter). Idle when the input or output is not
-a container, the table block is not a crafting table, no table is assigned or there is no recipe.
+Stateless decision each tick (`CrafterLogic:decide`) from the slots, the input chest and the plan; only the cooldown and
+the walk-progress counters are transient (`WeakHashMap`, like the Transporter). Order of the checks:
 
-1. Buffer holds a full ingredient set and one craft's products fit: CRAFT. Walk to the table (`inReach`), then every
-   10 ticks remove one set of ingredients and add the result plus remainders to the buffer.
-2. Otherwise the buffer holds a non-ingredient item (results, remainders, strays): DELIVER to the output chest with
-   `TransporterLogic:insertAll`. Ingredients stay for the next craft, leftovers (chest full) go back to the
-   buffer and are retried every 40 ticks.
-3. Otherwise `fetchSets` > 0: FETCH. k = as many crafts as the input holds (counting ingredients already in the buffer)
-   and the buffer can hold, with room kept for one craft's products so the buffer cannot clog with ingredients.
-   Exactly k sets are taken, no more.
-4. Else idle.
+1. **Stale input** (`stale`): an input slot holds something that is not its cell's item (the player edited the
+   template, or a leftover sits there) -> DELIVER.
+2. `canCraft` (every used cell's input slot holds its item, the result fits the output stack, each leftover has a
+   place) -> CRAFT: walk to the table, then every 10 ticks one `craft`: 1 item from each used input slot, result
+   added to the output stack.
+3. Output cannot take another result (full, or holds a different item) -> DELIVER the output (or idle when empty).
+4. `canFetch` (a used slot is below its target and the chest holds the item) -> FETCH.
+5. Output non-empty (nothing more to craft, e.g. input chest ran dry) -> DELIVER. Else idle.
 
-No valid recipe (empty or invalid template) with a valid output chest and a non-empty buffer: the whole buffer goes to
-the output (`CrafterLogic:deliverAll`; with no recipe everything counts as product), then idle. Missing output = idle.
-Why: otherwise changing or clearing the template strands the buffered items. With a valid recipe but an invalid
-table the golem does not craft; its items stay in the buffer / input chest. A golem that is airborne (just spawned)
-waits instead of treating the failed `createPath` as unreachable (that cost a 600-tick idle).
+All walking goes through `Interact:approach` (1-block stand spot, 2-block fallback, see
+[../architecture/interaction.md](../architecture/interaction.md)); the input chest, the output chest and the table
+are all reached that way. Lids: `Interact:openChest` with `TAKE` at the input chest after a fetch and `INSERT` at the
+output chest after a delivery that moved something; the cooldown after either is `Interact.OPEN_TICKS`, so the golem
+stands there while the lid is open.
+Why this loop: user spec "craft until the output stack is full, then go to the chest; when the output is full, move to
+the next block".
 
-`GolemData` is saved after every mutation. Order matters for no loss/duplication (D9): the buffer is edited as a
-copy and written back in one go; items that do not fit anywhere return to the source.
+**Fetch** (`fetch`): tops each used slot up to `target`: a full stack of the cell item, capped to the crafts that fill
+the output (`outRoom / result count`, e.g. sticks: 16 crafts = 16 planks per cell) and to 1 for a cell that leaves a
+leftover. Items move one at a time round-robin over the cells. Why round-robin: 8 planks for two cells must end 4 + 4;
+the first cell taking all 8 would leave the recipe uncraftable.
 
-Give-up rule: walking uses `golem.getNavigation()`; a missing path or 200 ticks without getting closer makes the golem
-idle for 600 ticks and then try again, so an unreachable chest never hard-locks it.
+**Deliver** (`deliver`): stale input stacks plus the output slot go to the output chest through
+`TransporterLogic:insertAll`; what does not fit stays in its slot. A full output chest never freezes the golem: it
+keeps the product and retries every 40 ticks (and keeps crafting only while the output stack has room), resuming once
+space appears. With nothing to deliver and nothing to craft it idles, retrying every 40 ticks.
 
-Known limits (ponytail): a recipe whose product is also one of its own ingredient items cannot be delivered (the
-product counts as ingredient stock); a recipe with 9 distinct ingredient types leaves no buffer room for the result
-and idles; a stray item a player puts into the buffer is delivered to the output chest.
+**Leftovers** (empty bucket, bottle): the leftover goes into the input slot it came from once that slot is empty
+(`target` 1 keeps it empty after one craft); it no longer matches the cell, so the stale rule delivers it with the
+next trip. A slot overstocked by a player (more than 1 for a leftover cell) also counts as stale and is delivered, then
+refetched as 1. Why: lossless without a place to park leftovers; cost: such recipes (cake, honey block) run one craft
+per trip.
+
+**No recipe** (empty or invalid template): every input slot and the output go to the output chest
+(`CrafterLogic:decide` is skipped, job `DELIVER_ALL`), then idle. Missing output chest = idle. Why: otherwise
+clearing the template strands the items. With a valid recipe but a missing input/output chest or a table block that is
+not a crafting table, the golem idles and keeps its items (nothing crafted, nothing lost).
+
+Saved golems from the older 18-slot layout (9 shared buffer slots) are grown to 19 slots on the next tick; their old
+buffer items sit in input slots and are delivered by the stale rule.
+
+`GolemData` is saved after every mutation. Order matters for no loss/duplication (D9): items only move slot to slot or
+chest to slot through code that leaves the remainder where it came from.
+
+Give-up rule (`CrafterLogic:walkTo`): when `Interact:approach` has not brought the golem closer to the target for 200
+ticks (airborne ticks do not count, so a just-spawned golem is not penalised; a null path is just "no progress") the golem
+idles 600 ticks and starts over, so an unreachable chest never hard-locks it. `Interact.Approach` also has its own
+fallback to the 2-block reach.
+
+Known limits: two template cells of the same item each need their own stack, so a scarce item is split evenly and the
+craft count is the smallest slot; a recipe with 9 cells needs all 9 input slots.
 
 ## Tests (`CrafterTest`)
 
-- `craftsSticksFromTemplate`: input 8 oak planks, template = oak planks in slots 0 and 3 (vertical pair = sticks),
-  succeeds when the output holds exactly 16 sticks and nothing else, input is empty, template slots 0 and 3 still hold
-  1 plank, the other template slots and the buffer are empty. maxTicks 1200.
-- `noCraftWithoutTable`: same, table unassigned; after 300 ticks the output is empty and planks are conserved
-  (input + buffer == 8).
-- `bufferDropsOnProfessionChange`: buffer 5 planks + 3 sticks, template 2 planks; `changeProfession(..., null)` drops
-  7 planks and 3 sticks, items cleared.
-- `noCraftWhenTableReplaced`: table block replaced by stone right after setup; output stays empty, planks conserved
-  (input + buffer == 8).
-- `deliversBufferWhenTemplateCleared`: empty template, buffer 5 planks + 3 sticks; all of it ends in the output.
-- `templateSlotHoldsOne`: builds a `GolemMenu` for a mock player; template slot max stack 1, `canTakeItemForPickAll`
-  false for it and true for a buffer slot, buffer max 64, row 4 is filler.
-- `templateDropsOnProfessionChange`: `changeProfession(..., null)` drops the 2 template planks as item entities and
-  clears `GolemData.items`.
+- `craftsSticksUntilOutputFull`: 40 planks, sticks template; the output reaches 64 sticks, is delivered, then 16 more;
+  the output chest ends with exactly 80 sticks, input chest and golem empty, template untouched.
+- `craftsRepeaterWithPerCellSlots`: repeater template (cells 0..5); every tick the input slots hold only their cell's
+  item (cells 6..8 empty), 4 of each are seen, 4 repeaters are delivered.
+- `fullOutputChestKeepsProductAndResumes`: output chest full of cobblestone; after 400 ticks the golem still holds all
+  16 sticks; after one chest slot is freed they are delivered.
+- `noCraftWithoutTable`, `noCraftWhenTableReplaced`: nothing crafted, planks conserved.
+- `deliversEverythingWhenTemplateCleared`: input and output slots all end in the output chest.
+- `staleInputItemsAreDelivered`: wrong items in input slots are delivered, the matching stack stays, nothing lost.
+- `lidsOpenAndReachIsOneBlock`: both chest lids seen open from a 1-block spot, the output stack only grows while the
+  golem is within 1 block of the table, lids end closed.
+- `guiLayoutIsCraftingTableLike`: 4 rows, template at columns 0..2, input at 4..6 (container slot `9 + i`), output at
+  column 8 row 2, filler elsewhere, template max stack 1 and no `PICKUP_ALL`, input slots accept only the cell's item.
+- `shiftClickFillsInputNotTemplate`: shift-clicked planks land in the plank cell's input slot, the template is unchanged.
+- `itemsDropOnProfessionChange`: `changeProfession(..., null)` drops template, input and output items and clears the list.

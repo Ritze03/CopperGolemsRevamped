@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.profession.crafter;
 
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -15,7 +16,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
-import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingInput;
@@ -27,240 +27,235 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Crafter work loop. {@link GolemData#items} slots 0..8 are the template, 9..17 the buffer. The decision is
- * stateless (derived from the buffer, the input chest and the recipe each tick); only timers are transient.
+ * Crafter work loop. {@link GolemData#items}: 0..8 template, 9..17 input slots (slot 9+i holds only template cell
+ * i's item), 18 the output stack. The decision is stateless (derived from the slots, the input chest and the recipe
+ * each tick); only timers and walk progress are transient. See superdoc/features/crafter.md.
  */
 public final class CrafterLogic {
 	private CrafterLogic() {}
 
-	static final int REPATH_TICKS = 20;
 	static final int RETRY_TICKS = 40;
-	static final int AFTER_ACTION_TICKS = 5;
 	static final int CRAFT_TICKS = 10;
 	static final double SPEED = 1.0;
 	/** Walking without getting closer for this long = unreachable (10 s); the golem then idles before retrying. */
 	static final int GIVE_UP_TICKS = 200;
 	static final int GIVE_UP_IDLE_TICKS = 600;
 	static final double PROGRESS_EPS = 0.1;
+	static final int STACK = 64;
 
 	private static final RecipeManager.CachedCheck<CraftingInput, CraftingRecipe> CHECK =
 		RecipeManager.createCheck(RecipeType.CRAFTING);
 
-	/** A resolved recipe for a template: the result, the remainders of one craft and the ingredient counts. */
-	public record Plan(CraftingInput input, ItemStack result, List<ItemStack> remainders, List<ItemStack> need) {}
+	/**
+	 * A resolved recipe for the template. {@code cell[i]} = template cell i (one item) or EMPTY, {@code leftover[i]} =
+	 * what crafting leaves in cell i (empty bucket, bottle) or EMPTY.
+	 */
+	public record Plan(ItemStack result, ItemStack[] cell, ItemStack[] leftover) {}
 
 	private static final class State {
 		int cooldown;
-		int repath;
 		@Nullable BlockPos target;
 		double bestDist;
 		int stuck;
+		final Interact.Approach walk = new Interact.Approach();
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
 	// ---- recipe ----
 
-	/** The template as a trimmed crafting input (one copy per non-empty slot); null when the template is empty. */
-	public static @Nullable CraftingInput templateInput(GolemData data) {
-		List<ItemStack> grid = new ArrayList<>();
-		for (int i = 0; i < CrafterProfession.TEMPLATE_SLOTS; i++) {
-			ItemStack s = i < data.items.size() ? data.items.get(i) : ItemStack.EMPTY;
-			grid.add(s.isEmpty() ? ItemStack.EMPTY : s.copyWithCount(1));
-		}
-		CraftingInput input = CraftingInput.ofPositioned(3, 3, grid).input();
-		return input.isEmpty() ? null : input;
-	}
-
-	/**
-	 * The server's crafting recipe matching the template, or empty. {@link RecipeManager#createCheck} memoises the last
-	 * matching recipe, so an unchanged template costs one {@code matches} call, and a /reload is picked up.
-	 */
-	public static Optional<RecipeHolder<CraftingRecipe>> recipeFor(ServerLevel level, GolemData data) {
-		CraftingInput input = templateInput(data);
-		return input == null ? Optional.empty() : CHECK.getRecipeFor(input, level);
-	}
-
-	/** Result, remainders and ingredient counts for the template; null when there is no recipe. */
+	/** The server's crafting recipe for the template (trimmed like the vanilla crafting menu), or null when none. */
 	public static @Nullable Plan plan(ServerLevel level, GolemData data) {
-		CraftingInput input = templateInput(data);
-		if (input == null) return null;
+		List<ItemStack> grid = new ArrayList<>();
+		ItemStack[] cell = new ItemStack[CrafterProfession.TEMPLATE_SLOTS];
+		for (int i = 0; i < cell.length; i++) {
+			ItemStack s = i < data.items.size() ? data.items.get(i) : ItemStack.EMPTY;
+			cell[i] = s.isEmpty() ? ItemStack.EMPTY : s.copyWithCount(1);
+			grid.add(cell[i]);
+		}
+		CraftingInput.Positioned pos = CraftingInput.ofPositioned(3, 3, grid);
+		CraftingInput input = pos.input();
+		if (input.isEmpty()) return null;
 		Optional<RecipeHolder<CraftingRecipe>> r = CHECK.getRecipeFor(input, level);
 		if (r.isEmpty()) return null;
 		CraftingRecipe recipe = r.get().value();
 		ItemStack result = recipe.assemble(input);
 		if (result.isEmpty()) return null;
-		List<ItemStack> remainders = new ArrayList<>();
-		for (ItemStack s : recipe.getRemainingItems(input)) if (!s.isEmpty()) remainders.add(s.copy());
-		// ingredient counts per distinct item + components (the template's own stacks, one per slot)
-		List<ItemStack> need = new ArrayList<>();
-		for (ItemStack s : input.items()) {
-			if (s.isEmpty()) continue;
-			boolean merged = false;
-			for (ItemStack n : need) {
-				if (ItemStack.isSameItemSameComponents(n, s)) {
-					n.grow(1);
-					merged = true;
+		ItemStack[] leftover = new ItemStack[cell.length];
+		java.util.Arrays.fill(leftover, ItemStack.EMPTY);
+		NonNullList<ItemStack> rem = recipe.getRemainingItems(input);
+		for (int j = 0; j < rem.size(); j++) {
+			int c = (pos.top() + j / input.width()) * 3 + pos.left() + j % input.width();
+			if (c >= 0 && c < leftover.length) leftover[c] = rem.get(j).copy();
+		}
+		return new Plan(result, cell, leftover);
+	}
+
+	// ---- slot helpers (all on GolemData.items) ----
+
+	private static ItemStack at(GolemData data, int idx) {
+		return idx < data.items.size() ? data.items.get(idx) : ItemStack.EMPTY;
+	}
+
+	private static boolean same(ItemStack a, ItemStack b) {
+		return !a.isEmpty() && !b.isEmpty() && ItemStack.isSameItemSameComponents(a, b);
+	}
+
+	private static boolean used(Plan p, int cell) {
+		return !p.cell()[cell].isEmpty();
+	}
+
+	/** Input slot i holds something that does not belong there (template changed, leftover) or a leftover cell is overstocked. */
+	private static boolean stale(GolemData data, @Nullable Plan p, int i) {
+		ItemStack s = at(data, CrafterProfession.FIRST_INPUT + i);
+		if (s.isEmpty()) return false;
+		ItemStack t = at(data, i);
+		if (!same(t, s)) return true;
+		// a cell whose craft leaves a leftover holds exactly one item, so the leftover has the emptied slot to go to
+		return p != null && !p.leftover()[i].isEmpty() && s.getCount() > 1;
+	}
+
+	private static boolean anyStale(GolemData data, @Nullable Plan p) {
+		for (int i = 0; i < CrafterProfession.INPUT_SLOTS; i++) if (stale(data, p, i)) return true;
+		return false;
+	}
+
+	private static int outMax(Plan p) {
+		return Math.min(STACK, p.result().getMaxStackSize());
+	}
+
+	/** Free room in the output stack for this recipe's result; 0 when it holds a different item. */
+	static int outRoom(GolemData data, Plan p) {
+		ItemStack out = at(data, CrafterProfession.OUTPUT_SLOT);
+		if (out.isEmpty()) return outMax(p);
+		return same(out, p.result()) ? Math.max(0, outMax(p) - out.getCount()) : 0;
+	}
+
+	private static boolean outputHasItems(GolemData data) {
+		return !at(data, CrafterProfession.OUTPUT_SLOT).isEmpty();
+	}
+
+	/** Every used cell's input slot holds its item, the result fits the output, and each leftover has a place. */
+	public static boolean canCraft(GolemData data, Plan p) {
+		if (outRoom(data, p) < p.result().getCount()) return false;
+		for (int i = 0; i < CrafterProfession.TEMPLATE_SLOTS; i++) {
+			if (!used(p, i)) continue;
+			ItemStack s = at(data, CrafterProfession.FIRST_INPUT + i);
+			if (!same(s, p.cell()[i])) return false;
+			ItemStack lo = p.leftover()[i];
+			if (lo.isEmpty()) continue;
+			int left = s.getCount() - 1;
+			if (left == 0) continue;
+			if (!same(s, lo) || left + lo.getCount() > Math.min(STACK, s.getMaxStackSize())) return false;
+		}
+		return true;
+	}
+
+	/** One craft: 1 item from every used input slot, leftovers into the emptied slot, the result into the output. */
+	static void craft(GolemData data, Plan p) {
+		for (int i = 0; i < CrafterProfession.TEMPLATE_SLOTS; i++) {
+			if (!used(p, i)) continue;
+			int idx = CrafterProfession.FIRST_INPUT + i;
+			ItemStack s = data.items.get(idx);
+			s.shrink(1);
+			ItemStack lo = p.leftover()[i];
+			if (s.isEmpty()) data.items.set(idx, lo.isEmpty() ? ItemStack.EMPTY : lo.copy());
+			else if (!lo.isEmpty()) s.grow(lo.getCount());
+		}
+		int o = CrafterProfession.OUTPUT_SLOT;
+		ItemStack out = data.items.get(o);
+		if (out.isEmpty()) data.items.set(o, p.result().copy());
+		else out.grow(p.result().getCount());
+	}
+
+	/** How many items input slot i should hold: a full stack, capped to what fills the output; 1 when a leftover returns there. */
+	static int target(GolemData data, Plan p, int i) {
+		if (!p.leftover()[i].isEmpty()) return 1;
+		int crafts = Math.max(1, outRoom(data, p) / p.result().getCount());
+		return Math.min(crafts, Math.min(STACK, p.cell()[i].getMaxStackSize()));
+	}
+
+	private static boolean chestHas(Container c, ItemStack like) {
+		for (int j = 0; j < c.getContainerSize(); j++) if (same(c.getItem(j), like)) return true;
+		return false;
+	}
+
+	/** Some used input slot is below its target and the chest holds its item. */
+	static boolean canFetch(GolemData data, Plan p, Container cin) {
+		for (int i = 0; i < CrafterProfession.TEMPLATE_SLOTS; i++) {
+			if (!used(p, i)) continue;
+			ItemStack s = at(data, CrafterProfession.FIRST_INPUT + i);
+			if (s.getCount() < target(data, p, i) && chestHas(cin, p.cell()[i])) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Tops up the used input slots from the chest, one item at a time round-robin over the cells, so a scarce item is
+	 * shared fairly (8 planks for 2 cells = 4 each) instead of the first cell taking all. Returns true if anything moved.
+	 */
+	static boolean fetch(GolemData data, Plan p, Container cin) {
+		int[] want = new int[CrafterProfession.TEMPLATE_SLOTS];
+		for (int i = 0; i < want.length; i++) {
+			if (used(p, i)) want[i] = target(data, p, i) - at(data, CrafterProfession.FIRST_INPUT + i).getCount();
+		}
+		boolean moved = false;
+		boolean progress = true;
+		while (progress) {
+			progress = false;
+			for (int i = 0; i < want.length; i++) {
+				if (want[i] <= 0) continue;
+				for (int j = 0; j < cin.getContainerSize(); j++) {
+					ItemStack c = cin.getItem(j);
+					if (!same(c, p.cell()[i])) continue;
+					ItemStack one = c.split(1);
+					if (c.isEmpty()) cin.setItem(j, ItemStack.EMPTY);
+					int idx = CrafterProfession.FIRST_INPUT + i;
+					ItemStack s = data.items.get(idx);
+					if (s.isEmpty()) data.items.set(idx, one); else s.grow(1);
+					want[i]--;
+					moved = true;
+					progress = true;
 					break;
 				}
 			}
-			if (!merged) need.add(s.copyWithCount(1));
 		}
-		return new Plan(input, result, remainders, need);
-	}
-
-	// ---- buffer helpers (public for tests) ----
-
-	public static SimpleContainer buffer(GolemData data) {
-		SimpleContainer c = new SimpleContainer(CrafterProfession.BUFFER_SLOTS);
-		for (int i = 0; i < CrafterProfession.BUFFER_SLOTS; i++) {
-			int idx = CrafterProfession.TEMPLATE_SLOTS + i;
-			if (idx < data.items.size()) c.setItem(i, data.items.get(idx).copy());
-		}
-		return c;
-	}
-
-	public static void storeBuffer(GolemData data, SimpleContainer buf) {
-		for (int i = 0; i < CrafterProfession.BUFFER_SLOTS; i++) {
-			int idx = CrafterProfession.TEMPLATE_SLOTS + i;
-			if (idx < data.items.size()) data.items.set(idx, buf.getItem(i).copy());
-		}
-	}
-
-	private static SimpleContainer copyOf(Container buf) {
-		SimpleContainer copy = new SimpleContainer(buf.getContainerSize());
-		for (int i = 0; i < buf.getContainerSize(); i++) copy.setItem(i, buf.getItem(i).copy());
-		return copy;
-	}
-
-	private static int count(Container c, ItemStack like) {
-		int n = 0;
-		for (int i = 0; i < c.getContainerSize(); i++) {
-			ItemStack s = c.getItem(i);
-			if (ItemStack.isSameItemSameComponents(s, like)) n += s.getCount();
-		}
-		return n;
-	}
-
-	/** Full ingredient sets the buffer can craft right now. */
-	public static int sets(Plan plan, Container buf) {
-		int sets = Integer.MAX_VALUE;
-		for (ItemStack n : plan.need()) sets = Math.min(sets, count(buf, n) / n.getCount());
-		return sets == Integer.MAX_VALUE ? 0 : sets;
-	}
-
-	private static boolean isIngredient(Plan plan, ItemStack s) {
-		for (ItemStack n : plan.need()) if (ItemStack.isSameItemSameComponents(n, s)) return true;
-		return false;
-	}
-
-	/** True when the buffer holds anything that is not an ingredient (crafted results, remainders, strays). */
-	private static boolean hasProducts(Plan plan, Container buf) {
-		for (int i = 0; i < buf.getContainerSize(); i++) {
-			ItemStack s = buf.getItem(i);
-			if (!s.isEmpty() && !isIngredient(plan, s)) return true;
-		}
-		return false;
-	}
-
-	private static boolean fits(Container buf, List<ItemStack> stacks) {
-		SimpleContainer copy = copyOf(buf);
-		for (ItemStack s : stacks) if (!copy.addItem(s.copy()).isEmpty()) return false;
-		return true;
-	}
-
-	private static List<ItemStack> products(Plan plan) {
-		List<ItemStack> l = new ArrayList<>();
-		l.add(plan.result().copy());
-		for (ItemStack r : plan.remainders()) l.add(r.copy());
-		return l;
+		if (moved) cin.setChanged();
+		return moved;
 	}
 
 	/**
-	 * Crafts once inside {@code buf}: removes one set of ingredients, adds result and remainders. False (buffer
-	 * untouched) when there are no ingredients or the products do not fit.
+	 * Moves the stacks at {@code idxs} into {@code cout}; what does not fit stays in its slot (nothing lost).
+	 * Returns true if anything moved.
 	 */
-	public static boolean craftOnce(Plan plan, SimpleContainer buf) {
-		if (sets(plan, buf) < 1) return false;
-		SimpleContainer trial = copyOf(buf);
-		for (ItemStack n : plan.need()) removeLike(trial, n, n.getCount());
-		for (ItemStack p : products(plan)) if (!trial.addItem(p).isEmpty()) return false;
-		for (int i = 0; i < buf.getContainerSize(); i++) buf.setItem(i, trial.getItem(i));
-		return true;
-	}
-
-	private static void removeLike(Container c, ItemStack like, int amount) {
-		for (int i = 0; i < c.getContainerSize() && amount > 0; i++) {
-			ItemStack s = c.getItem(i);
-			if (!ItemStack.isSameItemSameComponents(s, like)) continue;
-			int n = Math.min(amount, s.getCount());
-			s.shrink(n);
-			amount -= n;
-			if (s.isEmpty()) c.setItem(i, ItemStack.EMPTY);
-		}
-	}
-
-	/** Removes every non-ingredient stack from the buffer and returns them. */
-	private static NonNullList<ItemStack> takeProducts(Plan plan, SimpleContainer buf) {
-		NonNullList<ItemStack> out = NonNullList.create();
-		for (int i = 0; i < buf.getContainerSize(); i++) {
-			ItemStack s = buf.getItem(i);
-			if (s.isEmpty() || isIngredient(plan, s)) continue;
-			out.add(s);
-			buf.setItem(i, ItemStack.EMPTY);
-		}
-		return out;
-	}
-
-	/**
-	 * Largest k such that the input holds the missing ingredients for k crafts, the buffer can hold them and still
-	 * has room for one craft's products. 0 when not even one craft is possible.
-	 */
-	public static int fetchSets(Plan plan, Container input, Container buf) {
-		int max = Integer.MAX_VALUE;
-		for (ItemStack n : plan.need()) {
-			// the buffer's existing stock of this ingredient counts towards k
-			max = Math.min(max, (count(buf, n) + count(input, n)) / n.getCount());
-		}
-		if (max == Integer.MAX_VALUE) return 0;
-		// linear search downward: k is at most 9 slots x 64 items
-		for (int k = Math.min(max, 576); k >= 1; k--) {
-			List<ItemStack> want = new ArrayList<>();
-			for (ItemStack n : plan.need()) {
-				int missing = n.getCount() * k - count(buf, n);
-				if (missing > 0) want.add(n.copyWithCount(missing));
-			}
-			want.addAll(products(plan));
-			if (fits(buf, want)) return k;
-		}
-		return 0;
-	}
-
-	/** Moves {@code k} sets of ingredients (less what the buffer already holds) from {@code input} into the buffer. */
-	public static void fetch(Plan plan, int k, Container input, SimpleContainer buf) {
-		for (ItemStack n : plan.need()) {
-			int missing = n.getCount() * k - count(buf, n);
-			for (int i = 0; i < input.getContainerSize() && missing > 0; i++) {
-				ItemStack s = input.getItem(i);
-				if (!ItemStack.isSameItemSameComponents(s, n)) continue;
-				int take = Math.min(missing, s.getCount());
-				ItemStack moved = s.split(take);
-				if (s.isEmpty()) input.setItem(i, ItemStack.EMPTY);
-				ItemStack rest = buf.addItem(moved);
-				// cannot happen after fetchSets, but never lose an item: put it back
-				if (!rest.isEmpty()) {
-					ItemStack back = input.getItem(i);
-					if (back.isEmpty()) input.setItem(i, rest); else back.grow(rest.getCount());
-				}
-				missing -= take - rest.getCount();
-			}
-		}
-		input.setChanged();
+	static boolean deliver(GolemData data, List<Integer> idxs, Container cout) {
+		NonNullList<ItemStack> carry = NonNullList.create();
+		for (int idx : idxs) carry.add(data.items.get(idx));
+		boolean moved = TransporterLogic.insertAll(carry, cout);
+		for (int k = 0; k < idxs.size(); k++) data.items.set(idxs.get(k), carry.get(k));
+		return moved;
 	}
 
 	// ---- loop ----
 
-	private enum Job { FETCH, CRAFT, DELIVER, IDLE }
+	private enum Job { FETCH, CRAFT, DELIVER, DELIVER_ALL, IDLE }
+
+	private static Job decide(GolemData data, @Nullable Plan p, Container cin) {
+		if (p == null) return Job.IDLE;
+		if (anyStale(data, p)) return Job.DELIVER;
+		if (canCraft(data, p)) return Job.CRAFT;
+		boolean outFull = outRoom(data, p) < p.result().getCount();
+		if (outFull) return outputHasItems(data) ? Job.DELIVER : Job.IDLE;
+		if (canFetch(data, p, cin)) return Job.FETCH;
+		return outputHasItems(data) ? Job.DELIVER : Job.IDLE;
+	}
+
+	private static boolean holdsAnything(GolemData data) {
+		for (int i = CrafterProfession.FIRST_INPUT; i < CrafterProfession.TOTAL_SLOTS; i++) {
+			if (!at(data, i).isEmpty()) return true;
+		}
+		return false;
+	}
 
 	public static void tick(ServerLevel level, CopperGolem golem, GolemData data) {
 		State s = STATES.computeIfAbsent(golem, g -> new State());
@@ -268,105 +263,69 @@ public final class CrafterLogic {
 			s.cooldown--;
 			return;
 		}
+		// golems saved with the older 18-slot layout: the old buffer slots are now input slots (delivered as stale)
+		if (data.items.size() < CrafterProfession.TOTAL_SLOTS) {
+			NonNullList<ItemStack> grown = NonNullList.withSize(CrafterProfession.TOTAL_SLOTS, ItemStack.EMPTY);
+			for (int i = 0; i < data.items.size(); i++) grown.set(i, data.items.get(i));
+			data.items = grown;
+			GolemData.save(golem, data);
+		}
 		BlockPos in = data.assignments.get(CrafterProfession.INPUT);
 		BlockPos table = data.assignments.get(CrafterProfession.TABLE);
 		BlockPos out = data.assignments.get(CrafterProfession.OUTPUT);
 		Container cin = in == null ? null : TransporterLogic.containerAt(level, in);
 		Container cout = out == null ? null : TransporterLogic.containerAt(level, out);
-		boolean tableOk = table != null && level.getBlockState(table).is(Blocks.CRAFTING_TABLE);
-		boolean sized = data.items.size() >= CrafterProfession.TEMPLATE_SLOTS + CrafterProfession.BUFFER_SLOTS;
-		Plan recipe = sized ? plan(level, data) : null;
-		SimpleContainer buf = buffer(data);
-		if (sized && recipe == null && cout != null && !isEmpty(buf)) {
-			// no valid recipe (template empty or invalid): the buffer would be stranded, so everything goes to the output
-			deliverAll(level, golem, data, s, buf, out, cout);
-			return;
-		}
-		Plan plan = cin == null || cout == null || !tableOk ? null : recipe;
+		Plan plan = plan(level, data);
+		Job job;
 		if (plan == null) {
-			idle(golem, s, RETRY_TICKS);
-			return;
+			// no valid recipe (template empty or invalid): input and output slots would be stranded, so they all go to the output chest
+			job = cout != null && holdsAnything(data) ? Job.DELIVER_ALL : Job.IDLE;
+		} else if (cin == null || cout == null || table == null || !level.getBlockState(table).is(Blocks.CRAFTING_TABLE)) {
+			job = Job.IDLE;
+		} else {
+			job = decide(data, plan, cin);
 		}
-		Job job = decide(plan, cin, buf);
 		BlockPos target = switch (job) {
 			case FETCH -> in;
 			case CRAFT -> table;
-			case DELIVER -> out;
+			case DELIVER, DELIVER_ALL -> out;
 			case IDLE -> null;
 		};
 		if (target == null) {
 			idle(golem, s, RETRY_TICKS);
 			return;
 		}
-		if (!TransporterLogic.inReach(golem, target)) {
-			walk(golem, s, target);
-			return;
-		}
-		golem.getNavigation().stop();
+		if (!walkTo(level, golem, s, target)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
-		s.repath = 0;
-		s.target = null;
-		s.stuck = 0;
 		switch (job) {
 			case FETCH -> {
-				fetch(plan, fetchSets(plan, cin, buf), cin, buf);
-				s.cooldown = AFTER_ACTION_TICKS;
+				if (fetch(data, plan, cin)) Interact.openChest(level, golem, in, Interact.Action.TAKE);
+				s.cooldown = Interact.OPEN_TICKS;
+				s.walk.reset();
 			}
 			case CRAFT -> {
-				craftOnce(plan, buf);
+				craft(data, plan);
 				s.cooldown = CRAFT_TICKS;
 			}
-			case DELIVER -> {
-				NonNullList<ItemStack> prods = takeProducts(plan, buf);
-				TransporterLogic.insertAll(prods, cout);
-				// what did not fit goes back into the buffer, never lost; it always fits: the freed slots are the ones the stacks came from
-				for (ItemStack rest : prods) if (!rest.isEmpty()) buf.addItem(rest);
-				s.cooldown = hasProducts(plan, buf) ? RETRY_TICKS : AFTER_ACTION_TICKS;
+			case DELIVER, DELIVER_ALL -> {
+				List<Integer> idxs = new ArrayList<>();
+				for (int i = 0; i < CrafterProfession.INPUT_SLOTS; i++) {
+					if (job == Job.DELIVER_ALL ? !at(data, CrafterProfession.FIRST_INPUT + i).isEmpty() : stale(data, plan, i)) {
+						idxs.add(CrafterProfession.FIRST_INPUT + i);
+					}
+				}
+				idxs.add(CrafterProfession.OUTPUT_SLOT);
+				boolean moved = deliver(data, idxs, cout);
+				if (moved) Interact.openChest(level, golem, out, Interact.Action.INSERT);
+				boolean left = false;
+				for (int idx : idxs) left |= !data.items.get(idx).isEmpty();
+				// chest full: keep the items and retry; never freeze, never lose
+				s.cooldown = left || !moved ? RETRY_TICKS : Interact.OPEN_TICKS;
+				if (!left) s.walk.reset();
 			}
 			case IDLE -> s.cooldown = RETRY_TICKS;
 		}
-		storeBuffer(data, buf);
 		GolemData.save(golem, data);
-	}
-
-	private static boolean isEmpty(Container c) {
-		for (int i = 0; i < c.getContainerSize(); i++) if (!c.getItem(i).isEmpty()) return false;
-		return true;
-	}
-
-	/** No recipe: walk to the output chest and move the whole buffer there; what does not fit stays in the buffer. */
-	private static void deliverAll(ServerLevel level, CopperGolem golem, GolemData data, State s, SimpleContainer buf,
-		BlockPos out, Container cout) {
-		if (!TransporterLogic.inReach(golem, out)) {
-			walk(golem, s, out);
-			return;
-		}
-		golem.getNavigation().stop();
-		golem.getLookControl().setLookAt(Vec3.atCenterOf(out));
-		s.repath = 0;
-		s.target = null;
-		s.stuck = 0;
-		NonNullList<ItemStack> all = NonNullList.create();
-		for (int i = 0; i < buf.getContainerSize(); i++) {
-			ItemStack st = buf.getItem(i);
-			if (st.isEmpty()) continue;
-			all.add(st);
-			buf.setItem(i, ItemStack.EMPTY);
-		}
-		TransporterLogic.insertAll(all, cout);
-		for (ItemStack rest : all) if (!rest.isEmpty()) buf.addItem(rest); // same slots as freed above, always fits
-		s.cooldown = isEmpty(buf) ? AFTER_ACTION_TICKS : RETRY_TICKS;
-		storeBuffer(data, buf);
-		GolemData.save(golem, data);
-	}
-
-	private static Job decide(Plan plan, Container input, SimpleContainer buf) {
-		if (sets(plan, buf) >= 1) {
-			if (craftOnce(plan, copyOf(buf))) return Job.CRAFT;
-			return hasProducts(plan, buf) ? Job.DELIVER : Job.IDLE;
-		}
-		if (hasProducts(plan, buf)) return Job.DELIVER;
-		return fetchSets(plan, input, buf) >= 1 ? Job.FETCH : Job.IDLE;
 	}
 
 	private static void idle(CopperGolem golem, State s, int ticks) {
@@ -376,34 +335,29 @@ public final class CrafterLogic {
 		s.cooldown = ticks;
 	}
 
-	/** Walk towards {@code target}; gives up (idles) when the path is missing or the distance stops shrinking. */
-	private static void walk(CopperGolem golem, State s, BlockPos target) {
+	/**
+	 * One tick of walking to the 1-block stand spot of {@code target} ({@link Interact#approach}); true once there.
+	 * Gives up (idles) when the golem stops getting closer for {@link #GIVE_UP_TICKS}; airborne ticks do not count.
+	 */
+	private static boolean walkTo(ServerLevel level, CopperGolem golem, State s, BlockPos target) {
 		double dist = golem.distanceToSqr(Vec3.atBottomCenterOf(target));
 		if (!target.equals(s.target)) {
 			s.target = target;
 			s.bestDist = dist;
 			s.stuck = 0;
-			s.repath = 0;
+		}
+		if (Interact.approach(level, golem, target, s.walk, SPEED)) {
+			s.stuck = 0;
+			s.bestDist = dist;
+			return true;
 		}
 		if (dist < s.bestDist - PROGRESS_EPS) {
 			s.bestDist = dist;
 			s.stuck = 0;
-		} else if (++s.stuck >= GIVE_UP_TICKS) {
+		} else if (golem.onGround() && ++s.stuck >= GIVE_UP_TICKS) {
+			s.walk.reset();
 			idle(golem, s, GIVE_UP_IDLE_TICKS);
-			return;
 		}
-		if (--s.repath <= 0 || golem.getNavigation().isDone()) {
-			// airborne (just spawned / falling): createPath returns null, which would read as unreachable and idle 600 ticks
-			if (!golem.onGround()) {
-				s.repath = 0;
-				return;
-			}
-			if (golem.getNavigation().createPath(target, 0) == null) {
-				idle(golem, s, GIVE_UP_IDLE_TICKS);
-				return;
-			}
-			golem.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, SPEED);
-			s.repath = REPATH_TICKS;
-		}
+		return false;
 	}
 }

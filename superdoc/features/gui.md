@@ -25,7 +25,7 @@ shears use. Any item in either hand stays vanilla (decision D4).
 (`MenuType.GENERIC_9x1..9x6`, chosen from the row count), so the client builds its normal chest screen. No
 profession-specific code: a new profession shows up with zero GUI changes (decision D6).
 
-`rows = min(6, 1 + sum over slot groups of ceil(count / width) + (groups - 1))` (`Profession:slotRows`, which includes the separator rows; profession None: 1 row). There are exactly `rows*9` top slots
+`rows = min(6, 1 + Profession:slotRows)`; `slotRows` is the last row used by `Profession:layout` (stacked groups plus separator rows, `beside` groups sharing rows; profession None: 1 row). There are exactly `rows*9` top slots
 (cell = row*9 + column, row-major) followed by the 27 + 9 player slots (`addStandardInventorySlots`); the
 client desyncs if the count is not `rows*9 + 36`.
 
@@ -36,18 +36,23 @@ client desyncs if the count is not `rows*9 + 36`.
 | 2..6 | One assign button per `AssignSpec` of the profession, in order (max 5; today's most is 4) |
 | 7 | Help button, fixed cell so it never collides with an assign button (that is why assigns stop at cell 6) |
 | 8 | Held-item slot (the golem's carried item, take-out only; shows the `held_empty` placeholder when the hand is empty) |
-| 9.. | The profession's slots in declaration order; every `SlotGroup` starts on a new row at column 0 and wraps after its `width` cells (default 9); one full filler row separates consecutive groups |
+| 9.. | The profession's slots in declaration order; a `SlotGroup` starts on a new row at column 0 and wraps after its `width` cells (default 9), one full filler row separating consecutive stacked groups; a group with `beside(col, row)` instead sits at column `col`, `row` rows below the first row of the previous stacked group (see below) |
 | rest | Filler (plain vanilla orange stained glass pane, tooltip hidden) |
 
 Example, Transporter (one group of 9, two assigns): 2 rows, cells 0 profession, 1 follow, 2 and 3 assign
 buttons (A, B), 4..6 filler, 7 help, 8 held, 9..17 carry slots; top slots 0..17, player inventory 18..53.
 Profession None: 1 row, cells 0, 1 and 7 controls, 2..6 filler, 8 held; top slots 0..8, player inventory 9..44.
-Example, Crafter (`template` 9 slots width 3, `buffer` 9 slots width 9, three assigns): 6 rows; rows 1..3 hold the
-template as a 3x3 square in columns 0..2 (columns 3..8 filler), row 4 is the filler separator, row 5 the buffer. Slot `i` of a width-3 group sits at
+Example, Crafter (`template` 9 slots width 3, `input` 9 slots width 3 `beside(4, 0)`, `output` 1 slot `beside(8, 1)`, three
+assigns): 4 rows; rows 1..3 hold the template 3x3 at columns 0..2, the input 3x3 at columns 4..6 (input slot `i` directly
+beside template cell `i`) and the output at column 8 of row 2, like a crafting table; everything else is filler.
+Slot `i` of a width-3 group sits at
 row `i / 3`, column `i % 3` of the square, the same order the Crafter reads it as a crafting grid.
 Why: the user asked for a real 3x3 "crafting template" in the GUI; packing groups back to back would have drawn it
-as a 9-wide strip. Why the separator row: a template directly above the buffer read as a 3x4 grid in the screenshot
-review. The separator counts toward the 6-row cap, so a group that no longer fits is cut. Groups carry no labels (a chest menu has no room for headings). Rows beyond the 6-row limit are
+as a 9-wide strip. Why the separator row between stacked groups: a template directly above another group read as a 3x4
+grid in the screenshot review. Why `beside`: template + 3x3 input + output stacked would need 1+3+1+3+1+1 rows, over
+the 6-row cap; side by side they need 4 and show which input slot belongs to which grid cell. `beside` is generic (a
+column and a row offset on `SlotGroup`, resolved in `Profession:layout`); no profession-specific code lives in `menu/`.
+The separator counts toward the 6-row cap, so a group that no longer fits is cut. Groups carry no labels (a chest menu has no room for headings). Rows beyond the 6-row limit are
 cut: the shown slots are always a prefix of the declared order and the container is sized to them (`itemCount`).
 Cell -> data index is `GolemMenu.itemOfCell`; profession slots are not contiguous in cell space.
 
@@ -56,7 +61,8 @@ holding nothing") while the real main hand is empty, so the cell does not look l
 never leaves the cell, see the click table under "Click handling". Why: a vision check of in-game screenshots could
 not tell the empty held cell from an empty slot.
 
-Slot `mayPlace` = group filter, `getMaxStackSize` = group `maxStack` (`GolemMenu.GroupSlot`).
+Slot `mayPlace` = group filter and, when the group has one, its `SlotRule` (per-slot check that sees the golem's stored
+list; the Crafter input slot `i` accepts only template cell `i`'s item), `getMaxStackSize` = group `maxStack` (`GolemMenu.GroupSlot`).
 `GolemMenu:canTakeItemForPickAll` refuses slots whose group has `maxStack == 1` (the Crafter template). Why: a
 double-click collect on a plank stack would otherwise strip the recipe.
 
@@ -130,8 +136,9 @@ keeps one slot object whose sync (`broadcastChanges` reads `getItem`) shows the 
 player slot -> profession slots only via `GolemMenu:moveIntoProfession`, which walks the profession cells itself
 (merge pass into matching stacks, then empty slots, both honouring `mayPlace` and the slot max). It replaces
 `moveItemStackTo`, whose cell range must be contiguous and would hit control / filler / held cells now that profession
-slots are scattered across rows. Groups are tried last-declared first. Why: shift-click should fill working storage
-(Crafter buffer) before a recipe template (maxStack 1), which the user does not want filled by accident.
+slots are scattered across rows. Groups are tried last-declared first; a group declared `noQuickMove` (the Crafter template) is skipped. Why: shift-click
+should fill working storage (Crafter input slots, whose rule routes each item to its cell) and never a recipe template
+(maxStack 1), which the user does not want filled by accident; the output group accepts nothing from players.
 
 ## Containers
 
