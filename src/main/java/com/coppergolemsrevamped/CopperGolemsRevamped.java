@@ -2,6 +2,7 @@ package com.coppergolemsrevamped;
 
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.ModAttachments;
+import com.coppergolemsrevamped.profession.chest_sorter.ChestSorterProfession;
 import com.coppergolemsrevamped.profession.transporter.TransporterProfession;
 
 import net.fabricmc.api.ModInitializer;
@@ -19,6 +20,7 @@ public class CopperGolemsRevamped implements ModInitializer {
 	public void onInitialize() {
 		ModAttachments.init();
 		TransporterProfession.init();
+		ChestSorterProfession.init();
 		AssignMode.init();
 		LOGGER.info("Copper Golems Revamped initialized");
 	}
