@@ -188,6 +188,14 @@ public class GolemMenu extends AbstractContainerMenu {
 		rebuild();
 	}
 
+	/** Settings tab "Strip logs" (Lumber only, see lumber.md). */
+	void toggleStripLogs() {
+		GolemData data = GolemData.get(golem);
+		data.stripLogs = !data.stripLogs;
+		GolemData.save(golem, data);
+		rebuild();
+	}
+
 	/** Filter tab mode button: Off -> Whitelist -> Blacklist -> Off. */
 	void cycleFilterMode() {
 		GolemData data = GolemData.get(golem);

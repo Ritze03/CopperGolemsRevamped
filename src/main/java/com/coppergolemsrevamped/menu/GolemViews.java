@@ -9,6 +9,7 @@ import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Profession.Kind;
 import com.coppergolemsrevamped.profession.Profession.SlotGroup;
 import com.coppergolemsrevamped.profession.ProfessionStatus;
+import com.coppergolemsrevamped.profession.lumber.LumberProfession;
 import com.coppergolemsrevamped.profession.Professions;
 
 import java.util.ArrayList;
@@ -343,6 +344,12 @@ final class GolemViews {
 		set(cells, 3, 5, icon(GolemIcon.plain(Items.BLUE_ICE, Component.literal("Freeze: " + (frozen ? "on" : "off")),
 			lore("Golem stops all work and stands still", "Use it to safely change its inventory"), frozen),
 			(p, b) -> m.toggleFreeze()));
+		if (LumberProfession.ID.equals(m.currentId())) {
+			boolean strip = data.stripLogs;
+			set(cells, 3, 7, icon(GolemIcon.plain(Items.STRIPPED_OAK_LOG, Component.literal("Strip logs: " + (strip ? "on" : "off")),
+				lore("Strips each log with the axe before breaking it", "The carry then holds stripped logs"), strip),
+				(p, b) -> m.toggleStripLogs()));
+		}
 	}
 
 	// ---- Profession and confirm ----

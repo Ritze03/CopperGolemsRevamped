@@ -98,6 +98,27 @@ see [vanilla-copper-golem.md](../architecture/vanilla-copper-golem.md) "Animatio
 ticks (0.8 s) per log over the pure vanilla formula (whole swings). Test: `LumberTest:chopsHoldTheInteractionStateAndReturnsToIdle`,
 `toolSwingRulesAndCleanup`, `toolSwingHoldAndCleanup`.
 
+## Strip logs (setting)
+
+Lumber-only toggle on the Settings tab (3,7), "Strip logs: on/off", icon `stripped_oak_log`, default **off**, persisted as
+`GolemData:stripLogs` (codec field `strip_logs`, old saves load off). With it on the golem strips each log with its axe before
+breaking it, so the carry and the output chest get stripped logs. User request. See [gui.md](gui.md) for the toggle.
+
+- How: `LumberLogic:strippedState` asks the axe's own `DataComponents.BLOCK_TRANSFORMER` (vanilla's data-driven `axe` transformer,
+  26.3 has no `AxeItem.STRIPPABLES` any more) for the new state, so every wood vanilla strips works (logs, wood, stems, hyphae) with the
+  axis kept, and nothing is hardcoded. Only a result that is in `#logs` and a different block counts (the axe transformer also scrapes
+  and unwaxes copper; those never apply to a log). No stripped form (a stripped log) means a normal break.
+- Where: inside `LumberLogic:breakBlock`, in one step: drops are computed from the stripped state and must fit (else `Result.FULL`
+  and the log is untouched), then `setBlock` stripped + strip sound (the transformer's sound), then the break. Why atomic, not a state
+  between two ticks: `detectTree` follows one block kind, so a log stripped some ticks before its break would drop out of the tree set
+  (and after a reload or a delivery trip it would be forgotten); one step means the tree never contains a half-stripped log.
+  A trunk that is already stripped is simply felled (same kind, `#logs` holds all stripped logs; `fellsAlreadyStrippedTree`).
+- Timing: the break gets `STRIP_TICKS` (6) extra before the whole-swing rounding, still one continuous FELL phase and one hold.
+- Durability: strip 1 plus break 1 = 2 per log, both through `GolemMending.damage`. Strips only when the axe is usable
+  (`canUse`), is not on its last point (`nextDamageWillBreak`: then the log is just broken) and, for Mending, has more than 2 left.
+  Bare hands (a resting Mending axe, no axe) never strip. A Mending axe is therefore never broken by a strip.
+- DELIVER is unchanged: stripped logs are ordinary items for the output chest.
+
 ## Leaves
 
 Leaves are **not** broken. After the logs are gone they decay naturally and drop saplings, sticks and apples on the
@@ -245,6 +266,9 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
   diamond axe, the old one lands in the chest).
 - `walledInTrunkIsFelledFromTwoBlocks`: all T neighbours stone: the 2-block fallback still fells it.
 - `unreachableTreeIsSkipped`: tree inside a closed stone ring: skipped after the give-up time, nothing breaks.
+- Strip logs: `stripLogsGivesStrippedLogs` (5 stripped logs, damage 10), `stripLogsOffByDefault` (plain logs, damage 5), `stripLogsNeverBreaksMendingAxe`,
+  `strippedStateFollowsVanilla` (mapping, axis, wood/stems/hyphae, no strip for stripped log / bare / off / last point), `fellsAlreadyStrippedTree`,
+  `stripLogsSurvivesSaveLoad`; the toggle: `MenuTest:settingsStripLogsToggleIsLumberOnly`.
 - Unit tests: `breakAllowedRules`, `detectTreeRules` (same kind, diagonal, not below T, unconnected, not-a-log spot),
   `breakTimeFollowsAxeSpeed`, `lumberDeclaration` (filters, inventory size 12, at most 6 rows, assign keys).
 

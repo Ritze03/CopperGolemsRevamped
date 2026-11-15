@@ -102,7 +102,8 @@ Sorter: (3,4) a book "No inventory". A recipe group (`SlotGroup:recipe`) is neve
 (3,3) the Follow toggle (`follow_on` / `follow_off`, glint while on): `following = !following`, `followPlayer` = clicker UUID when
 on else null, `GolemData.save`; refused with a chat message while frozen. (3,5) the **Freeze** toggle (`blue_ice` through
 `GolemIcon:plain`, glint while on, name "Freeze: on/off", `GolemMenu:toggleFreeze`): all professions, rules in
-[freeze.md](freeze.md).
+[freeze.md](freeze.md). (3,7) **Strip logs** (`stripped_oak_log`, glint while on, `GolemMenu:toggleStripLogs`): shown for the Lumber only,
+`GolemData:stripLogs`, see [lumber.md](lumber.md) "Strip logs".
 
 ### Profession and the confirm screen
 

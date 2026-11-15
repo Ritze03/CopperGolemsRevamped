@@ -26,6 +26,10 @@ import org.jspecify.annotations.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.core.Holder;
+import net.minecraft.core.component.BlockTransformer;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.BlockTags;
@@ -60,6 +64,8 @@ public final class LumberLogic {
 	static final int SCAN_TICKS = 20;
 	/** A log takes at least this many swings (each {@link ToolSwing#PERIOD} ticks), however fast the axe is. */
 	static final int MIN_SWINGS = 2;
+	/** Strip logs: extra ticks per log for the strip before the break (about half a swing; see lumber.md "Strip logs"). */
+	static final int STRIP_TICKS = 6;
 	static final int AFTER_ACTION_TICKS = 5;
 	static final int REPATH_TICKS = 20;
 	static final double SPEED = 1.0;
@@ -665,7 +671,9 @@ public final class LumberLogic {
 			int axe = axeSlot(data);
 			if (axe < 0 && !bare) return; // axe gone since the last check; the next tick idles or fetches
 			ItemStack tool = axe < 0 ? ItemStack.EMPTY : data.items.get(axe); // bare hands: destroy speed 1
-			s.breakTotal = ToolSwing.swingTicks(breakTicks(st.getDestroySpeed(level, target), tool.getDestroySpeed(st)), MIN_SWINGS);
+			int base = breakTicks(st.getDestroySpeed(level, target), tool.getDestroySpeed(st));
+			if (strippedState(level, target, data, axe < 0 ? ItemStack.EMPTY : tool) != null) base += STRIP_TICKS;
+			s.breakTotal = ToolSwing.swingTicks(base, MIN_SWINGS);
 			s.breakLeft = s.breakTotal;
 		}
 		// held, not pulsed: one continuous interaction loop for the whole felling (see lumber.md "Chopping animation")
@@ -716,8 +724,10 @@ public final class LumberLogic {
 		int slot = axeSlot(data);
 		if (!st.is(BlockTags.LOGS) || (slot < 0 && !bare)) return Result.DENIED;
 		ItemStack tool = slot < 0 ? ItemStack.EMPTY : data.items.get(slot);
-		List<ItemStack> drops = Block.getDrops(st, level, pos, null, null, tool);
-		if (!fitsAll(data, drops)) return Result.FULL;
+		BlockState stripped = strippedState(level, pos, data, tool);
+		List<ItemStack> drops = Block.getDrops(stripped != null ? stripped : st, level, pos, null, null, tool);
+		if (!fitsAll(data, drops)) return Result.FULL; // checked before the strip: a refused break leaves the log whole
+		if (stripped != null) strip(level, pos, stripped, tool);
 		level.destroyBlock(pos, false, golem);
 		storeAll(data, drops);
 		// breaking empties the stack (vanilla behaviour); the item is gone, never duplicated
@@ -726,6 +736,39 @@ public final class LumberLogic {
 			if (tool.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
 		}
 		return Result.BROKEN;
+	}
+
+	// ---- stripping ------------------------------------------------------------------------------------------------
+
+	/**
+	 * The stripped form of the log at {@code pos} when the golem should strip it first: setting on, a usable axe that can
+	 * take the strip hit and still the break hit (not the last durability point), and a vanilla stripping result that is
+	 * a log. Null otherwise (the log is broken as it is). The result comes from the axe's own {@code BLOCK_TRANSFORMER}
+	 * component, so every wood vanilla strips is covered (logs, wood, stems, hyphae) and nothing is hardcoded.
+	 */
+	public static @Nullable BlockState strippedState(ServerLevel level, BlockPos pos, GolemData data, ItemStack tool) {
+		if (!data.stripLogs || tool.isEmpty() || !isAxe(tool) || !GolemMending.canUse(tool) || tool.nextDamageWillBreak()) return null;
+		if (GolemMending.hasMending(tool) && GolemMending.remaining(tool) <= 2) return null;
+		Holder<BlockTransformer> h = tool.get(DataComponents.BLOCK_TRANSFORMER);
+		if (h == null) return null;
+		for (BlockTransformer.BlockTransformData t : h.value().transforms()) {
+			BlockState r = t.blockStateProvider().value().getOptionalState(level, level.getRandom(), pos);
+			if (r != null && r.is(BlockTags.LOGS) && !r.is(level.getBlockState(pos).getBlock())) return r;
+		}
+		return null;
+	}
+
+	/** Sets the stripped state, plays the transformer's strip sound and wears the axe by 1 like a player's strip. */
+	private static void strip(ServerLevel level, BlockPos pos, BlockState stripped, ItemStack tool) {
+		SoundEvent sound = SoundEvents.AXE_STRIP.value();
+		Holder<BlockTransformer> h = tool.get(DataComponents.BLOCK_TRANSFORMER);
+		if (h != null) for (BlockTransformer.BlockTransformData t : h.value().transforms()) {
+			BlockState r = t.blockStateProvider().value().getOptionalState(level, level.getRandom(), pos);
+			if (stripped.equals(r)) sound = t.sound().value();
+		}
+		level.setBlock(pos, stripped, 11);
+		level.playSound(null, pos, sound, SoundSource.BLOCKS, 1.0F, 1.0F);
+		GolemMending.damage(level, tool, 1);
 	}
 
 	// ---- walking with give-up -------------------------------------------------------------------------------------

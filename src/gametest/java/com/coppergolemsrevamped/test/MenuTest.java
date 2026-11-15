@@ -393,6 +393,25 @@ public class MenuTest {
 		helper.succeed();
 	}
 
+	/** The "Strip logs" toggle exists for the Lumber only (Settings 3,7), default off, flips and persists. */
+	@GameTest
+	public void settingsStripLogsToggleIsLumberOnly(GameTestHelper helper) {
+		for (Identifier id : new Identifier[] {null, TRANSPORTER, SORTER}) {
+			CopperGolem g = golem(helper, id);
+			GolemMenu menu = new GolemMenu(1, player(helper, g).getInventory(), g, Tab.SETTINGS);
+			helper.assertTrue(at(menu, 3, 7).isEmpty() || !name(at(menu, 3, 7)).startsWith("Strip logs"), id + " must not offer Strip logs");
+		}
+		CopperGolem g = golem(helper, LUMBER);
+		ServerPlayer player = player(helper, g);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
+		helper.assertTrue(at(menu, 3, 7).is(Items.STRIPPED_OAK_LOG) && !glint(at(menu, 3, 7)) && name(at(menu, 3, 7)).equals("Strip logs: off"), "off " + at(menu, 3, 7));
+		click(menu, player, 3, 7);
+		helper.assertTrue(GolemData.get(g).stripLogs && glint(at(menu, 3, 7)) && name(at(menu, 3, 7)).equals("Strip logs: on"), "on " + name(at(menu, 3, 7)));
+		click(menu, player, 3, 7);
+		helper.assertTrue(!GolemData.get(g).stripLogs, "off again");
+		helper.succeed();
+	}
+
 	// ---- status ----
 
 	@GameTest

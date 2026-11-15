@@ -542,6 +542,149 @@ public class LumberTest {
 		});
 	}
 
+	// ---- strip logs (superdoc/features/lumber.md "Strip logs") ----
+
+	private static CopperGolem stripper(GameTestHelper helper, boolean strip) {
+		CopperGolem golem = lumber(helper);
+		GolemData d = GolemData.get(golem);
+		d.stripLogs = strip;
+		GolemData.save(golem, d);
+		return golem;
+	}
+
+	/** Strip on: the 5-log oak ends as 5 stripped oak logs (no plain ones, none lost), 2 durability per log (strip + break). */
+	@GameTest(maxTicks = 2000)
+	public void stripLogsGivesStrippedLogs(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 5, 2);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		give(in, Items.IRON_AXE, Items.OAK_SAPLING, 8);
+		CopperGolem golem = stripper(helper, true);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.STRIPPED_OAK_LOG) == 5, "stripped logs in output: " + count(out, Items.STRIPPED_OAK_LOG));
+			helper.assertTrue(count(out, Items.OAK_LOG) == 0, "plain logs in output: " + count(out, Items.OAK_LOG));
+			helper.assertBlockPresent(Blocks.OAK_SAPLING, T);
+			helper.assertTrue(axeDamage(golem) == 10, "axe damage: " + axeDamage(golem));
+		});
+	}
+
+	/** Strip off (the default, also for a fresh golem): plain logs and 1 durability per log, as before. */
+	@GameTest(maxTicks = 2000)
+	public void stripLogsOffByDefault(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 5, 2);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		give(in, Items.IRON_AXE, Items.OAK_SAPLING, 8);
+		CopperGolem golem = lumber(helper);
+		helper.assertTrue(!GolemData.get(golem).stripLogs, "default must be off");
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.OAK_LOG) == 5 && count(out, Items.STRIPPED_OAK_LOG) == 0, "logs in output: " + count(out, Items.OAK_LOG));
+			helper.assertTrue(axeDamage(golem) == 5, "axe damage: " + axeDamage(golem));
+		});
+	}
+
+	/**
+	 * A Mending axe 12 above the threshold with strip on: it strips and breaks while it can take both hits, then rests in the
+	 * chest (at the threshold) and the rest is cut by hand (plain logs). The axe is never broken or lost, never below 9.
+	 */
+	@GameTest(maxTicks = 2500)
+	public void stripLogsNeverBreaksMendingAxe(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 5, 2);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		in.setItem(1, new ItemStack(Items.OAK_SAPLING, 8));
+		CopperGolem golem = stripper(helper, true);
+		GolemData d = GolemData.get(golem);
+		d.items.set(LumberProfession.AXE_SLOT, MendingTest.mending(helper, Items.IRON_AXE, 12));
+		GolemData.save(golem, d);
+		helper.onEachTick(() -> {
+			int axes = 0, low = 0;
+			List<ItemStack> all = new java.util.ArrayList<>(List.of(GolemData.get(golem).items.get(LumberProfession.AXE_SLOT)));
+			for (int i = 0; i < in.getContainerSize(); i++) all.add(in.getItem(i));
+			for (ItemStack a : all) if (a.is(Items.IRON_AXE)) {
+				axes++;
+				if (com.coppergolemsrevamped.core.GolemMending.remaining(a) < 9) low++;
+			}
+			helper.assertTrue(axes == 1 && low == 0, "the Mending axe broke or fell too low: " + axes + "/" + low);
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.STRIPPED_OAK_LOG) + count(out, Items.OAK_LOG) == 5, "logs: " + count(out, Items.STRIPPED_OAK_LOG) + "/" + count(out, Items.OAK_LOG));
+			helper.assertTrue(count(out, Items.STRIPPED_OAK_LOG) >= 1 && count(out, Items.OAK_LOG) >= 1, "expected stripped logs first and plain ones once the axe rests");
+			helper.assertBlockPresent(Blocks.OAK_SAPLING, T);
+		});
+	}
+
+	/** The vanilla mapping covers logs (axis kept), wood, stems and hyphae; stripped logs, bare hands, strip off, last durability point give nothing. */
+	@GameTest
+	public void strippedStateFollowsVanilla(GameTestHelper helper) {
+		world(helper);
+		GolemData d = new GolemData();
+		d.stripLogs = true;
+		ItemStack axe = new ItemStack(Items.IRON_AXE);
+		BlockPos p = T.above(3), abs = helper.absolutePos(p);
+		net.minecraft.world.level.block.Block[][] pairs = {
+			{ Blocks.OAK_LOG, Blocks.STRIPPED_OAK_LOG }, { Blocks.OAK_WOOD, Blocks.STRIPPED_OAK_WOOD }, { Blocks.CRIMSON_STEM, Blocks.STRIPPED_CRIMSON_STEM },
+			{ Blocks.WARPED_HYPHAE, Blocks.STRIPPED_WARPED_HYPHAE }, { Blocks.CHERRY_LOG, Blocks.STRIPPED_CHERRY_LOG } };
+		for (net.minecraft.world.level.block.Block[] pr : pairs) {
+			helper.setBlock(p, pr[0]);
+			BlockState r = LumberLogic.strippedState(helper.getLevel(), abs, d, axe);
+			helper.assertTrue(r != null && r.is(pr[1]), pr[0] + " strips to " + r);
+		}
+		var axis = net.minecraft.world.level.block.RotatedPillarBlock.AXIS;
+		helper.setBlock(p, Blocks.OAK_LOG.defaultBlockState().setValue(axis, net.minecraft.core.Direction.Axis.X));
+		BlockState x = LumberLogic.strippedState(helper.getLevel(), abs, d, axe);
+		helper.assertTrue(x != null && x.getValue(axis) == net.minecraft.core.Direction.Axis.X, "axis kept: " + x);
+		helper.assertTrue(x.is(net.minecraft.tags.BlockTags.LOGS), "a stripped log is in #logs");
+		helper.setBlock(p, Blocks.STRIPPED_OAK_LOG);
+		helper.assertTrue(LumberLogic.strippedState(helper.getLevel(), abs, d, axe) == null, "stripped log has no stripped form");
+		helper.assertTrue(LumberLogic.detectTree(helper.getLevel(), abs, List.of()).contains(abs), "tree detection accepts a stripped log");
+		helper.setBlock(p, Blocks.OAK_LOG);
+		helper.assertTrue(LumberLogic.strippedState(helper.getLevel(), abs, d, ItemStack.EMPTY) == null, "bare hands do not strip");
+		d.stripLogs = false;
+		helper.assertTrue(LumberLogic.strippedState(helper.getLevel(), abs, d, axe) == null, "strip off does not strip");
+		d.stripLogs = true;
+		axe.setDamageValue(axe.getMaxDamage() - 1);
+		helper.assertTrue(LumberLogic.strippedState(helper.getLevel(), abs, d, axe) == null, "last durability point: break only");
+		helper.succeed();
+	}
+
+	/** An already stripped trunk (also what an interruption between strip and break leaves) is felled normally, with no strip hit. */
+	@GameTest(maxTicks = 1500)
+	public void fellsAlreadyStrippedTree(GameTestHelper helper) {
+		world(helper);
+		for (int k = 0; k < 4; k++) helper.setBlock(T.above(k), Blocks.STRIPPED_OAK_LOG);
+		helper.setBlock(T.above(4), LEAVES);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		give(in, Items.IRON_AXE, Items.OAK_SAPLING, 8);
+		CopperGolem golem = stripper(helper, true);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.STRIPPED_OAK_LOG) == 4, "stripped logs in output: " + count(out, Items.STRIPPED_OAK_LOG));
+			helper.assertTrue(axeDamage(golem) == 4, "axe damage (no strip hit on a stripped log): " + axeDamage(golem));
+		});
+	}
+
+	/** Persisted across a full entity save and load; data without the field loads as off. */
+	@GameTest
+	public void stripLogsSurvivesSaveLoad(GameTestHelper helper) {
+		net.minecraft.server.level.ServerLevel level = helper.getLevel();
+		CopperGolem golem = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new BlockPos(2, 1, 2));
+		GolemService.changeProfession(level, golem, LumberProfession.ID);
+		for (boolean on : new boolean[] { true, false }) {
+			GolemData cur = GolemData.get(golem);
+			cur.stripLogs = on;
+			GolemData.save(golem, cur);
+			var out = net.minecraft.world.level.storage.TagValueOutput.createWithContext(net.minecraft.util.ProblemReporter.DISCARDING, level.registryAccess());
+			golem.saveWithoutId(out);
+			CopperGolem copy = EntityTypes.COPPER_GOLEM.create(level, net.minecraft.world.entity.EntitySpawnReason.LOAD);
+			helper.assertTrue(copy != null, "could not create a golem to load into");
+			copy.load(net.minecraft.world.level.storage.TagValueInput.create(net.minecraft.util.ProblemReporter.DISCARDING, level.registryAccess(), out.buildResult()));
+			helper.assertTrue(GolemData.get(copy).stripLogs == on, "stripLogs after load: " + GolemData.get(copy).stripLogs + ", saved " + on);
+		}
+		helper.assertTrue(GolemData.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, new net.minecraft.nbt.CompoundTag()).result().map(g -> !g.stripLogs).orElse(false),
+			"data without the field must load as off");
+		helper.succeed();
+	}
+
 	/** The break rule: only logs of the detected tree within the horizontal reach, any height. */
 	@GameTest
 	public void breakAllowedRules(GameTestHelper helper) {

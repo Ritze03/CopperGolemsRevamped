@@ -30,8 +30,9 @@ public class GolemData {
 		Codec.STRING.optionalFieldOf("auto_name").forGetter(d -> Optional.ofNullable(d.autoName)),
 		Codec.BOOL.optionalFieldOf("frozen", false).forGetter(d -> d.frozen),
 		Codec.INT.optionalFieldOf("xp", 0).forGetter(d -> d.xp),
-		Codec.STRING.optionalFieldOf("filter_mode", FilterMode.OFF.id).forGetter(d -> d.filterMode.id)
-	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm) -> {
+		Codec.STRING.optionalFieldOf("filter_mode", FilterMode.OFF.id).forGetter(d -> d.filterMode.id),
+		Codec.BOOL.optionalFieldOf("strip_logs", false).forGetter(d -> d.stripLogs)
+	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
@@ -43,6 +44,7 @@ public class GolemData {
 		d.frozen = fr;
 		d.xp = xp;
 		d.filterMode = FilterMode.parse(fm);
+		d.stripLogs = sl;
 		return d;
 	}));
 
@@ -59,6 +61,8 @@ public class GolemData {
 	public int xp;
 	/** Transporter filter mode; the filter items themselves are the profession's {@code filter} slot group in {@link #items}. */
 	public FilterMode filterMode = FilterMode.OFF;
+	/** Lumber setting: strip each log with the axe before breaking it (see superdoc/features/lumber.md). Default off. */
+	public boolean stripLogs;
 	public @Nullable UUID followPlayer;
 
 	/** The chest the build pattern left where the copper block was; null for golems spawned any other way. */
