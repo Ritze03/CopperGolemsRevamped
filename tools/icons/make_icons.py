@@ -231,6 +231,16 @@ TREE_CROWN = [                                     # 9x8 leaf crown
 ]
 TREE_TRUNK = ["uwu", "wVw", "wVw", "wvw", "wVw", "uuu"]
 
+QUESTION = [                                       # 5x7 "?"
+    ".ZZZ.",
+    "Z...Z",
+    "....Z",
+    "..ZZ.",
+    "..Z..",
+    ".....",
+    "..Z..",
+]
+
 ARROW_DOWN = [                                     # 7x8 green arrow, tip down
     ".nnnnn.",
     ".nMMNn.",
@@ -493,6 +503,14 @@ def build():
     stamp(cv, 1, 1, ghost_hand())
     icons["held_empty"] = cv
 
+    cv = blank()                                   # 20 copper-bound book with a "?" (Help)
+    for y in range(1, 15):
+        for x in range(2, 14):
+            edge = y in (1, 14) or x in (2, 13)
+            cv[y][x] = "k" if edge else "d" if x == 3 else "F" if x == 12 else "C" if y == 2 else "c"
+    stamp(cv, 6, 4, QUESTION)
+    icons["help"] = cv
+
     return icons
 
 
@@ -550,7 +568,7 @@ def main():
             f.write(png(rgba(cv, PAL)))
     here = os.path.dirname(os.path.abspath(__file__))
     sheet(icons, os.path.join(here, "preview.png"), 8, 8)
-    sheet(icons, os.path.join(here, "preview_1x.png"), 1, 19)
+    sheet(icons, os.path.join(here, "preview_1x.png"), 1, 20)
     print("wrote", len(icons), "icons to", os.path.normpath(OUT))
 
 

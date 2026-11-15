@@ -14,6 +14,7 @@ public final class Professions {
 	private Professions() {}
 
 	public static void register(Profession p) {
+		p = ProfessionHelp.apply(p);
 		if (REGISTRY.putIfAbsent(p.id(), p) != null) throw new IllegalStateException("Duplicate profession " + p.id());
 	}
 

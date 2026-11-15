@@ -22,8 +22,15 @@ public record Profession(
 	List<SlotGroup> slots,
 	List<AssignSpec> assigns,
 	boolean runsVanillaBrain,
-	Tick tick
+	Tick tick,
+	List<String> help
 ) {
+	/** Declaration without help text; {@link Professions#register} fills it in from {@link ProfessionHelp}. */
+	public Profession(Identifier id, Component name, List<SlotGroup> slots, List<AssignSpec> assigns,
+		boolean runsVanillaBrain, Tick tick) {
+		this(id, name, slots, assigns, runsVanillaBrain, tick, List.of());
+	}
+
 	/**
 	 * A run of {@code count} slots. In the GUI each group starts on a new row and wraps after {@code width} cells
 	 * (3 = a 3x3 square for count 9); the 4-arg constructor means width 9.
@@ -47,8 +54,12 @@ public record Profession(
 
 	public enum Kind { CHEST, CRAFTING_TABLE, BLOCK, AREA }
 
-	/** {@code maxSize} = max footprint edge for AREA, else 0. */
-	public record AssignSpec(String key, Component label, Kind kind, int maxSize) {}
+	/** {@code maxSize} = max footprint edge for AREA, else 0. {@code help} = what the target is for, shown when armed. */
+	public record AssignSpec(String key, Component label, Kind kind, int maxSize, String help) {
+		public AssignSpec(String key, Component label, Kind kind, int maxSize) {
+			this(key, label, kind, maxSize, "");
+		}
+	}
 
 	@FunctionalInterface
 	public interface Tick {

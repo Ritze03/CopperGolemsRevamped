@@ -25,14 +25,18 @@ public class GolemData {
 		Codec.unboundedMap(Codec.STRING, BlockPos.CODEC).optionalFieldOf("assignments", Map.of()).forGetter(d -> d.assignments),
 		ItemStack.OPTIONAL_CODEC.listOf().optionalFieldOf("items", List.of()).forGetter(d -> d.items),
 		Codec.BOOL.optionalFieldOf("following", false).forGetter(d -> d.following),
-		UUIDUtil.CODEC.optionalFieldOf("follow_player").forGetter(d -> Optional.ofNullable(d.followPlayer))
-	).apply(i, (p, a, it, f, u) -> {
+		UUIDUtil.CODEC.optionalFieldOf("follow_player").forGetter(d -> Optional.ofNullable(d.followPlayer)),
+		BlockPos.CODEC.optionalFieldOf("spawn_chest").forGetter(d -> Optional.ofNullable(d.spawnChest)),
+		Codec.STRING.optionalFieldOf("auto_name").forGetter(d -> Optional.ofNullable(d.autoName))
+	).apply(i, (p, a, it, f, u, sc, an) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
 		d.items = NonNullList.of(ItemStack.EMPTY, it.toArray(new ItemStack[0]));
 		d.following = f;
 		d.followPlayer = u.orElse(null);
+		d.spawnChest = sc.orElse(null);
+		d.autoName = an.orElse(null);
 		return d;
 	}));
 
@@ -44,6 +48,11 @@ public class GolemData {
 	public NonNullList<ItemStack> items = NonNullList.create();
 	public boolean following;
 	public @Nullable UUID followPlayer;
+
+	/** The chest the build pattern left where the copper block was; null for golems spawned any other way. */
+	public @Nullable BlockPos spawnChest;
+	/** The custom name this mod set (the profession name); null if none. A different current name is the player's. */
+	public @Nullable String autoName;
 
 	public static GolemData get(CopperGolem golem) {
 		return golem.getAttachedOrCreate(ModAttachments.GOLEM_DATA);

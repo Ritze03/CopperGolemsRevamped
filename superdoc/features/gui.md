@@ -33,14 +33,15 @@ client desyncs if the count is not `rows*9 + 36`.
 |---|---|
 | 0 | Profession cycle button |
 | 1 | Follow toggle |
-| 2..7 | One assign button per `AssignSpec` of the profession, in order (max 6) |
+| 2..6 | One assign button per `AssignSpec` of the profession, in order (max 5; today's most is 4) |
+| 7 | Help button, fixed cell so it never collides with an assign button (that is why assigns stop at cell 6) |
 | 8 | Held-item slot (the golem's carried item, take-out only; shows the `held_empty` placeholder when the hand is empty) |
 | 9.. | The profession's slots in declaration order; every `SlotGroup` starts on a new row at column 0 and wraps after its `width` cells (default 9); one full filler row separates consecutive groups |
-| rest | Filler (plain vanilla gray stained glass pane, tooltip hidden) |
+| rest | Filler (plain vanilla orange stained glass pane, tooltip hidden) |
 
 Example, Transporter (one group of 9, two assigns): 2 rows, cells 0 profession, 1 follow, 2 and 3 assign
-buttons (A, B), 4..7 filler, 8 held, 9..17 carry slots; top slots 0..17, player inventory 18..53.
-Profession None: 1 row, cells 0 and 1 controls, 2..7 filler, 8 held; top slots 0..8, player inventory 9..44.
+buttons (A, B), 4..6 filler, 7 help, 8 held, 9..17 carry slots; top slots 0..17, player inventory 18..53.
+Profession None: 1 row, cells 0, 1 and 7 controls, 2..6 filler, 8 held; top slots 0..8, player inventory 9..44.
 Example, Crafter (`template` 9 slots width 3, `buffer` 9 slots width 9, three assigns): 6 rows; rows 1..3 hold the
 template as a 3x3 square in columns 0..2 (columns 3..8 filler), row 4 is the filler separator, row 5 the buffer. Slot `i` of a width-3 group sits at
 row `i / 3`, column `i % 3` of the square, the same order the Crafter reads it as a crafting grid.
@@ -59,6 +60,24 @@ Slot `mayPlace` = group filter, `getMaxStackSize` = group `maxStack` (`GolemMenu
 `GolemMenu:canTakeItemForPickAll` refuses slots whose group has `maxStack == 1` (the Crafter template). Why: a
 double-click collect on a plank stack would otherwise strip the recipe.
 
+## Profession change side effects (`core/GolemService:changeProfession`)
+
+- Stored items: with a player (menu click) they go into the player's main inventory (`GolemService:give`, merge then
+  empty slots, not `Inventory#add` which deletes the stack for creative players); the rest drops at the player's feet.
+  Without a player (death, statue, tests) they drop at the golem. Why: a drop at the golem was missed by players
+  (user report "items get lost"). The held item is untouched.
+- Assignments are cleared; the first `Kind.CHEST` assign (declaration order) is pre-filled with
+  `GolemData.spawnChest` when that block is still a chest. `spawnChest` is set by `mixin/GolemSpawnMixin` for golems
+  built from copper block + carved pumpkin (see vanilla-copper-golem.md section 6), never for egg/statue golems.
+  Why: user wanted the chest the golem was built next to to be its first (usually input) chest.
+- Name: the profession name becomes the golem's custom name (not "visible", so vanilla shows it only while looked at,
+  like a name tag), cleared for None. `GolemData.autoName` remembers the name we set; a different current name is the
+  player's (name tag) and is never touched.
+- A running `ai/WalkTo` is cancelled.
+- Profession None: `GolemTicker:tick` stops navigation and skips the vanilla brain, so the golem stands still
+  (follow mode and walk-to still work). Why: the vanilla brain wanders and moves items on its own. Chest Sorter keeps
+  `runsVanillaBrain = true`.
+
 ## Controls
 
 Control and filler cells are `GolemMenu.IconSlot`s (`mayPlace` and `mayPickup` false) backed by a plain
@@ -67,12 +86,25 @@ Control and filler cells are `GolemMenu.IconSlot`s (`mayPlace` and `mayPickup` f
 
 | Control | Click action |
 |---|---|
-| Profession (cell 0) | left = next, right = previous, in the order None then `Professions.all()`. `GolemService.changeProfession`, then `GolemMenuOpener.open` again (layout changes) |
+| Profession (cell 0) | left = next, right = previous, in the order None then `Professions.all()`. `GolemService.changeProfession(..., player)` (the player receives the golem's stored items, what does not fit drops at their feet), then `GolemMenuOpener.open` again (layout changes) |
 | Follow (cell 1) | `following = !following`, `followPlayer` = clicker UUID when on else null, `GolemData.save`, icon swapped in place |
+| Help (cell 7) | `GolemMenu:sendHelp`: chat lines for the current profession, the menu stays open (see Help text below) |
 | Assign (cell 2..) | `player.closeContainer()`, then `AssignMode.arm(player, golem, spec.key())` (AREA passes the base key) |
 
 Tooltip: the name says what the control is (`Profession: Transporter`, `Follow: on`, the `AssignSpec` label),
 lore says how to use it and shows the current target (`Current: x, y, z` / `a to b` for AREA / `unset`).
+
+## Help text
+
+Every `Profession` carries `help` (2-3 lines: what it does, what the slots are for) and every `AssignSpec` a `help`
+(what the target is for). The texts live together in `profession/ProfessionHelp`, which `Professions:register`
+attaches to the declaration when it has none (declarations stay editable by others without merge conflicts; a
+declaration may still pass its own). The Help button sends `ProfessionHelp:lines`: the profession lines plus one line
+per assignment, `<label>: right-click ... , max NxN, larger areas are capped` (sizes come from the `AssignSpec`, never
+typed into the text). For None it explains how to pick a profession. The same `ProfessionHelp:prompt` is the chat
+prompt when an assign button arms (see [assign-mode.md](assign-mode.md)).
+Why chat and not the tooltip: the user asked for explanations of assignments and sizes in chat, a tooltip has no room
+for several lines per profession. Icon: `help` on base item `book`.
 
 ## Click handling (`GolemMenu:clicked`)
 
@@ -149,6 +181,7 @@ item, so the pack is optional (decision D18).
 | `assign_tools` | `iron_pickaxe` | iron pickaxe (chest with a pickaxe badge; Farmer tool chest) |
 | `assign_seeds` | `wheat_seeds` | wheat seeds (chest with a sprout badge; Farmer seed chest) |
 | `assign_tree` | `oak_sapling` | oak sapling (a tree with the pin; Lumber tree) |
+| `help` | `book` | book (copper-bound book with a "?") |
 | `held_empty` | `glass_bottle` | glass bottle (empty-container look, plain model, unlike the filler pane) |
 
 Why `assign_tools` / `assign_seeds` / `assign_tree` exist: the screenshot review showed the Farmer's two chest buttons
@@ -162,8 +195,8 @@ Assign icon: `assign_<AssignSpec.key()>` if `GolemIcon` has one (`GolemIcon:byNa
 Transporter buttons differ), else by `AssignSpec.kind()`: CHEST, CRAFTING_TABLE, BLOCK, AREA. A new profession with
 other keys needs no GUI change.
 
-Filler is not an icon: `GolemIcon:filler` is a plain vanilla gray pane (tooltip hidden, no custom model data, no
-override file). Why: the vision check showed the custom filler texture read as an item.
+Filler is not an icon: `GolemIcon:filler` is a plain vanilla orange pane (tooltip hidden, no custom model data, no
+override file). Why: the vision check showed the custom filler texture read as an item. Orange (was gray) because the user wanted the filler more visible.
 
 Adding an icon: enum entry in `GolemIcon` (base item must match), model JSON, a case in the base item's override
 file (create the file by copying the vanilla `items/<base>.json` `model` into `fallback`; the vanilla files are in

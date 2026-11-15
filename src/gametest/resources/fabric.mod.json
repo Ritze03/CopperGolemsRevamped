@@ -8,6 +8,7 @@
 		"fabric-gametest": [
 			"com.coppergolemsrevamped.test.TransporterTest",
 			"com.coppergolemsrevamped.test.GolemDataTest",
+			"com.coppergolemsrevamped.test.CoreFeedbackTest",
 			"com.coppergolemsrevamped.test.ChestSorterTest",
 			"com.coppergolemsrevamped.test.CleanerTest",
 			"com.coppergolemsrevamped.test.CrafterTest",

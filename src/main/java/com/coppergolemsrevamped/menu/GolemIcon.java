@@ -41,6 +41,7 @@ public enum GolemIcon {
 	ASSIGN_TOOLS("assign_tools", Items.IRON_PICKAXE),
 	ASSIGN_SEEDS("assign_seeds", Items.WHEAT_SEEDS),
 	ASSIGN_TREE("assign_tree", Items.OAK_SAPLING),
+	HELP("help", Items.BOOK),
 	HELD_EMPTY("held_empty", Items.GLASS_BOTTLE);
 
 	public final String iconName;
@@ -63,9 +64,9 @@ public enum GolemIcon {
 		return null;
 	}
 
-	/** Filler cell: a plain vanilla gray pane with no tooltip and no custom model (it must not read as an item). */
+	/** Filler cell: a plain vanilla orange pane with no tooltip and no custom model (it must not read as an item). */
 	public static ItemStack filler() {
-		ItemStack s = new ItemStack(Items.STAINED_GLASS_PANE.gray());
+		ItemStack s = new ItemStack(Items.STAINED_GLASS_PANE.orange());
 		s.set(DataComponents.TOOLTIP_DISPLAY, new TooltipDisplay(true, ReferenceSortedSets.emptySet()));
 		return s;
 	}

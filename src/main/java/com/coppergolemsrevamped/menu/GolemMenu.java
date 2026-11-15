@@ -4,6 +4,7 @@ import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.profession.Profession;
+import com.coppergolemsrevamped.profession.ProfessionHelp;
 import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Professions;
 
@@ -44,9 +45,10 @@ public class GolemMenu extends AbstractContainerMenu {
 	private static final int PROFESSION_CELL = 0;
 	private static final int FOLLOW_CELL = 1;
 	private static final int FIRST_ASSIGN_CELL = 2;
+	private static final int HELP_CELL = 7;
 	private static final int HELD_CELL = 8;
-	/** Cells reserved for assign buttons (2..7). */
-	private static final int MAX_ASSIGNS = HELD_CELL - FIRST_ASSIGN_CELL;
+	/** Cells reserved for assign buttons (2..6); the Help button owns cell 7, so a profession has at most 5 assigns. */
+	private static final int MAX_ASSIGNS = HELP_CELL - FIRST_ASSIGN_CELL;
 
 	private static final List<MenuType<?>> TYPES = List.of(MenuType.GENERIC_9x1, MenuType.GENERIC_9x2,
 		MenuType.GENERIC_9x3, MenuType.GENERIC_9x4, MenuType.GENERIC_9x5, MenuType.GENERIC_9x6);
@@ -159,6 +161,10 @@ public class GolemMenu extends AbstractContainerMenu {
 		icons.setItem(FOLLOW_CELL, followIcon(data.following));
 		controls[FOLLOW_CELL] = (player, button) -> toggleFollow(player);
 
+		icons.setItem(HELP_CELL, GolemIcon.HELP.stack(Component.literal("Help"),
+			List.of(GolemIcon.line("Click for help in chat")), false));
+		controls[HELP_CELL] = (player, button) -> sendHelp(player);
+
 		if (profession == null) return;
 		List<AssignSpec> assigns = profession.assigns();
 		for (int i = 0; i < Math.min(assigns.size(), MAX_ASSIGNS); i++) {
@@ -219,9 +225,21 @@ public class GolemMenu extends AbstractContainerMenu {
 		for (Profession p : Professions.all()) order.add(p.id());
 		int cur = Math.max(0, order.indexOf(GolemData.get(golem).profession)); // unknown id counts as None
 		int next = Math.floorMod(cur + (button == 1 ? -1 : 1), order.size());
-		GolemService.changeProfession(level, golem, order.get(next));
+		GolemService.changeProfession(level, golem, order.get(next), player);
 		// the slot layout depends on the profession, so rebuild the menu
 		GolemMenuOpener.open(player, golem);
+	}
+
+	/** Chat explanation of the current profession; the menu stays open. */
+	private void sendHelp(ServerPlayer player) {
+		Profession p = GolemService.profession(golem);
+		List<String> lines = p == null
+			? List.of("No profession: the golem stands still.",
+				"Click the Profession button (left = next, right = previous) to pick one.",
+				"Then use its Assign buttons to set chests, blocks and areas.")
+			: ProfessionHelp.lines(p);
+		player.sendSystemMessage(Component.literal("-- " + (p == null ? "Copper Golem" : p.name().getString()) + " --"));
+		for (String l : lines) player.sendSystemMessage(Component.literal(l));
 	}
 
 	private void toggleFollow(ServerPlayer player) {
