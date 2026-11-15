@@ -32,7 +32,18 @@ public final class WalkTo {
 	/** Horizontal distance (blocks) to a stand position that counts as arrived. */
 	static final double REACHED = 1.0;
 
+	/**
+	 * Ticks the golem stands still at the target after arriving (3 s), looking at it, before it finishes and the
+	 * profession resumes. Why: the user asked for it ("he should stay there for 3 seconds") so the shown target is
+	 * clear. Not applied when the walk gives up or times out.
+	 */
+	public static final int HOLD_TICKS = 60;
+
 	private static final class State {
+		/** Ticks held so far; -1 while still walking. */
+		int hold = -1;
+		/** What to look at while holding (block walk: the block centre; outline walk: the last stand position). */
+		@Nullable BlockPos look;
 		final Deque<BlockPos> queue = new ArrayDeque<>();
 		int waited;
 		int fails;
@@ -90,13 +101,15 @@ public final class WalkTo {
 			cancel(golem);
 			return false;
 		}
+		if (s.hold >= 0) return holding(golem, s);
 		if (s.block != null) {
-			if (Interact.approach(level, golem, s.block, s.approach, SPEED) || ++s.waited > BLOCK_TIMEOUT_TICKS) {
-				return next(golem, s);
-			}
+			if (Interact.approach(level, golem, s.block, s.approach, SPEED)) return arrived(golem, s, s.block);
+			if (++s.waited > BLOCK_TIMEOUT_TICKS) return next(golem, s);
 			return true;
 		}
-		if (reached(golem, target)) return next(golem, s);
+		if (reached(golem, target)) {
+			return s.queue.size() == 1 ? arrived(golem, s, target) : next(golem, s);
+		}
 		if (++s.waited > TIMEOUT_TICKS) return next(golem, s);
 		boolean due = s.started ? s.waited % REPATH_TICKS == 0 && golem.getNavigation().isDone() : s.waited % REPATH_TICKS == 1;
 		if (due) {
@@ -107,6 +120,21 @@ public final class WalkTo {
 				return next(golem, s); // no path: skip this waypoint
 			}
 		}
+		return true;
+	}
+
+	/** Final arrival: stop and stand still at the target for {@link #HOLD_TICKS}. */
+	private static boolean arrived(CopperGolem golem, State s, BlockPos look) {
+		s.hold = 0;
+		s.look = look.immutable();
+		return holding(golem, s);
+	}
+
+	private static boolean holding(CopperGolem golem, State s) {
+		if (s.hold++ >= HOLD_TICKS) return next(golem, s);
+		golem.getNavigation().stop();
+		BlockPos l = s.look;
+		if (l != null) golem.getLookControl().setLookAt(l.getX() + 0.5, l.getY() + 0.5, l.getZ() + 0.5);
 		return true;
 	}
 

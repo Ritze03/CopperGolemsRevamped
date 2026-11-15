@@ -189,7 +189,7 @@ public class CoreFeedbackTest {
 
 	// ---- 5 / 6. walk-to ----
 
-	@GameTest(maxTicks = 700)
+	@GameTest(maxTicks = 900)
 	public void walkToStopsNextToBlock(GameTestHelper helper) {
 		floor(helper);
 		BlockPos chest = new BlockPos(7, 1, 7);
@@ -203,6 +203,40 @@ public class CoreFeedbackTest {
 			BlockPos abs = helper.absolutePos(chest);
 			helper.assertTrue(Interact.inReach(golem, abs) || Interact.nearReach(golem, abs),
 				"golem must end in Interact reach of the chest, distance " + horizontal(golem, abs) + " at " + golem.position() + " chest " + abs + " tick " + helper.getTick());
+		});
+	}
+
+	/** After arriving the golem stands still for about 3 s (HOLD_TICKS) before the walk ends. */
+	@GameTest(maxTicks = 900)
+	public void walkToHoldsAtTargetThreeSeconds(GameTestHelper helper) {
+		floor(helper);
+		BlockPos chest = new BlockPos(5, 1, 5);
+		helper.setBlock(chest, Blocks.CHEST);
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(1, 1, 1));
+		GolemService.changeProfession(helper.getLevel(), golem, TRANSPORTER);
+		BlockPos abs = helper.absolutePos(chest);
+		WalkTo.toBlock(helper.getLevel(), golem, abs);
+		long[] arrivedAt = {-1};
+		net.minecraft.world.phys.Vec3[] arrivedPos = {null};
+		helper.onEachTick(() -> {
+			if (arrivedAt[0] < 0) {
+				if (WalkTo.active(golem) && Interact.inReach(golem, abs)) {
+					arrivedAt[0] = helper.getTick();
+					arrivedPos[0] = golem.position();
+				}
+				return;
+			}
+			long since = helper.getTick() - arrivedAt[0];
+			if (since < 55) {
+				helper.assertTrue(WalkTo.active(golem), "hold ended too early after " + since + " ticks");
+				helper.assertTrue(golem.position().distanceTo(arrivedPos[0]) < 0.3, "golem moved while holding: " + golem.position() + " vs " + arrivedPos[0]);
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(arrivedAt[0] >= 0, "not arrived yet");
+			helper.assertTrue(!WalkTo.active(golem), "still holding");
+			helper.assertTrue(helper.getTick() - arrivedAt[0] >= 55, "hold ended too early");
+			helper.assertTrue(helper.getTick() - arrivedAt[0] <= 70, "hold lasted too long: " + (helper.getTick() - arrivedAt[0]));
 		});
 	}
 
