@@ -26,7 +26,7 @@ public final class ProfessionHelp {
 			"Picks up dropped items inside the area and brings them to the output chest.",
 			"The 9 slots are what it carries."),
 		"crafter", List.of(
-			"Recipe tab: the 3x3 grid is the recipe. Click a cell with an item to set it (the item is not used up), click with an empty hand to clear it. The arrow names what is crafted.",
+			"Recipe tab: the 3x3 grid is the recipe. Put one item into each cell to set it (it is kept in the cell, like a container), take it out to clear the cell. The arrow names what is crafted.",
 			"Inventory tab: each cell holds only the item its recipe cell names (shown faded when empty); the output slot is take-only. The golem fills the grid from the input chest, crafts at the table until the output is full, then delivers it to the output chest."),
 		"farmer", List.of(
 			"Works one field with one tool: a hoe farms crops, an axe only melons and pumpkins.",

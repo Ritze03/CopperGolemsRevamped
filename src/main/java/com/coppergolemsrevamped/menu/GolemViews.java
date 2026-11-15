@@ -263,9 +263,8 @@ final class GolemViews {
 	// ---- Recipe ----
 
 	/**
-	 * The Recipe tab: each ghost-recipe group's cells show the stored one-item memory copy (an empty cell shows nothing)
-	 * and set it on a click with an item on the cursor; a previewing group adds its arrow (lore: the outcome) and the
-	 * ghost preview. Every cell is an {@link Cell.Icon}, so nothing here can be taken or placed as a real item.
+	 * The Recipe tab: each recipe group's cells are real container slots ({@link Cell.Store}, max one item, the item is
+	 * stored in the golem); a previewing group adds its arrow (lore: the outcome) and the ghost preview.
 	 */
 	private static void recipe(GolemMenu m, Cell[] cells) {
 		Profession prof = m.profession();
@@ -277,12 +276,7 @@ final class GolemViews {
 			if (g.recipe()) {
 				int first = prof.firstIndex(g);
 				for (int i = 0; i < g.count(); i++) {
-					int idx = first + i;
-					ItemStack stored = idx < data.items.size() ? data.items.get(idx) : ItemStack.EMPTY;
-					ItemStack shown = stored.isEmpty() ? ItemStack.EMPTY : GolemIcon.ghost(stored.copyWithCount(1), "recipe",
-						lore("Click with an item to replace it", "Click with an empty hand to clear it"));
-					set(cells, g.row() + i / g.width(), g.col() + i % g.width(),
-						new Cell.Icon(shown, (p, b) -> m.setRecipeCell(p, g, idx), true));
+					set(cells, g.row() + i / g.width(), g.col() + i % g.width(), new Cell.Store(m.golem(), m.items(), first + i, g));
 				}
 				if (g.label() != null) set(cells, g.label().row(), g.label().col(), icon(label(g.label())));
 			} else if (g.preview() != null) {

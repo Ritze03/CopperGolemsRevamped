@@ -17,7 +17,7 @@ A golem with no profession stands still. A golem with a profession keeps its chu
    opens `menu/GolemMenu`, a vanilla chest-type menu: the GUI is server-side only, vanilla clients need no mod.
    See [gui.md](../features/gui.md).
 2. The menu is always 6 rows with a tab bar (Status, Targets, Inventory, Settings, Profession, plus Recipe for a
-   profession with a ghost recipe, no Back button); tabs switch in place
+   profession with a recipe group, no Back button); tabs switch in place
    (`menu/GolemMenu:showTab`, the cells come from `menu/GolemViews:build`). Clicks on icon cells are handled in
    `menu/GolemMenu:clicked`: a profession button -> `GolemMenu:choose` (None switches at once, otherwise a confirm screen)
    -> `core/GolemService:changeProfession` (takes the player: stored items go to the player; then the menu reopens),

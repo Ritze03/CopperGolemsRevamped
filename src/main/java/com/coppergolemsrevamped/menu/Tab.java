@@ -12,7 +12,7 @@ import net.minecraft.world.item.Items;
 
 /**
  * The golem menu's tabs, in tab-bar order. {@code icon == null && plain == null}: the current profession's icon is shown.
- * {@link #RECIPE} exists only for a profession with a ghost recipe ({@link #forProfession}).
+ * {@link #RECIPE} exists only for a profession with a recipe group ({@link #forProfession}).
  */
 public enum Tab {
 	STATUS("Status", "What the golem is doing now", GolemIcon.STATUS, List.of(
@@ -61,7 +61,7 @@ public enum Tab {
 		this.help = help;
 	}
 
-	/** The tabs of the tab bar for a profession (null = None): all of them, {@link #RECIPE} only with a ghost recipe. */
+	/** The tabs of the tab bar for a profession (null = None): all of them, {@link #RECIPE} only with a recipe group. */
 	public static List<Tab> forProfession(@Nullable Profession p) {
 		List<Tab> out = new ArrayList<>();
 		for (Tab t : values()) if (t != RECIPE || (p != null && p.hasRecipeTab())) out.add(t);

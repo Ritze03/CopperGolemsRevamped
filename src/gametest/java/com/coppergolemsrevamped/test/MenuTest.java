@@ -107,13 +107,13 @@ public class MenuTest {
 		return DisplayItems.is(menu.getCarried());
 	}
 
-	/** Real items the click may move: the player's inventory, the cursor and the golem's input and output slots. */
+	/** Real items the click may move: the player's inventory, the cursor and every golem slot (template included). */
 	private static int realTotal(ServerPlayer player, GolemMenu menu, CopperGolem golem) {
 		int n = menu.getCarried().getCount();
 		Inventory inv = player.getInventory();
 		for (int i = 0; i < inv.getContainerSize(); i++) n += inv.getItem(i).getCount();
 		GolemData d = GolemData.get(golem);
-		for (int i = IN; i <= OUT && i < d.items.size(); i++) n += d.items.get(i).getCount();
+		for (int i = 0; i <= OUT && i < d.items.size(); i++) n += d.items.get(i).getCount();
 		return n;
 	}
 
@@ -435,72 +435,111 @@ public class MenuTest {
 		return (2 + i / 3) * 9 + 1 + i % 3;
 	}
 
-	/** A click with a cursor stack sets the cell to a 1-count copy and leaves the cursor untouched; empty hand clears; right-click sets too. */
+	/** Recipe cells are real max-1 slots: placing takes exactly one from the cursor, taking returns it, a swap works. */
 	@GameTest
-	public void recipeCellSetsACopyAndClearsWithAnEmptyHand(GameTestHelper helper) {
+	public void recipeCellIsARealOneItemSlot(GameTestHelper helper) {
 		CopperGolem g = sticksCrafter(helper);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
 		menu.setCarried(new ItemStack(Items.OAK_PLANKS, 10));
 		menu.clicked(recipeCell(1), 0, ContainerInput.PICKUP, player);
 		GolemData d = GolemData.get(g);
-		helper.assertTrue(menu.getCarried().is(Items.OAK_PLANKS) && menu.getCarried().getCount() == 10, "cursor untouched: " + menu.getCarried());
+		helper.assertTrue(menu.getCarried().is(Items.OAK_PLANKS) && menu.getCarried().getCount() == 9, "cursor keeps 9: " + menu.getCarried());
 		helper.assertTrue(d.items.get(1).is(Items.OAK_PLANKS) && d.items.get(1).getCount() == 1 && !DisplayItems.is(d.items.get(1)), "template 1: " + d.items.get(1));
-		helper.assertTrue(menu.slots.get(recipeCell(1)).getItem().is(Items.OAK_PLANKS) && DisplayItems.is(menu.slots.get(recipeCell(1)).getItem()), "cell shows a copy");
-		// replacing with another item, right-click
+		helper.assertTrue(!DisplayItems.is(menu.slots.get(recipeCell(1)).getItem()), "the cell shows the real item");
+		// right-click places one into another cell
+		menu.clicked(recipeCell(2), 1, ContainerInput.PICKUP, player);
+		helper.assertTrue(menu.getCarried().getCount() == 8 && GolemData.get(g).items.get(2).getCount() == 1, "right-click places one");
+		// a stack on an occupied cell does not swap (max 1)
 		menu.setCarried(new ItemStack(Items.COBBLESTONE, 3));
-		menu.clicked(recipeCell(1), 1, ContainerInput.PICKUP, player);
-		helper.assertTrue(menu.getCarried().getCount() == 3 && GolemData.get(g).items.get(1).is(Items.COBBLESTONE)
-			&& GolemData.get(g).items.get(1).getCount() == 1, "right-click replaces: " + GolemData.get(g).items.get(1));
-		// empty hand clears; an already empty cell stays empty
+		menu.clicked(recipeCell(1), 0, ContainerInput.PICKUP, player);
+		helper.assertTrue(menu.getCarried().getCount() == 3 && GolemData.get(g).items.get(1).is(Items.OAK_PLANKS), "no swap with a stack");
+		// a single item swaps like vanilla
+		menu.setCarried(new ItemStack(Items.COBBLESTONE, 1));
+		menu.clicked(recipeCell(1), 0, ContainerInput.PICKUP, player);
+		helper.assertTrue(menu.getCarried().is(Items.OAK_PLANKS) && GolemData.get(g).items.get(1).is(Items.COBBLESTONE), "single item swaps");
+		// an empty hand takes the item out: the cell is cleared and the cursor holds it
 		menu.setCarried(ItemStack.EMPTY);
 		menu.clicked(recipeCell(1), 0, ContainerInput.PICKUP, player);
-		menu.clicked(recipeCell(2), 0, ContainerInput.PICKUP, player);
-		helper.assertTrue(GolemData.get(g).items.get(1).isEmpty() && GolemData.get(g).items.get(2).isEmpty()
-			&& menu.slots.get(recipeCell(1)).getItem().isEmpty(), "cleared");
+		helper.assertTrue(menu.getCarried().is(Items.COBBLESTONE) && GolemData.get(g).items.get(1).isEmpty(), "taken out");
 		helper.assertTrue(GolemData.get(g).items.get(0).is(Items.OAK_PLANKS) && GolemData.get(g).items.get(3).is(Items.OAK_PLANKS), "other cells keep theirs");
-		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player); // clear cell 0: one plank left = a button
+		// the arrow follows: clearing cell 0 leaves one plank = a button
+		menu.setCarried(ItemStack.EMPTY);
+		menu.clicked(recipeCell(2), 0, ContainerInput.PICKUP, player); // take back the plank from the right-click placement
+		menu.setCarried(ItemStack.EMPTY);
+		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player);
 		helper.assertTrue(lore(at(menu, 3, 5)).contains("Oak Button"), "the arrow follows the recipe: " + lore(at(menu, 3, 5)));
 		helper.assertTrue(!hasDisplay(player, menu), "no display copy in hand");
 		helper.succeed();
 	}
 
-	/** Every other click type on a recipe cell leaves all real items where they are and creates none. */
+	/** Every click type on a recipe cell conserves the real items (CLONE skipped: vanilla creates on the cursor in creative). */
 	@GameTest
-	public void recipeCellOtherClicksConserveItems(GameTestHelper helper) {
+	public void recipeCellClicksConserveItems(GameTestHelper helper) {
 		CopperGolem g = sticksCrafter(helper);
 		ServerPlayer player = player(helper, g);
-		player.getAbilities().instabuild = true;
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
 		player.getInventory().setItem(0, new ItemStack(Items.STICK, 5));
 		player.getInventory().setItem(1, new ItemStack(Items.OAK_PLANKS, 9));
-		List<ItemStack> snapshot = GolemData.get(g).items.stream().map(ItemStack::copy).toList();
-		int total = realTotal(player, menu, g);
 		for (int i : new int[] {0, 1}) { // a set cell and an empty one
-			for (ItemStack cursor : new ItemStack[] {ItemStack.EMPTY, new ItemStack(Items.STICK, 3)}) {
-				for (ContainerInput in : new ContainerInput[] {ContainerInput.QUICK_MOVE, ContainerInput.CLONE, ContainerInput.PICKUP_ALL,
+			for (ItemStack cursor : new ItemStack[] {ItemStack.EMPTY, new ItemStack(Items.STICK, 3), new ItemStack(Items.OAK_PLANKS, 1)}) {
+				for (ContainerInput in : new ContainerInput[] {ContainerInput.PICKUP, ContainerInput.QUICK_MOVE, ContainerInput.PICKUP_ALL,
 					ContainerInput.SWAP, ContainerInput.THROW}) {
 					for (int button : new int[] {0, 1, 40}) {
 						menu.setCarried(cursor.copy());
-						int expected = total + cursor.getCount();
+						int before = realTotal(player, menu, g);
 						menu.clicked(recipeCell(i), button, in, player);
-						helper.assertTrue(!hasDisplay(player, menu), in + "/" + button + " on recipe cell " + i + " leaked a display copy");
-						helper.assertTrue(realTotal(player, menu, g) == expected, in + "/" + button + " on recipe cell " + i + " changed the item count");
-						for (int k = 0; k < snapshot.size(); k++) {
-							helper.assertTrue(ItemStack.matches(snapshot.get(k), GolemData.get(g).items.get(k)), in + "/" + button + " changed golem slot " + k);
+						int after = realTotal(player, menu, g);
+						// THROW drops the item as an entity (at most the cell's single item leaves the books)
+						boolean ok = in == ContainerInput.THROW ? after >= before - 1 && after <= before : after == before;
+						helper.assertTrue(ok, in + "/" + button + " on recipe cell " + i + ": " + before + " -> " + after);
+						helper.assertTrue(!hasDisplay(player, menu), in + "/" + button + " leaked a display copy");
+						for (int k = 0; k < 9; k++) {
+							helper.assertTrue(GolemData.get(g).items.get(k).getCount() <= 1, in + "/" + button + " put a stack into template " + k);
 						}
 					}
 				}
 			}
 		}
-		// drag over recipe cells (QUICK_CRAFT) places nothing either
+		// drag over recipe cells (QUICK_CRAFT) places at most one per cell
 		menu.setCarried(new ItemStack(Items.STICK, 4));
+		int before = realTotal(player, menu, g);
 		menu.clicked(-999, 0, ContainerInput.QUICK_CRAFT, player);
-		menu.clicked(recipeCell(1), 1, ContainerInput.QUICK_CRAFT, player);
-		menu.clicked(recipeCell(2), 1, ContainerInput.QUICK_CRAFT, player);
+		menu.clicked(recipeCell(5), 1, ContainerInput.QUICK_CRAFT, player);
+		menu.clicked(recipeCell(6), 1, ContainerInput.QUICK_CRAFT, player);
 		menu.clicked(-999, 2, ContainerInput.QUICK_CRAFT, player);
-		helper.assertTrue(GolemData.get(g).items.get(1).isEmpty() && GolemData.get(g).items.get(2).isEmpty()
-			&& realTotal(player, menu, g) == total + 4, "drag changed something");
+		helper.assertTrue(realTotal(player, menu, g) == before, "drag changed the item count");
+		for (int k = 0; k < 9; k++) helper.assertTrue(GolemData.get(g).items.get(k).getCount() <= 1, "drag put a stack into template " + k);
+		helper.succeed();
+	}
+
+	/** Double-click collect must not strip the recipe: the template cells refuse pick-all. */
+	@GameTest
+	public void pickAllDoesNotTakeTemplateItems(GameTestHelper helper) {
+		CopperGolem g = sticksCrafter(helper);
+		ServerPlayer player = player(helper, g);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
+		menu.setCarried(new ItemStack(Items.OAK_PLANKS, 5));
+		helper.assertTrue(!menu.canTakeItemForPickAll(menu.getCarried(), menu.slots.get(recipeCell(0))), "template cell offered to pick-all");
+		menu.clicked(54, 0, ContainerInput.PICKUP_ALL, player);
+		helper.assertTrue(GolemData.get(g).items.get(0).is(Items.OAK_PLANKS) && GolemData.get(g).items.get(3).is(Items.OAK_PLANKS)
+			&& menu.getCarried().getCount() == 5, "pick-all stripped the recipe: " + menu.getCarried());
+		helper.succeed();
+	}
+
+	/** Shift-click from the player's inventory never fills the recipe; shift-click from a template cell returns the item. */
+	@GameTest
+	public void shiftClickDoesNotFillTemplate(GameTestHelper helper) {
+		CopperGolem g = sticksCrafter(helper);
+		ServerPlayer player = player(helper, g);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
+		player.getInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 4));
+		menu.clicked(54 + 27, 0, ContainerInput.QUICK_MOVE, player);
+		helper.assertTrue(count(player, Items.COBBLESTONE) == 4 && player.getInventory().getItem(0).getCount() == 4, "stack moved");
+		for (int k = 0; k < 9; k++) helper.assertTrue(k == 0 || k == 3 || GolemData.get(g).items.get(k).isEmpty(), "template " + k + " was filled");
+		int planks = count(player, Items.OAK_PLANKS);
+		menu.clicked(recipeCell(0), 0, ContainerInput.QUICK_MOVE, player);
+		helper.assertTrue(GolemData.get(g).items.get(0).isEmpty() && count(player, Items.OAK_PLANKS) == planks + 1, "shift-click out of the template");
 		helper.succeed();
 	}
 
@@ -526,20 +565,6 @@ public class MenuTest {
 		menu.setCarried(new ItemStack(Items.OAK_PLANKS, 7));
 		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player);
 		helper.assertTrue(menu.getCarried().isEmpty() && GolemData.get(g).items.get(IN).getCount() == 7, "the matching cell takes planks");
-		helper.succeed();
-	}
-
-	/** A hand-edited template stack bigger than one is not deleted by a Recipe click: the surplus goes to the player. */
-	@GameTest
-	public void recipeCellKeepsTheSurplusOfAnOddStack(GameTestHelper helper) {
-		CopperGolem g = golem(helper, CRAFTER);
-		GolemData data = GolemData.get(g);
-		data.items.set(0, new ItemStack(Items.OAK_PLANKS, 5));
-		GolemData.save(g, data);
-		ServerPlayer player = player(helper, g);
-		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
-		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player);
-		helper.assertTrue(GolemData.get(g).items.get(0).isEmpty() && count(player, Items.OAK_PLANKS) == 4, "surplus returned: " + count(player, Items.OAK_PLANKS));
 		helper.succeed();
 	}
 

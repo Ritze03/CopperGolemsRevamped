@@ -25,15 +25,8 @@ sealed interface Cell {
 		void click(ServerPlayer player, int button);
 	}
 
-	/**
-	 * A control, label or filler: nothing can be placed in or taken out of it. {@code pickupOnly}: the control runs
-	 * for PICKUP only, not for shift-click (the Recipe tab's ghost cells, where shift-click must do nothing).
-	 */
-	record Icon(ItemStack stack, @Nullable Control control, boolean pickupOnly) implements Cell {
-		Icon(ItemStack stack, @Nullable Control control) {
-			this(stack, control, false);
-		}
-	}
+	/** A control, label or filler: nothing can be placed in or taken out of it. */
+	record Icon(ItemStack stack, @Nullable Control control) implements Cell {}
 
 	/**
 	 * A cell backed by one slot of {@code GolemData.items}. Besides the real stack it can show a display copy (never

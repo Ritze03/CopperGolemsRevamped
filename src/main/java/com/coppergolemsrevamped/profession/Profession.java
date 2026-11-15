@@ -49,7 +49,7 @@ public record Profession(
 	 * A run of {@code count} slots in {@code GolemData.items}. A group is shown in the Inventory tab only after
 	 * {@link #at}: slot {@code i} sits at row {@code row + i / width}, column {@code col + i % width} of the 6-row menu
 	 * (row 0 is the tab bar, so rows 1..5; the 4-arg constructor means width 9). Without {@code at} the group is
-	 * hidden: it still reserves its data slots. {@code recipe} (see {@link #recipeAt}): a ghost recipe, shown on the Recipe tab.
+	 * hidden: it still reserves its data slots. {@code recipe} (see {@link #recipeAt}): a recipe group of real one-item slots, shown on the Recipe tab.
 	 * {@code memoryOffset > 0}: slot {@code k} remembers its item in data slot {@code k - memoryOffset}; an empty slot
 	 * shows it faded and accepts only that item, a slot whose memory is empty accepts nothing.
 	 * {@code inHand}: the first non-empty stack is shown in the golem's main hand. {@code preview}: while the (single)
@@ -108,8 +108,8 @@ public record Profession(
 		}
 
 		/**
-		 * A ghost recipe: the group is the profession's memory (not items), shown only on the Recipe tab starting at
-		 * {@code r}, {@code c}, where a click with an item sets a cell to a one-item copy and an empty hand clears it.
+		 * A recipe group: real container slots (use max stack 1), shown only on the Recipe tab starting at
+		 * {@code r}, {@code c}; placing an item sets a cell, taking it out clears it.
 		 * Never shown on the Inventory tab. A profession with such a group gets the Recipe tab (see {@link #hasRecipeTab}).
 		 */
 		public SlotGroup recipeAt(int r, int c) {
@@ -158,7 +158,7 @@ public record Profession(
 		return null;
 	}
 
-	/** True when a group is a ghost recipe ({@link SlotGroup#recipeAt}): the menu then shows a Recipe tab before Inventory. */
+	/** True when a group is a recipe group ({@link SlotGroup#recipeAt}): the menu then shows a Recipe tab before Inventory. */
 	public boolean hasRecipeTab() {
 		for (SlotGroup g : slots) if (g.recipe()) return true;
 		return false;

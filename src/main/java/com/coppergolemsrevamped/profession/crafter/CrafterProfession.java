@@ -32,10 +32,8 @@ public final class CrafterProfession {
 			ID,
 			Component.literal("Crafter"),
 			List.of(
-				// the recipe: a ghost grid on the Recipe tab (cells are set by clicking with an item, never real items)
-				new SlotGroup("template", TEMPLATE_SLOTS, 1, s -> true, 3).noQuickMove().recipeAt(2, 1)
-					.labeled(1, 2, "minecraft:knowledge_book", "Recipe",
-						"Click with an item to set a cell (the item is not used up)\nClick with an empty hand to clear it"),
+				// the recipe: a grid of real one-item slots on the Recipe tab
+				new SlotGroup("template", TEMPLATE_SLOTS, 1, s -> true, 3).noQuickMove().recipeAt(2, 1),
 				// the Inventory tab's 3x3 grid; input cell i accepts only template slot i's item (offset = TEMPLATE_SLOTS)
 				new SlotGroup("input", INPUT_SLOTS, 64, s -> true, 3).at(2, 1).remembers(TEMPLATE_SLOTS)
 					.labeled(1, 2, "icon_inventory", "Ingredients", "Filled by the golem from its input chest; you can add items too"),

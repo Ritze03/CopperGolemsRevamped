@@ -32,7 +32,7 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * Server-side-only golem menu: always a vanilla 6-row chest menu, so vanilla clients need no mod. Row 0 is the tab
- * bar; rows 1..5 show the current tab (Status, Targets, Recipe for a ghost-recipe profession, Inventory, Settings,
+ * bar; rows 1..5 show the current tab (Status, Targets, Recipe for a recipe-group profession, Inventory, Settings,
  * Profession) or the profession confirm
  * screen. The 54 top slots are fixed {@link ViewSlot}s that route to the cells of the current view
  * ({@link GolemViews}), so switching tabs never reopens the menu (a reopen re-centres the mouse on a vanilla
@@ -186,25 +186,6 @@ public class GolemMenu extends AbstractContainerMenu {
 		rebuild();
 	}
 
-	/**
-	 * Recipe tab: a click on a ghost cell with an item on the cursor sets the cell to a one-item copy (the cursor is
-	 * untouched, nothing is consumed or moved), with an empty cursor it clears the cell. A stored stack bigger than one
-	 * (not written by this mod, only by hand-edited data) is not deleted: the surplus goes to the player.
-	 * Why a copy and never the real stack: the memory must not be able to create or delete items (D9).
-	 */
-	void setRecipeCell(ServerPlayer player, SlotGroup group, int dataIdx) {
-		ItemStack carried = getCarried();
-		ItemStack cur = items.getItem(dataIdx);
-		if (carried.isEmpty() ? cur.isEmpty() : !group.filter().test(carried)) return;
-		if (cur.getCount() > 1 && golem.level() instanceof ServerLevel level) {
-			ItemStack extra = cur.copyWithCount(cur.getCount() - 1);
-			GolemService.give(player, extra);
-			if (!extra.isEmpty()) player.spawnAtLocation(level, extra);
-		}
-		items.setItem(dataIdx, carried.isEmpty() ? ItemStack.EMPTY : carried.copyWithCount(1));
-		rebuild();
-	}
-
 	/** Targets tab "Show": the golem walks to the target (block: next to it, area: along its outline). */
 	void show(ServerPlayer player, AssignSpec spec) {
 		if (!(golem.level() instanceof ServerLevel level)) return;
@@ -269,8 +250,7 @@ public class GolemMenu extends AbstractContainerMenu {
 
 	/**
 	 * Icon cells (controls, labels, filler) never move items: PICKUP / QUICK_MOVE run the control, every other input
-	 * on them (CLONE would copy the icon for creative players, SWAP / THROW / PICKUP_ALL) is dropped; a
-	 * {@code pickupOnly} icon (Recipe tab cell) also ignores shift-click. A cell that only shows a display copy
+	 * on them (CLONE would copy the icon for creative players, SWAP / THROW / PICKUP_ALL) is dropped. A cell that only shows a display copy
 	 * (faded input, ghost output) handles PICKUP itself (place a fitting item) and drops every other input, so the
 	 * copy can never reach a cursor, however the click is made. QUICK_CRAFT is always passed on, swallowing it would corrupt the drag state (the slots refuse
 	 * placement anyway).
@@ -280,7 +260,7 @@ public class GolemMenu extends AbstractContainerMenu {
 		if (slotId >= 0 && slotId < TOP && input != ContainerInput.QUICK_CRAFT) {
 			Cell c = cells[slotId];
 			if (c instanceof Cell.Icon icon) {
-				if (icon.control() != null && (input == ContainerInput.PICKUP || (input == ContainerInput.QUICK_MOVE && !icon.pickupOnly()))
+				if (icon.control() != null && (input == ContainerInput.PICKUP || input == ContainerInput.QUICK_MOVE)
 					&& player instanceof ServerPlayer sp && stillValid(sp)) {
 					icon.control().click(sp, button);
 				}
@@ -292,6 +272,8 @@ public class GolemMenu extends AbstractContainerMenu {
 			}
 		}
 		super.clicked(slotId, button, input, player);
+		// the Recipe tab's arrow lore and ghost preview name the outcome of the template: refresh after any real slot change
+		if (tab == Tab.RECIPE && !confirming) rebuild();
 	}
 
 	/** A faded cell takes a fitting item on PICKUP; an empty hand does nothing (the recipe is set on the Recipe tab). */

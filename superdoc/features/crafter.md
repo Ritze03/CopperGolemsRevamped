@@ -11,20 +11,20 @@ chest. Id `coppergolemsrevamped:crafter`, `runsVanillaBrain = false`.
 - Assigns: `input` (`Kind.CHEST`), `table` (`Kind.CRAFTING_TABLE`, gets the `assign_crafting_table` icon),
   `output` (`Kind.CHEST`).
 - `profession/crafter/CrafterLogic:tick` is the loop. Helpers: `plan`, `canCraft`, `craft`, `fetch`, `deliver`.
-- GUI: two tabs. **Recipe**: the 9 template slots as a ghost 3x3 grid at rows 2..4, columns 1..3 (click with an item
-  sets a cell to a one-item copy without using the item up, click with an empty hand clears it), the arrow with the
+- GUI: two tabs. **Recipe**: the 9 template slots as a real 3x3 slot grid at rows 2..4, columns 1..3 (put one item in
+  a cell to set it, take it out to clear it; no label, filler at (1,2)), the arrow with the
   outcome at (3,5), a ghost preview at (3,7). **Inventory**: the 9 input slots as the 3x3 grid, each accepting only its
   recipe cell's item, a plain arrow and the take-only output. Details and the display-copy safety rules in [gui.md](gui.md).
 
 ## The three slot groups
 
-- **Template** (0..8): the recipe memory, one-item copies that are never consumed. It is a ghost recipe group
-  (`SlotGroup:recipeAt`) shown on the Recipe tab only; a player sets cell `i` there with a click holding an item
-  (`GolemMenu:setRecipeCell`) and clears it with an empty hand. Shift-click never fills it (`SlotGroup:noQuickMove`).
-  The copies are memory, not items: a profession change or death does not give them out (`GolemService:drop`, a
-  surplus above one would be), otherwise setting a recipe would mint items (D9). Why: user spec "a 3x3 crafting template
-  that only defines the recipe; the golem doesn't consume them" and D13; the ghost-click replaced "place an item into the
-  empty cell" because the user found one menu for recipe and inventory hard to use.
+- **Template** (0..8): the recipe, real one-item slots that the golem never consumes. A `SlotGroup:recipeAt` group
+  with max stack 1, shown on the Recipe tab only; a player puts one item into cell `i` and takes it out to clear it.
+  Shift-click from the player never fills it (`SlotGroup:noQuickMove`), pick-all never takes from it. A profession
+  change or death gives the items back like any slot (`GolemService:drop`). Why: user spec "a 3x3 crafting template that
+  only defines the recipe; the golem doesn't consume them" and D13. History: the cells were briefly ghost copies set by
+  clicking; the user found the copy-click needed multiple presses (client prediction mismatch) and preferred a real
+  container slot.
 - **Input** (9..17): slot `i` holds only the item of template cell `i` (same item and components,
   `ItemStack.isSameItemSameComponents`); a slot whose template cell is empty stays unused. Enforced for players by
   `SlotGroup:remembers` (`Cell.Store:mayPlace`): a cell with a memory accepts only that item, one without refuses
@@ -116,9 +116,9 @@ craft count is the smallest slot; a recipe with 9 cells needs all 9 input slots.
   golem is within 1 block of the table, lids end closed.
 - `guiLayoutIsOneRememberingGrid`: Inventory tab, one grid at rows 2..4 / cols 1..3 (faded copies for set recipe cells,
   every other cell refuses items), "Ingredients" label at (1,2), plain arrow at (3,5), ghost output at (3,7), filler elsewhere.
-- `recipeTabShowsTheTemplateAsGhosts`: Recipe tab grid (ghost copies and empty cells, none placeable or takeable), "Recipe"
-  label, arrow lore with the outcome, ghost output.
+- `recipeTabShowsTheTemplateAsRealSlots`: Recipe tab grid (real one-item slots, set and empty cells), filler at (1,2), arrow
+  lore with the outcome, ghost output. `MenuTest` covers place/take/swap, conservation, pick-all and shift-click.
 - `shiftClickFillsRememberedInputOnly`: shift-clicked planks land in the plank cell's input slot, sticks (no matching
   cell) stay in the inventory, no memory is set. The click tests are in `MenuTest`, see [gui.md](gui.md).
-- `itemsDropOnProfessionChange`: `changeProfession(..., null)` drops input and output items (not the recipe memory) and
+- `itemsDropOnProfessionChange`: `changeProfession(..., null)` drops input, output and template items and
   clears the list.
