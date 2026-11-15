@@ -10,6 +10,20 @@
 					"type": "minecraft:model",
 					"model": "coppergolemsrevamped:item/gui/assign_chest"
 				}
+			},
+			{
+				"when": "coppergolemsrevamped:assign_input",
+				"model": {
+					"type": "minecraft:model",
+					"model": "coppergolemsrevamped:item/gui/assign_input"
+				}
+			},
+			{
+				"when": "coppergolemsrevamped:assign_output",
+				"model": {
+					"type": "minecraft:model",
+					"model": "coppergolemsrevamped:item/gui/assign_output"
+				}
 			}
 		],
 		"fallback": {

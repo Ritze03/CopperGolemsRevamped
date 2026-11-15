@@ -34,15 +34,20 @@ client desyncs if the count is not `rows*9 + 36`.
 | 0 | Profession cycle button |
 | 1 | Follow toggle |
 | 2..7 | One assign button per `AssignSpec` of the profession, in order (max 6) |
-| 8 | Held-item slot (the golem's carried item, take-out only) |
+| 8 | Held-item slot (the golem's carried item, take-out only; shows the `held_empty` placeholder when the hand is empty) |
 | 9.. | The profession's slots in declaration order (`SlotGroup`s back to back, 9 per row) |
-| rest | Filler |
+| rest | Filler (plain vanilla gray stained glass pane, tooltip hidden) |
 
 Example, Transporter (one group of 9, two assigns): 2 rows, cells 0 profession, 1 follow, 2 and 3 assign
 buttons (A, B), 4..7 filler, 8 held, 9..17 carry slots; top slots 0..17, player inventory 18..53.
 Profession None: 1 row, cells 0 and 1 controls, 2..7 filler, 8 held; top slots 0..8, player inventory 9..44.
 Groups are not aligned to rows and carry no labels (a chest menu has no room for headings). At most 45 profession
 slots are shown (5 rows); the container is sized to that.
+
+Held slot (`GolemMenu.HeldSlot`): `getItem` returns a cached `held_empty` placeholder ("Held item" / "The golem is
+holding nothing") while the real main hand is empty, so the cell does not look like an empty slot. The placeholder
+never leaves the cell, see the click table under "Click handling". Why: a vision check of in-game screenshots could
+not tell the empty held cell from an empty slot.
 
 Slot `mayPlace` = group filter, `getMaxStackSize` = group `maxStack` (`GolemMenu.GroupSlot`).
 
@@ -74,6 +79,13 @@ lore says how to use it and shows the current target (`Current: x, y, z` / `a to
 - `openMenu` closes any open container first and `removed()` returns the cursor stack, so reopening from inside
   `clicked` is safe.
 
+Held cell (`GolemMenu:clicked`, `HeldSlot`): with the hand EMPTY every input except `QUICK_CRAFT` is dropped before
+`super.clicked`; `mayPickup` is false and `mayPlace` always false, so drag (`QUICK_CRAFT`) cannot place or take it,
+and `PICKUP_ALL` (double-click elsewhere) skips it because it checks `mayPickup`. `quickMoveStack` returns EMPTY for
+it. With a real item held, all inputs are vanilla and take-out only (`mayPlace` false); `remove` / `set` hit the real
+`GolemHeldContainer`. Why a `getItem` override and not a swapped slot: a menu's slot list is fixed, and the override
+keeps one slot object whose sync (`broadcastChanges` reads `getItem`) shows the placeholder or the real item.
+
 `quickMoveStack`: control / filler -> nothing; held or profession slot -> player inventory (hotbar end first);
 player slot -> profession slots only (`moveItemStackTo` over the profession cell range only, because its merge
 pass skips `mayPlace` and would otherwise fill the held / control cells).
@@ -97,7 +109,7 @@ and an item placed in a slot that no longer exists would vanish (decision D9, no
 
 An icon is a vanilla base item with `DataComponents.CUSTOM_MODEL_DATA` = one string `coppergolemsrevamped:<icon>`
 (`menu/GolemIcon`). Names come from `DataComponents.ITEM_NAME` (not `CUSTOM_NAME`, which renders italic), lore
-lines are explicitly non-italic gray, filler has the whole tooltip hidden (`TOOLTIP_DISPLAY`), the other icons
+lines are explicitly non-italic gray, the other icons
 hide `ATTRIBUTE_MODIFIERS` (tool base items), an "on" toggle gets `ENCHANTMENT_GLINT_OVERRIDE`.
 
 The mod jar and the resource pack both ship `assets/minecraft/items/<base>.json`, overriding the vanilla item
@@ -120,14 +132,19 @@ item, so the pack is optional (decision D18).
 | `profession_farmer` | `iron_hoe` | iron hoe |
 | `profession_lumber` | `iron_axe` | iron axe |
 | `follow_on`, `follow_off` | `lead` | lead (glint when on) |
-| `assign_chest` | `chest` | chest (its override copies vanilla's special seasonal model) |
+| `assign_chest`, `assign_input`, `assign_output` | `chest` | chest (its override copies vanilla's special seasonal model) |
 | `assign_block` | `target` | target block |
 | `assign_area` | `map` | empty map |
-| `filler` | gray stained glass pane | pane, no tooltip |
+| `held_empty` | `glass_bottle` | glass bottle (empty-container look, plain model, unlike the filler pane) |
 
 Profession -> icon: `profession_<profession id path>` (`GolemIcon:profession`), `profession_none` when there is no
 such icon, so a new profession only needs its texture, model and a `GolemIcon` entry plus a base-item case.
-Assign icon by `AssignSpec.kind()`: CHEST, CRAFTING_TABLE, BLOCK, AREA.
+Assign icon: `assign_<AssignSpec.key()>` if `GolemIcon` has one (`GolemIcon:byName`; `input` / `output` so the two
+Transporter buttons differ), else by `AssignSpec.kind()`: CHEST, CRAFTING_TABLE, BLOCK, AREA. A new profession with
+other keys needs no GUI change.
+
+Filler is not an icon: `GolemIcon:filler` is a plain vanilla gray pane (tooltip hidden, no custom model data, no
+override file). Why: the vision check showed the custom filler texture read as an item.
 
 Adding an icon: enum entry in `GolemIcon` (base item must match), model JSON, a case in the base item's override
 file (create the file by copying the vanilla `items/<base>.json` `model` into `fallback`; the vanilla files are in
