@@ -51,10 +51,11 @@ Golems without the profession get 10 back, i.e. unchanged vanilla.
 ## Old saves
 
 Saves from the waxed-block version hold waxed copper blocks in `GolemData.items` index 0. `migrateLegacyItems`
-drops them at the golem (`GolemService:dropAll`) and clears the list. Why called from `visitedLimit`:
-`GolemTicker` never calls `Profession.tick` for vanilla-brain professions and `core/` was out of scope, but
-`visitedLimit` runs whenever the sorter works. Until then the items stay in the save, and death or a profession
-change drops them as for any profession (no item is lost). `GolemMenu` copes with zero slot groups.
+drops them at the golem (`GolemService:dropAll`) and clears the list. Called from `GolemTicker:tick` (once per brain
+step, an early return unless a sorter still holds items). Why there and not in `visitedLimit`: `GolemTicker` never calls
+`Profession.tick` for vanilla-brain professions, and `visitedLimit` is a getter that the vanilla behaviour queries and
+that must not mutate. Until the first tick the items stay in the save, and death or a profession change drops them as
+for any profession (no item is lost). `GolemMenu` copes with zero slot groups (Inventory tab: "No inventory").
 
 ## Tests (`ChestSorterTest`)
 
@@ -63,9 +64,10 @@ change drops them as for any profession (no item is lost). `GolemMenu` copes wit
   does not start the cooldown and the 65th does; a control golem seeded with 10 enters cooldown on the 11th.
   Fails if the mixin is not registered. Gotcha: a freshly spawned golem already carries
   `TRANSPORT_ITEMS_COOLDOWN_TICKS`, so the test erases it first.
-- `legacyItemsAreDropped`: blocks in items[0] become item entities at the golem and the list is cleared.
-- `menuWithoutSlotGroups`: `GolemMenu` for a sorter and for a golem with no profession both have the control row
-  plus the player inventory only.
+- `legacyItemsAreDropped`: blocks in items[0] become item entities at the golem and the list is cleared by one
+  `GolemTicker:tick`.
+- `menuWithoutSlotGroups`: `GolemMenu` for a sorter and for a golem with no profession are the same 6-row menu
+  (54 top slots plus the player inventory).
 - `sortsFreshGolem`, `sortsWaxedOxidizedSourceIntoMatchingChest`, `sortsAfterBeingTransporter`: end-to-end.
   Copper chest with 10 cobblestone and a wooden chest (empty, or holding 1 cobblestone) 5 blocks apart; golem
   spawned normally, profession set via `GolemService:changeProfession` (the last one after a Transporter

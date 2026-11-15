@@ -11,12 +11,12 @@ Agent-facing documentation for the project. Start at the overview.
 
 ## Features
 
-- [features/gui.md](features/gui.md): server-side chest menu, CMD icons, resource pack.
+- [features/gui.md](features/gui.md): server-side tabbed chest menu, remembering Crafter grid, hand display, CMD icons, resource pack.
 - [features/assign-mode.md](features/assign-mode.md): armed next-click target assignment.
 - [features/transporter.md](features/transporter.md): Transporter profession and follow mode.
 - [features/chest-sorter.md](features/chest-sorter.md): Chest Sorter profession, waxed copper blocks raise the visited-chest limit.
 - [features/cleaner.md](features/cleaner.md): Cleaner profession, picks up item entities in an area (max 16x16) into an output chest.
-- [features/crafter.md](features/crafter.md): Crafter profession, 3x3 template, fetch from input, craft at a table, deliver to output.
+- [features/crafter.md](features/crafter.md): Crafter profession, 3x3 recipe memory, fetch from input, craft at a table, deliver to output.
 - [features/farmer.md](features/farmer.md): Farmer profession, farms a field (max 9x9): a hoe tills, plants and harvests, an axe harvests melons and pumpkins; seeds go to the seed chest.
 - [features/lumber.md](features/lumber.md): Lumber profession, fells a whole assigned tree from the ground (flood fill, 2x2 and branches), collects drops, replants, bone meal, axe wear.
 - [features/chunk-loading.md](features/chunk-loading.md): profession golems keep a 3x3 chunk area loaded and ticking (persistent ticket), limits.

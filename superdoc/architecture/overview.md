@@ -16,11 +16,13 @@ A golem with no profession stands still. A golem with a profession keeps its chu
 1. Empty-hand right-click: `mixin/CopperGolemMixin:cgr$emptyHand` -> `menu/GolemMenuOpener:open` (server)
    opens `menu/GolemMenu`, a vanilla chest-type menu: the GUI is server-side only, vanilla clients need no mod.
    See [gui.md](../features/gui.md).
-2. Clicks on control cells are handled in `menu/GolemMenu:clicked`: profession cell ->
-   `core/GolemService:changeProfession` (takes the player: stored items go to the player; then the menu reopens),
-   follow cell -> flips the follow fields of `GolemData`, assign cell -> `assign/AssignMode:arm` (see
-   [assign-mode.md](../features/assign-mode.md)), Help cell (cell 7) -> `menu/GolemMenu:sendHelp` (chat text from
-   `profession/ProfessionHelp`).
+2. The menu is always 6 rows with a tab bar (Status, Targets, Inventory, Settings, Profession); tabs switch in place
+   (`menu/GolemMenu:showTab`, the cells come from `menu/GolemViews:build`). Clicks on icon cells are handled in
+   `menu/GolemMenu:clicked`: a profession button -> `GolemMenu:choose` (None switches at once, otherwise a confirm screen)
+   -> `core/GolemService:changeProfession` (takes the player: stored items go to the player; then the menu reopens),
+   follow toggle -> flips the follow fields of `GolemData`, assign button -> `assign/AssignMode:arm` (see
+   [assign-mode.md](../features/assign-mode.md)), Show / Clear -> `ai/WalkTo` / the assignments, Help ->
+   `menu/GolemMenu:sendHelp` (chat text from `menu/Tab` and `profession/ProfessionHelp`).
 3. All per-golem state is one persistent attachment, `core/GolemData` (`core/ModAttachments:GOLEM_DATA`):
    profession, assignments, carried items, follow state.
 4. Every server tick the vanilla brain tick is wrapped (`mixin/CopperGolemMixin:cgr$gateBrain`) and routed to
@@ -50,7 +52,7 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | `profession/lumber/` | Lumber declaration and fell/replant/deliver loop, see [lumber.md](../features/lumber.md) |
 | `ai/` | `FollowMode`; `WalkTo` (walk to an assigned block or area outline); `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md) |
 | `assign/` | `AssignMode`: armed next-click target assignment, area capping (`clampCorner`), walk-to trigger |
-| `menu/` | `GolemMenu` (chest-type layout built from the profession declaration, click handling), `GolemIcon` (icon stacks), containers over `GolemData`, `GolemMenuOpener` |
+| `menu/` | `GolemMenu` (6-row tabbed menu, fixed slots routed to cells, click handling), `GolemViews` (cells per tab), `Cell`, `Tab`, `GolemIcon` (icon stacks), `GolemItemsContainer` over `GolemData`, `GolemMenuOpener` |
 | `src/main/resources/assets/` | Icon models and `minecraft/items/*` overrides; also zipped as the optional resource pack |
 | `src/gametest/` | GameTests, see [testing.md](testing.md) |
 
@@ -61,8 +63,9 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Add a profession: declare a `profession/Profession` and register it with `profession/Professions:register`
   (example: `profession/transporter/TransporterProfession:init`); call its init from `CopperGolemsRevamped:onInitialize`.
 - Change what a golem remembers: `core/GolemData:CODEC` (and the fields next to it).
-- Change the GUI layout or slots: `menu/GolemMenu` constructor.
-- Add a GUI control or icon: `menu/GolemMenu:buildControls`, `menu/GolemIcon`, see [gui.md](../features/gui.md).
+- Change a profession's slot layout in the Inventory tab: its `SlotGroup` declaration (`at`, `labeled`), `profession/Profession:validateLayout`.
+- Change a tab or add a GUI control or icon: `menu/GolemViews`, `menu/Tab`, `menu/GolemIcon`, see [gui.md](../features/gui.md).
+- Change the Status texts: `profession/ProfessionStatus`. The golem's visible hand item: `core/GolemHandDisplay`.
 - Change how targets are assigned or validated: `assign/AssignMode:click`, `assign/AssignMode:matches`.
 - Change when the vanilla brain runs (and the None case, where the golem stands still): `core/GolemTicker:tick`.
 - Change the help texts: `profession/ProfessionHelp`.

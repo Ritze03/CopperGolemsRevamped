@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.mixin;
 
+import com.coppergolemsrevamped.core.DisplayItems;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.core.GolemTicker;
 import com.coppergolemsrevamped.menu.GolemMenuOpener;
@@ -28,6 +29,12 @@ public abstract class CopperGolemMixin {
 		if (hand == InteractionHand.MAIN_HAND && player.getMainHandItem().isEmpty() && player.getOffhandItem().isEmpty()) {
 			if (player instanceof ServerPlayer sp) GolemMenuOpener.open(sp, (CopperGolem) (Object) this);
 			cir.setReturnValue(InteractionResult.SUCCESS);
+			return;
+		}
+		// Vanilla throws the golem's main-hand item at an empty-handed player (e.g. off-hand pass with a block in the
+		// main hand). The hand shows a display copy of a stored tool or carried stack: throwing it would duplicate it.
+		if (player.getItemInHand(hand).isEmpty() && DisplayItems.is(((CopperGolem) (Object) this).getMainHandItem())) {
+			cir.setReturnValue(InteractionResult.PASS);
 		}
 	}
 

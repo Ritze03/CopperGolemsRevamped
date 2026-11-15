@@ -29,8 +29,8 @@ PAL = {
     "B": "9FC4FF", "b": "5A82D0", "L": "2F4FA8", "l": "6E96F0",
     # greys
     "1": "3E3E3E", "2": "6B6B6B", "3": "8F8F8F",
-    # ghost (8 hex digits = RRGGBBAA): held_empty placeholder
-    "o": "ECECECA8", "x": "FFFFFF2C",
+    # light greys (craft arrow)
+    "4": "B4B4B4", "5": "DADADA", "6": "FFFFFF",
 }
 
 
@@ -254,39 +254,6 @@ ARROW_DOWN = [                                     # 7x8 green arrow, tip down
 # orange (copper) arrow pointing up: the same shape flipped, recolored
 ARROW_UP = recolor(ARROW_DOWN[::-1], {"n": "k", "M": "C", "N": "c"})
 
-HAND_MASK = [                                      # open-hand silhouette, 14x13 ('#' = hand)
-    "......##.......",
-    "...##.##.##....",
-    "...##.##.##....",
-    "...##.##.##.##.",
-    "...##.##.##.##.",
-    ".#.##.##.##.##.",
-    ".#############.",
-    ".##############",
-    "###############",
-    "###############",
-    "..############.",
-    "...##########..",
-    "....########...",
-]
-
-
-def ghost_hand():
-    m = HAND_MASK
-    out = []
-    for y, row in enumerate(m):
-        r = ""
-        for x, ch in enumerate(row):
-            if ch != "#":
-                r += "."
-                continue
-            edge = any(not (0 <= y + dy < len(m) and 0 <= x + dx < len(row) and m[y + dy][x + dx] == "#")
-                       for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
-            r += "o" if edge else "x"
-        out.append(r)
-    return out
-
-
 def outlined(sprite, fill, edge):
     """Recolor `fill` pixels that touch transparency (4-neighbour) with `edge`."""
     out = []
@@ -389,6 +356,71 @@ def crafting_board():
             b[L][i] = "w"
             b[i][L] = "w"
     return ["".join(r) for r in b]
+
+
+# ---- tab-bar icons (Back, Status, Inventory, Settings) and the crafting arrow ----
+BACK = [                                           # chunky copper arrow pointing left, long shaft
+    "................",
+    "......K.........",
+    ".....KhK........",
+    "....KhCK........",
+    "...KhCCKKKKKKK..",
+    "..KhCCCCCCCCCcK.",
+    ".KhCCCCCCCCCccK.",
+    "KhCCCCCCCCCcccK.",
+    ".KcccccccccdddK.",
+    "..KcccddddddddK.",
+    "...KcdKKKKKKKK..",
+    "....KdK.........",
+    ".....KdK........",
+    "......K.........",
+    "................",
+    "................",
+]
+STATUS = [                                         # copper clipboard: paper, text lines, green ticks
+    "................", "......kkkk......", ".....kChhCk.....", "..kkkkcKKckkkk..",
+    "..kCCCCCCCCCck..", "..kCk555555kck..", "..kCk522225kck..", "..kCk555555kck..",
+    "..kCk52225Nkck..", "..kCk5555N5kck..", "..kCk5N5N55kck..", "..kCk55N555kck..",
+    "..kCk555555kck..", "..kdkkkkkkkkdk..", "..kdddddddddck..", "...kkkkkkkkkk...",
+]
+INVENTORY = [                                      # leather satchel with copper trim and buckle
+    "................", "................", ".uuukkuuuukkuuu.", ".uVVCcVVVVCcVVu.",
+    ".uvvCcvkkvCcvWu.", ".uvvCckhCkCcvWu.", ".uvvCckCckCcvWu.", ".uuukkkkkkkkuuu.",
+    ".uvvCckddkCcvWu.", ".uvvCcvkkvCcvWu.", ".uvvCcvvvvCcvWu.", ".uvvCcvvvvCcvWu.",
+    ".uWWCcWWWWCcWWu.", ".uuukkuuuukkuuu.", "................", "................",
+]
+CRAFT_ARROW = [                                    # vanilla-style grey arrow pointing right
+    "................", "................", ".........1......", ".........21.....",
+    "..1111111331....", ".16666666655311.", ".15555555544331.", ".14444444433321.",
+    ".12222222222211.", "..1111111221....", ".........21.....", ".........1......",
+    "................", "................", "................", "................",
+]
+GEAR_TOP = ["......####......", "..##..####..##..", ".####.####.####.", ".##############.",
+            "..############..", "..############.."]
+
+
+def gear():
+    """Procedural cog: 8 teeth, a 4x4 hole, outline k, diagonal copper shading."""
+    mask = GEAR_TOP + ["######....######"] * 4 + GEAR_TOP[::-1]
+
+    def solid(x, y):
+        return 0 <= x < 16 and 0 <= y < 16 and mask[y][x] == "#"
+
+    cv = blank()
+    for y in range(16):
+        for x in range(16):
+            if not solid(x, y):
+                continue
+            if any(not solid(x + a, y + b) for a, b in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                cv[y][x] = "k"
+            else:
+                s = (x + y) - 15
+                cv[y][x] = "h" if s < -7 else "C" if s < -2 else "c" if s < 4 else "d"
+    return cv
+
+
+def fromrows(rows):
+    return [list(r) for r in rows]
 
 
 def build():
@@ -499,10 +531,6 @@ def build():
     stamp(cv, 10, 0, PIN)
     icons["assign_tree"] = cv
 
-    cv = blank()                                   # 19 faint ghost hand (empty held-item slot)
-    stamp(cv, 1, 1, ghost_hand())
-    icons["held_empty"] = cv
-
     cv = blank()                                   # 20 copper-bound book with a "?" (Help)
     for y in range(1, 15):
         for x in range(2, 14):
@@ -510,6 +538,12 @@ def build():
             cv[y][x] = "k" if edge else "d" if x == 3 else "F" if x == 12 else "C" if y == 2 else "c"
     stamp(cv, 6, 4, QUESTION)
     icons["help"] = cv
+
+    icons["icon_back"] = fromrows(BACK)               # 21..25 tab bar and crafting arrow
+    icons["icon_status"] = fromrows(STATUS)
+    icons["icon_inventory"] = fromrows(INVENTORY)
+    icons["icon_settings"] = gear()
+    icons["craft_arrow"] = fromrows(CRAFT_ARROW)
 
     return icons
 

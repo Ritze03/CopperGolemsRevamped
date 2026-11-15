@@ -4,6 +4,7 @@ import com.coppergolemsrevamped.ai.FollowMode;
 import com.coppergolemsrevamped.ai.WalkTo;
 import com.coppergolemsrevamped.chunk.GolemChunkLoader;
 import com.coppergolemsrevamped.profession.Profession;
+import com.coppergolemsrevamped.profession.chest_sorter.ChestSorterProfession;
 
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
@@ -17,6 +18,9 @@ public final class GolemTicker {
 		Profession p = GolemService.profession(golem);
 		if (p != null) GolemChunkLoader.keep(level, golem);
 		else GolemChunkLoader.release(level, golem);
+		// old saves kept waxed copper in the sorter's slot; a no-op early return unless a sorter still holds items
+		if (p != null && ChestSorterProfession.ID.equals(p.id())) ChestSorterProfession.migrateLegacyItems(level, golem);
+		if (golem.tickCount % GolemHandDisplay.PERIOD == 0) GolemHandDisplay.sync(golem);
 		if (WalkTo.tick(level, golem)) return;
 		if (data.following) {
 			FollowMode.tick(level, golem, data);

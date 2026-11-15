@@ -5,16 +5,16 @@
 		"index": 0,
 		"cases": [
 			{
-				"when": "coppergolemsrevamped:held_empty",
+				"when": "coppergolemsrevamped:icon_back",
 				"model": {
 					"type": "minecraft:model",
-					"model": "coppergolemsrevamped:item/gui/held_empty"
+					"model": "coppergolemsrevamped:item/gui/icon_back"
 				}
 			}
 		],
 		"fallback": {
 			"type": "minecraft:model",
-			"model": "minecraft:item/glass_bottle"
+			"model": "minecraft:item/arrow"
 		}
 	}
 }

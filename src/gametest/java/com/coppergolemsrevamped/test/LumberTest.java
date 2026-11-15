@@ -491,13 +491,13 @@ public class LumberTest {
 		helper.succeed();
 	}
 
-	/** Declaration: slot filters, inventory size, GUI rows (at most 6 with the assign row) and assign keys. */
+	/** Declaration: slot filters, inventory size, GUI visibility and assign keys. */
 	@GameTest
 	public void lumberDeclaration(GameTestHelper helper) {
 		Profession p = Professions.get(LumberProfession.ID);
 		helper.assertTrue(p != null && !p.runsVanillaBrain(), "lumber not registered / runs the vanilla brain");
 		helper.assertTrue(p.inventorySize() == 12, "inventory size " + p.inventorySize());
-		helper.assertTrue(p.slotRows() <= 6, "rows " + p.slotRows());
+		helper.assertTrue(p.slots().stream().allMatch(Profession.SlotGroup::visible), "every lumber group is shown in the Inventory tab");
 		Profession.SlotGroup tool = p.slots().get(0), supplies = p.slots().get(1), carry = p.slots().get(2);
 		helper.assertTrue(tool.count() == 1 && tool.maxStack() == 1, "tool group");
 		helper.assertTrue(tool.filter().test(new ItemStack(Items.IRON_AXE)) && !tool.filter().test(new ItemStack(Items.SHEARS)), "tool takes only axes");

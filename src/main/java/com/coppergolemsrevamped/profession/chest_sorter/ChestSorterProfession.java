@@ -36,18 +36,16 @@ public final class ChestSorterProfession {
 
 	/** Chests a body may visit before it gives up: 64 for a Chest Sorter golem, vanilla's 10 otherwise. */
 	public static int visitedLimit(PathfinderMob body) {
-		if (body instanceof CopperGolem golem && ID.equals(GolemData.get(golem).profession)) {
-			if (golem.level() instanceof ServerLevel level) migrateLegacyItems(level, golem);
-			return SORTER_VISITED_LIMIT;
-		}
+		if (body instanceof CopperGolem golem && ID.equals(GolemData.get(golem).profession)) return SORTER_VISITED_LIMIT;
 		return VANILLA_VISITED_LIMIT;
 	}
 
 	/**
 	 * Old saves kept waxed copper blocks in a Chest Sorter's slot; the slot is gone, so drop them at the golem and
 	 * clear the list. No-op when the list is empty.
-	 * Why here: a vanilla-brain profession's {@code tick} is never called (see {@code GolemTicker}), and this runs
-	 * whenever the sorter works. Until then the items stay saved, and death or a profession change drops them too.
+	 * Why called from {@code GolemTicker}: a vanilla-brain profession's {@code tick} is never called, and the visited-limit
+	 * query is a pure getter that must not mutate. Until the first tick the items stay saved, and death or a
+	 * profession change drops them too.
 	 */
 	public static void migrateLegacyItems(ServerLevel level, CopperGolem golem) {
 		GolemData data = GolemData.get(golem);

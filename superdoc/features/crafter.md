@@ -11,22 +11,26 @@ chest. Id `coppergolemsrevamped:crafter`, `runsVanillaBrain = false`.
 - Assigns: `input` (`Kind.CHEST`), `table` (`Kind.CRAFTING_TABLE`, gets the `assign_crafting_table` icon),
   `output` (`Kind.CHEST`).
 - `profession/crafter/CrafterLogic:tick` is the loop. Helpers: `plan`, `canCraft`, `craft`, `fetch`, `deliver`.
-- GUI: template 3x3 at columns 0..2, input 3x3 at columns 4..6 (input slot `i` mirrors template cell `i`), output at
-  column 8 in the middle row; 4 rows. See [gui.md](gui.md).
+- GUI (Inventory tab): the 9 input slots are ONE 3x3 grid at rows 2..4, columns 1..3 whose cells remember their item
+  (the template slots are the memory and are not shown); a crafting arrow at (3,5) names the recipe outcome, the output
+  at (3,7) shows a ghost preview while empty. Details and the display-copy safety rules in [gui.md](gui.md).
 
 ## The three slot groups
 
 - **Template** (0..8): real items that only define the recipe, never consumed, dropped like any inventory when the
-  profession changes (`GolemService:changeProfession`) or the golem dies. Shift-click never fills it
-  (`SlotGroup:noQuickMove`). Why: user spec "a 3x3 crafting template of real items that only defines the recipe; the
+  profession changes (`GolemService:changeProfession`) or the golem dies. Not shown in the GUI (a hidden `SlotGroup`):
+  the input cells are its memory. A player sets cell `i` by placing an item into the empty cell (`Cell.Store:set`) and
+  clears it with an empty-handed click on the empty cell. Shift-click never fills it (`SlotGroup:noQuickMove`). Why: user spec "a 3x3 crafting template of real items that only defines the recipe; the
   golem doesn't consume them" and D13.
 - **Input** (9..17): slot `i` holds only the item of template cell `i` (same item and components,
   `ItemStack.isSameItemSameComponents`); a slot whose template cell is empty stays unused. Enforced for players by
-  `Profession.SlotRule` on the group, so shift-click and manual placing both route correctly. A repeater
+  `SlotGroup:remembers` (`Cell.Store:mayPlace`): a cell with a memory accepts only that item, one without accepts anything and
+  learns it; shift-click only fills a cell that already remembers something. A repeater
   (torch, redstone, torch / stone x3) fills six slots: 3 stone stacks, 2 torch stacks, 1 redstone stack.
   Why: user feedback from play-testing: with the old shared 9-slot buffer the golem filled every slot with raw
   ingredients and froze when full; "each slot of their crafting inventory should be for a single item of the grid".
-- **Output** (18): one stack, take-out only for players (filter rejects everything). The golem crafts into it.
+- **Output** (18): one stack, take-out only for players (filter rejects everything). The golem crafts into it. While empty
+  the GUI shows `CrafterLogic:preview` (the outcome of `plan`) as an untakeable ghost.
 
 ## Recipe matching
 
@@ -107,7 +111,8 @@ craft count is the smallest slot; a recipe with 9 cells needs all 9 input slots.
 - `staleInputItemsAreDelivered`: wrong items in input slots are delivered, the matching stack stays, nothing lost.
 - `lidsOpenAndReachIsOneBlock`: both chest lids seen open from a 1-block spot, the output stack only grows while the
   golem is within 1 block of the table, lids end closed.
-- `guiLayoutIsCraftingTableLike`: 4 rows, template at columns 0..2, input at 4..6 (container slot `9 + i`), output at
-  column 8 row 2, filler elsewhere, template max stack 1 and no `PICKUP_ALL`, input slots accept only the cell's item.
-- `shiftClickFillsInputNotTemplate`: shift-clicked planks land in the plank cell's input slot, the template is unchanged.
+- `guiLayoutIsOneRememberingGrid`: one grid at rows 2..4 / cols 1..3 (faded copies for remembered empty cells, memory-less
+  cells accept anything), arrow at (3,5) with the outcome in its lore, ghost output at (3,7), filler elsewhere.
+- `shiftClickFillsRememberedInputOnly`: shift-clicked planks land in the plank cell's input slot, sticks (no remembering
+  cell) stay in the inventory, no memory is set. The click and ghost tests are in `MenuTest`, see [gui.md](gui.md).
 - `itemsDropOnProfessionChange`: `changeProfession(..., null)` drops template, input and output items and clears the list.

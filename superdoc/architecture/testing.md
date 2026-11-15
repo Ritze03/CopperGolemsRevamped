@@ -23,15 +23,25 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   (`walkToStopsNextToBlock`, `areaAssignWalksOutline`, `unreachableWaypointIsSkipped`), area clamp
   (`areaCornerIsCappedNotRejected`), `everyProfessionHasHelp`. See [gui.md](../features/gui.md),
   [assign-mode.md](../features/assign-mode.md).
-- `ChestSorterTest` (6): `visitedLimitScalesWithWaxedBlocks`, `mixinAppliesLimit`, `waxedSlotFilter`,
-  `sortsFreshGolem`, `sortsWaxedOxidizedSourceIntoMatchingChest`, `sortsAfterBeingTransporter`
+- `MenuTest` (16): the tabbed menu. `opensOnStatusWithTabBar`, `tabSwitchKeepsTheMenuInstance` (sets
+  `player.containerMenu`, clicks tabs and checks it is still the same menu), `controlCellsSwallowEveryOtherClick`,
+  `noneSwitchesWithoutConfirm`, `confirmFlowAndCancel`, `targetsShowAndClear`, `targetsAreaClearAndColumns`,
+  `lumberAndFarmerLayouts` (cell positions of every profession's Inventory tab), `settingsFollowToggle`,
+  `statusShowsToolCarriedAndHolding`, `emptyHandClickForgetsARememberedCell`, `ghostCellsCannotBeTaken` (PICKUP,
+  QUICK_MOVE, CLONE, PICKUP_ALL, SWAP, THROW on the ghost output and a faded cell; no display copy escapes, item count
+  conserved), `realOutputIsStillTakeOnly`, `handToolIsDisplayOnlyAndNeverDrops` (kills a golem, counts the drops), `vanillaThrowNeverSeesTheDisplayCopy`,
+  `handDisplayRules`. The mock player (`makeMockServerPlayerInLevel`) can open and close menus, so reopen paths run too.
+  See [gui.md](../features/gui.md).
+- `ChestSorterTest` (7): `visitedLimit`, `legacyItemsAreDropped` (`GolemTicker:tick` migrates old waxed-copper items),
+  `menuWithoutSlotGroups` (same 6-row menu), `mixinAppliesLimit`, `sortsFreshGolem`,
+  `sortsWaxedOxidizedSourceIntoMatchingChest` (a waxed oxidized copper chest as the source), `sortsAfterBeingTransporter`
   ([chest-sorter.md](../features/chest-sorter.md)).
 - `CleanerTest` (9): `cleansItemsInsideArea`, `areaLimit16`, `partialPickupConservesItems`, `borderItemIgnored`,
   `skipRuleExpires`, `deliversWhenOnlySkippedItemsRemain`, `unreachableItemDoesNotBlock`, `pickupWorksFromSpawnTick`,
   `opensOutputChestWhenDelivering` ([cleaner.md](../features/cleaner.md)).
 - `CrafterTest` (11): `craftsSticksUntilOutputFull`, `craftsRepeaterWithPerCellSlots`, `fullOutputChestKeepsProductAndResumes`,
   `noCraftWithoutTable`, `noCraftWhenTableReplaced`, `deliversEverythingWhenTemplateCleared`, `staleInputItemsAreDelivered`,
-  `lidsOpenAndReachIsOneBlock`, `guiLayoutIsCraftingTableLike`, `shiftClickFillsInputNotTemplate`,
+  `lidsOpenAndReachIsOneBlock`, `guiLayoutIsOneRememberingGrid`, `shiftClickFillsRememberedInputOnly`,
   `itemsDropOnProfessionChange` ([crafter.md](../features/crafter.md)).
 - `FarmerTest` (17): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
   `harvestWithNearlyFullCarryLosesNothing`, `stemSeedsIgnored`, `seedsGoToSeedChestRestToOutput`, `seedsOverflowToOutput`,
@@ -39,15 +49,16 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `wornAxeReplacedOnlyByAxe`, `noReplacementKeepsWornHoe`, `noReplacementKeepsWornAxe`, `emptySlotTakesFirstToolAndFilter`,
   `fieldLimit9`, `seedDefinition` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
   through the global hook `FarmerLogic:testDropRoll` (filtered to its own crop position, since tests run in parallel).
-- `LumberTest` (14): `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`,
+- `LumberTest` (18): `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`,
   `bonemealGrowsTheSaplingThenFellsIt`, `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped`,
-  `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `breakAllowedRules`, `detectTreeRules`,
+  `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `fullCycleOrder`, `twoByTwoSiteWaitsForFourSaplings`,
+  `neverStandsInTheSapling`, `stepsOutOfTheSapling`, `breakAllowedRules`, `detectTreeRules`,
   `breakTimeFollowsAxeSpeed`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 85 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 86 required tests passed` (see Gotchas). Update the numbers here when
+Total: 106 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 107 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An
@@ -57,10 +68,11 @@ unregistered class is not an error: it silently runs 0 tests and the pass count 
 
 `GolemGuiClientTest` (`fabric-client-gametest` entrypoint, `enableClientGameTests = true` in
 `build.gradle`) launches the real client, creates a singleplayer world, spawns a golem next to the
-player, opens `GolemMenuOpener:open` on the server thread and screenshots the chest menu eight times:
-no profession, Transporter with items and an assignment, the Transporter first control slot hovered (tooltip),
-Chest Sorter (12 waxed copper blocks), Cleaner (area and output assigned) and Crafter (template, buffer, three assigns) Farmer (hoe, seeds, carry, every assign) and Lumber.
-Toasts are cleared before each screenshot so the held-item cell is visible.
+player, opens `GolemMenuOpener:open` on the server thread (on a chosen tab) and screenshots the chest menu 13 times:
+no profession (Status and Profession tabs), Transporter (Status, Targets, Inventory, Settings, plus a tooltip), Chest Sorter
+(Status), Cleaner (Targets), Crafter (Inventory with a remembered recipe: faded cells and the ghost output), Farmer
+(Inventory), Lumber (Inventory and Status).
+Toasts are cleared before each screenshot so the top-right cell is visible.
 Window 1280x720, GUI scale 3. Screenshots land in `build/run/clientGameTest/screenshots/`.
 Task: `runClientGameTest`. It is not wired into `check`/`build` (the `runGameTest` server task is).
 

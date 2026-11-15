@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.test;
 
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
+import com.coppergolemsrevamped.core.GolemTicker;
 import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.menu.GolemMenu;
 import com.coppergolemsrevamped.profession.Professions;
@@ -69,7 +70,7 @@ public class ChestSorterTest {
 		GolemData data = GolemData.get(golem);
 		data.items = NonNullList.of(ItemStack.EMPTY, new ItemStack(Items.COPPER_BLOCK.waxed().unaffected(), 12));
 		GolemData.save(golem, data);
-		ChestSorterProfession.visitedLimit(golem);
+		GolemTicker.tick(helper.getLevel(), golem, () -> {}); // the ticker migrates; the visited-limit getter must not mutate
 		helper.assertTrue(GolemData.get(golem).items.isEmpty(), "items not cleared: " + GolemData.get(golem).items);
 		int dropped = 0;
 		for (ItemEntity e : helper.getLevel().getEntitiesOfClass(ItemEntity.class, golem.getBoundingBox().inflate(3))) {
@@ -79,7 +80,7 @@ public class ChestSorterTest {
 		helper.succeed();
 	}
 
-	/** A profession with zero slot groups (None, Chest Sorter) opens a menu: control row only. */
+	/** A profession with zero slot groups (None, Chest Sorter) opens the same 6-row menu as any other. */
 	@GameTest
 	public void menuWithoutSlotGroups(GameTestHelper helper) {
 		CopperGolem golem = sorter(helper);
@@ -89,7 +90,7 @@ public class ChestSorterTest {
 		int sorterSlots = menu.slots.size();
 		CopperGolem none = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 3));
 		int noneSlots = new GolemMenu(2, player.getInventory(), none).slots.size();
-		helper.assertTrue(sorterSlots == noneSlots && sorterSlots == 36 + 9, "slots sorter " + sorterSlots + ", none " + noneSlots);
+		helper.assertTrue(sorterSlots == noneSlots && sorterSlots == 36 + 54, "slots sorter " + sorterSlots + ", none " + noneSlots);
 		helper.succeed();
 	}
 

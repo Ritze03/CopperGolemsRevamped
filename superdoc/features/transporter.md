@@ -62,8 +62,9 @@ count. Non-chest blocks fall back to `level.getBlockEntity(pos) instanceof Conta
 
 ## Not done
 
-Showing the carried item in the golem's hand was skipped: the vanilla empty-hand interaction throws the held
-item, which would duplicate carry. (The chest lid animation is done, see
+Showing the first carried stack in the golem's hand is done as a display copy that cannot duplicate (marked copy, drop
+chance 0, `CopperGolemMixin` blocks vanilla's "throw the held item" for it), see "Hand display" in [gui.md](gui.md). (The
+chest lid animation is done, see
 [../architecture/interaction.md](../architecture/interaction.md).)
 
 ## Follow mode (`ai/FollowMode:tick`)

@@ -255,7 +255,7 @@ public class CoreFeedbackTest {
 		for (Profession p : Professions.all()) {
 			helper.assertTrue(!p.help().isEmpty(), p.id() + " has no help text");
 			helper.assertTrue(p.help().size() <= 6, p.id() + " help is too long: " + p.help().size());
-			helper.assertTrue(p.assigns().size() <= 5, p.id() + " has more assigns than the menu has cells");
+			helper.assertTrue(p.assigns().size() <= 4, p.id() + " has more assigns than the Targets tab has columns");
 			for (Profession.AssignSpec a : p.assigns()) {
 				helper.assertTrue(!a.help().isEmpty(), p.id() + "/" + a.key() + " has no help text");
 				String prompt = ProfessionHelp.prompt(a);

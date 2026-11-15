@@ -2,7 +2,6 @@ package com.coppergolemsrevamped.profession;
 
 import com.coppergolemsrevamped.core.GolemData;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -34,51 +33,78 @@ public record Profession(
 		this(id, name, slots, assigns, runsVanillaBrain, tick, List.of());
 	}
 
-	/** Extra per-slot placement check on top of {@link SlotGroup#filter}: sees the golem's whole stored list. */
+	/** Computes what a profession would produce right now ({@link ItemStack#EMPTY} for nothing); drives {@link SlotGroup#previewing}. */
 	@FunctionalInterface
-	public interface SlotRule {
-		/** May {@code stack} be placed into slot {@code slotInGroup} of its group; {@code items} = {@link GolemData#items}. */
-		boolean mayPlace(List<ItemStack> items, int slotInGroup, ItemStack stack);
+	public interface Preview {
+		ItemStack outcome(ServerLevel level, GolemData data);
 	}
 
 	/**
-	 * A run of {@code count} slots. In the GUI a group normally starts on a new row at column 0 and wraps after
-	 * {@code width} cells (3 = a 3x3 square for count 9); the 4-arg constructor means width 9.
-	 * {@code besideCol > 0} (see {@link #beside}) instead places the group at that column, starting {@code besideRow}
-	 * rows below the first row of the previous stacked group, so it sits next to it. {@code rule} (nullable) is a
-	 * per-slot placement check, {@code quickMove} false keeps shift-click from filling the group.
+	 * A non-interactive icon cell next to a group in the Inventory tab. {@code icon} is a {@code GolemIcon} name
+	 * ({@code assign_tools}) or a vanilla item id ({@code minecraft:bone_meal}); the menu resolves it.
+	 */
+	public record Label(int row, int col, String icon, String name, String lore) {}
+
+	/**
+	 * A run of {@code count} slots in {@code GolemData.items}. A group is shown in the Inventory tab only after
+	 * {@link #at}: slot {@code i} sits at row {@code row + i / width}, column {@code col + i % width} of the 6-row menu
+	 * (row 0 is the tab bar, so rows 1..5; the 4-arg constructor means width 9). Without {@code at} the group is
+	 * hidden: it still reserves its data slots and drops on a profession change (the Crafter's template memory).
+	 * {@code memoryOffset > 0}: slot {@code k} remembers its item in data slot {@code k - memoryOffset}; an empty slot
+	 * shows it faded and accepts only that item, an empty memory accepts anything and then learns it.
+	 * {@code inHand}: the first non-empty stack is shown in the golem's main hand. {@code preview}: while the (single)
+	 * slot is empty it shows the outcome as a take-less ghost, and the label's lore names it.
 	 */
 	public record SlotGroup(String key, int count, int maxStack, Predicate<ItemStack> filter, int width,
-		int besideCol, int besideRow, @Nullable SlotRule rule, boolean quickMove) {
+		int row, int col, boolean quickMove, int memoryOffset, boolean inHand, @Nullable Label label,
+		@Nullable Preview preview) {
 		public static final int DEFAULT_WIDTH = 9;
+		public static final int HIDDEN = -1;
 
 		public SlotGroup {
 			if (width < 1 || width > DEFAULT_WIDTH) throw new IllegalArgumentException("width must be 1..9: " + width);
-			if (besideCol < 0 || besideRow < 0 || (besideCol > 0 && besideCol + Math.min(width, count) > DEFAULT_WIDTH)) {
-				throw new IllegalArgumentException("bad beside placement: " + besideCol + "," + besideRow);
-			}
 		}
 
 		public SlotGroup(String key, int count, int maxStack, Predicate<ItemStack> filter, int width) {
-			this(key, count, maxStack, filter, width, 0, 0, null, true);
+			this(key, count, maxStack, filter, width, HIDDEN, 0, true, 0, false, null, null);
 		}
 
 		public SlotGroup(String key, int count, int maxStack, Predicate<ItemStack> filter) {
 			this(key, count, maxStack, filter, DEFAULT_WIDTH);
 		}
 
-		/** Same group placed beside the previous one at column {@code col} (1..8), {@code row} rows down. */
-		public SlotGroup beside(int col, int row) {
-			return new SlotGroup(key, count, maxStack, filter, width, col, row, rule, quickMove);
+		public boolean visible() {
+			return row != HIDDEN;
 		}
 
-		public SlotGroup withRule(SlotRule r) {
-			return new SlotGroup(key, count, maxStack, filter, width, besideCol, besideRow, r, quickMove);
+		/** Shown in the Inventory tab starting at {@code r} (1..5), {@code c} (0..8). */
+		public SlotGroup at(int r, int c) {
+			return new SlotGroup(key, count, maxStack, filter, width, r, c, quickMove, memoryOffset, inHand, label, preview);
+		}
+
+		/** A label icon cell at its own position. */
+		public SlotGroup labeled(int r, int c, String icon, String name, String lore) {
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, inHand,
+				new Label(r, c, icon, name, lore), preview);
+		}
+
+		/** Slot {@code k} remembers its item in data slot {@code k - offset}. */
+		public SlotGroup remembers(int offset) {
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, offset, inHand, label, preview);
 		}
 
 		/** Shift-click never fills this group. */
 		public SlotGroup noQuickMove() {
-			return new SlotGroup(key, count, maxStack, filter, width, besideCol, besideRow, rule, false);
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, false, memoryOffset, inHand, label, preview);
+		}
+
+		/** The golem shows the first non-empty stack of this group in its main hand (display only). */
+		public SlotGroup shownInHand() {
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, true, label, preview);
+		}
+
+		public SlotGroup previewing(Preview p) {
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, inHand, label, p);
 		}
 
 		/** GUI rows this group occupies. */
@@ -107,39 +133,37 @@ public record Profession(
 		return n;
 	}
 
-	/**
-	 * Origin {row, col} of every slot group, row relative to the first profession row. A stacked group starts one
-	 * filler row below everything so far at column 0; a {@linkplain SlotGroup#besideCol beside} group shares the
-	 * rows of the last stacked group. Slot {@code i} of a group sits at row {@code row + i / width},
-	 * column {@code col + i % width}.
-	 */
-	public List<int[]> layout() {
-		List<int[]> origins = new ArrayList<>();
-		int end = 0;
-		int anchor = 0;
-		for (SlotGroup g : slots) {
-			int row;
-			int col;
-			if (g.besideCol() > 0 && !origins.isEmpty()) {
-				row = anchor + g.besideRow();
-				col = g.besideCol();
-			} else {
-				row = origins.isEmpty() ? 0 : end + 1;
-				col = 0;
-				anchor = row;
-			}
-			end = Math.max(end, row + g.rows());
-			origins.add(new int[] {row, col});
+	/** The data index of the first slot of group {@code g} (declaration order). */
+	public int firstIndex(SlotGroup g) {
+		int n = 0;
+		for (SlotGroup o : slots) {
+			if (o == g) return n;
+			n += o.count();
 		}
-		return origins;
+		throw new IllegalArgumentException("not a group of " + id);
 	}
 
-	/** GUI rows taken by all slot groups (see {@link #layout}): stacked groups get one filler row between them. */
-	public int slotRows() {
-		int n = 0;
-		List<int[]> origins = layout();
-		for (int i = 0; i < origins.size(); i++) n = Math.max(n, origins.get(i)[0] + slots.get(i).rows());
-		return n;
+	/** The group with this key, or null. */
+	public @Nullable SlotGroup group(String key) {
+		for (SlotGroup g : slots) if (g.key().equals(key)) return g;
+		return null;
+	}
+
+	/** Throws when a shown group or label leaves rows 1..5 / columns 0..8 or two cells overlap (checked on registration). */
+	public void validateLayout() {
+		boolean[] used = new boolean[6 * 9];
+		for (SlotGroup g : slots) {
+			if (!g.visible()) continue;
+			for (int i = 0; i < g.count(); i++) claim(used, g.row() + i / g.width(), g.col() + i % g.width(), g.key());
+			if (g.label() != null) claim(used, g.label().row(), g.label().col(), g.key() + " label");
+		}
+	}
+
+	private void claim(boolean[] used, int r, int c, String what) {
+		if (r < 1 || r > 5 || c < 0 || c > 8 || used[r * 9 + c]) {
+			throw new IllegalStateException(id + ": " + what + " has no free cell at row " + r + ", col " + c);
+		}
+		used[r * 9 + c] = true;
 	}
 
 	public void tick(ServerLevel level, CopperGolem golem, GolemData data) {

@@ -34,9 +34,12 @@ public final class FarmerProfession {
 			ID,
 			Component.literal("Farmer"),
 			List.of(
-				new SlotGroup("tool", 1, 1, s -> s.is(ItemTags.HOES) || s.is(ItemTags.AXES)),
-				new SlotGroup("seeds", 1, 64, FarmerLogic::isSeed),
-				new SlotGroup("carry", CARRY_SLOTS, 64, s -> true)),
+				new SlotGroup("tool", 1, 1, s -> s.is(ItemTags.HOES) || s.is(ItemTags.AXES)).at(2, 3).shownInHand()
+					.labeled(1, 3, "assign_tools", "Tool", "The slot below holds the golem's tool"),
+				new SlotGroup("seeds", 1, 64, FarmerLogic::isSeed).at(2, 5)
+					.labeled(1, 5, "assign_seeds", "Seeds", "The slot below holds seeds"),
+				new SlotGroup("carry", CARRY_SLOTS, 64, s -> true).at(5, 0)
+					.labeled(4, 4, "assign_output", "Carry", "Nine carry slots in the row below")),
 			List.of(
 				new AssignSpec(FIELD, Component.literal("Assign Field"), Kind.AREA, MAX_FIELD),
 				new AssignSpec(TOOLS, Component.literal("Assign Tool Chest"), Kind.CHEST, 0),

@@ -24,6 +24,13 @@
 					"type": "minecraft:model",
 					"model": "coppergolemsrevamped:item/gui/assign_output"
 				}
+			},
+			{
+				"when": "coppergolemsrevamped:icon_inventory",
+				"model": {
+					"type": "minecraft:model",
+					"model": "coppergolemsrevamped:item/gui/icon_inventory"
+				}
 			}
 		],
 		"fallback": {

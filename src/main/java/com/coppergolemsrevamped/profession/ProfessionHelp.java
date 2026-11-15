@@ -26,8 +26,8 @@ public final class ProfessionHelp {
 			"Picks up dropped items inside the area and brings them to the output chest.",
 			"The 9 slots are what it carries."),
 		"crafter", List.of(
-			"Left 3x3 = the recipe template (never used up). Middle 3x3 = 9 input slots, one per grid cell, each holds only that cell's item. Right = 1 output slot.",
-			"It fills the input slots from the input chest, crafts at the table until the output stack is full, then delivers it to the output chest."),
+			"The 3x3 grid is the recipe: each cell remembers its item (shown faded when empty) and holds only that item. Put an item into an empty cell to set it; click an empty remembered cell with an empty hand to forget it.",
+			"The arrow names what is crafted; the output slot is take-only (a faded item there is only a preview). The golem fills the grid from the input chest, crafts at the table until the output is full, then delivers it to the output chest."),
 		"farmer", List.of(
 			"Works one field with one tool: a hoe farms crops, an axe only melons and pumpkins.",
 			"Put the tool in the tool slot, seeds in the seed slot. Seeds go back to the seed chest, the harvest to the output chest."),
@@ -68,6 +68,13 @@ public final class ProfessionHelp {
 	/** Chat explanation for the Help button: the profession's lines, then one line per assignment with its size. */
 	public static List<String> lines(Profession p) {
 		List<String> out = new ArrayList<>(p.help());
+		out.addAll(assignLines(p));
+		return out;
+	}
+
+	/** One line per assignment: label, what to click and the size limit. The Targets tab's help. */
+	public static List<String> assignLines(Profession p) {
+		List<String> out = new ArrayList<>();
 		for (AssignSpec a : p.assigns()) out.add(a.label().getString() + ": " + prompt(a));
 		return out;
 	}

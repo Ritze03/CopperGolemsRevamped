@@ -40,9 +40,12 @@ public final class LumberProfession {
 			ID,
 			Component.literal("Lumber"),
 			List.of(
-				new SlotGroup("tool", 1, 1, s -> s.is(ItemTags.AXES)),
-				new SlotGroup("supplies", SUPPLY_SLOTS, 64, s -> s.is(ItemTags.SAPLINGS) || s.is(Items.BONE_MEAL)),
-				new SlotGroup("carry", CARRY_SLOTS, 64, s -> true)),
+				new SlotGroup("tool", 1, 1, s -> s.is(ItemTags.AXES)).at(2, 3).shownInHand()
+					.labeled(1, 3, "assign_tools", "Axe", "The slot below holds the golem's axe"),
+				new SlotGroup("supplies", SUPPLY_SLOTS, 64, s -> s.is(ItemTags.SAPLINGS) || s.is(Items.BONE_MEAL), SUPPLY_SLOTS)
+					.at(2, 5).labeled(1, 5, "minecraft:bone_meal", "Supplies", "The slots below hold saplings and bone meal"),
+				new SlotGroup("carry", CARRY_SLOTS, 64, s -> true).at(5, 0)
+					.labeled(4, 4, "assign_output", "Carry", "Nine carry slots in the row below")),
 			List.of(
 				new AssignSpec(TREE, Component.literal("Assign Tree"), Kind.BLOCK, 0),
 				new AssignSpec(INPUT, Component.literal("Assign Input Chest"), Kind.CHEST, 0),

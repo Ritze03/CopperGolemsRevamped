@@ -15,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.ChestBlock;
@@ -34,6 +35,7 @@ public final class GolemService {
 	 */
 	public static void changeProfession(ServerLevel level, CopperGolem golem, @Nullable Identifier id, @Nullable ServerPlayer player) {
 		GolemData data = GolemData.get(golem);
+		releaseHand(level, golem, player);
 		drop(level, golem, data, player);
 		data.assignments.clear();
 		data.profession = id;
@@ -45,6 +47,28 @@ public final class GolemService {
 		if (p != null) GolemChunkLoader.keep(level, golem);
 		else GolemChunkLoader.release(level, golem);
 		GolemData.save(golem, data);
+	}
+
+	/**
+	 * The main hand on a profession change: a display copy ({@link GolemHandDisplay}) is just cleared, a real carried
+	 * item (vanilla Chest Sorter pickup) goes to the player like the stored items (drops at the golem without one).
+	 * Why: the menu no longer has a held-item cell, so this is the player's only way to get a carried item back (D9).
+	 */
+	private static void releaseHand(ServerLevel level, CopperGolem golem, @Nullable ServerPlayer player) {
+		ItemStack hand = golem.getMainHandItem();
+		if (hand.isEmpty()) return;
+		if (DisplayItems.is(hand)) {
+			GolemHandDisplay.clear(golem);
+			return;
+		}
+		ItemStack real = hand.copy();
+		golem.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+		if (player != null) {
+			give(player, real);
+			if (!real.isEmpty()) player.spawnAtLocation(level, real);
+		} else {
+			golem.spawnAtLocation(level, real);
+		}
 	}
 
 	/** The first CHEST assign (declaration order) starts as the chest the golem was built next to, if it still is a chest. */

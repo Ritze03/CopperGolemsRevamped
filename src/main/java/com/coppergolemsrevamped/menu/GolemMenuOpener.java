@@ -11,11 +11,15 @@ import net.minecraft.world.entity.animal.golem.CopperGolem;
 public final class GolemMenuOpener {
 	private GolemMenuOpener() {}
 
-	/** Opens (or reopens, closing the current menu first) the golem menu; the layout is read from the golem now. */
+	/** Opens the golem menu on the Status tab. */
 	public static void open(ServerPlayer player, CopperGolem golem) {
+		open(player, golem, Tab.STATUS);
+	}
+
+	/** Opens (or reopens, closing the current menu first) the golem menu on {@code tab}; the profession is read now. */
+	public static void open(ServerPlayer player, CopperGolem golem, Tab tab) {
 		Profession p = GolemService.profession(golem);
-		Component title = p == null ? Component.literal("Copper Golem")
-			: Component.literal("Copper Golem — ").append(p.name());
-		player.openMenu(new SimpleMenuProvider((id, inv, pl) -> new GolemMenu(id, inv, golem), title));
+		Component title = Component.literal("Golem — ").append(p == null ? Component.literal("None") : p.name());
+		player.openMenu(new SimpleMenuProvider((id, inv, pl) -> new GolemMenu(id, inv, golem, tab), title));
 	}
 }

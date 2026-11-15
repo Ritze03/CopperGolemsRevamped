@@ -25,7 +25,8 @@ public final class CleanerProfession {
 		Professions.register(new Profession(
 			ID,
 			Component.literal("Cleaner"),
-			List.of(new SlotGroup("carry", 9, 64, s -> true)),
+			List.of(new SlotGroup("carry", 9, 64, s -> true).at(3, 0).shownInHand()
+				.labeled(2, 4, "assign_output", "Carry", "Nine carry slots in the row below")),
 			List.of(
 				new AssignSpec(AREA, Component.literal("Assign Area"), Kind.AREA, MAX_AREA),
 				new AssignSpec(OUTPUT, Component.literal("Assign Output Chest"), Kind.CHEST, 0)),

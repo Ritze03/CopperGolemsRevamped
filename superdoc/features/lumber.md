@@ -5,8 +5,8 @@ axe, which wears out. Id `coppergolemsrevamped:lumber`, `runsVanillaBrain = fals
 
 ## Entry points
 
-- `profession/lumber/LumberProfession:init` declares it. Slot groups (3 groups, so 5 slot rows + the control row = the
-  6-row maximum, see [gui.md](gui.md)): `tool` (1 slot, max stack 1, filter axe), `supplies` (2 slots x64, filter
+- `profession/lumber/LumberProfession:init` declares it. Slot groups (placed by cell in the Inventory tab, see [gui.md](gui.md); the axe is also
+  shown in the golem's hand): `tool` (1 slot, max stack 1, filter axe), `supplies` (2 slots x64, filter
   `ItemTags.SAPLINGS` or bone meal), `carry` (9 x64, any item). Inventory indices: `AXE_SLOT` 0, `SUPPLY_FROM`
   1..2, `CARRY_FROM` 3..11.
 - Why `supplies` is one group of two slots: `Profession.SlotGroup` has one filter per group and a fourth group would

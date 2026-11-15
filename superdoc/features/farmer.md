@@ -6,7 +6,7 @@ Id `coppergolemsrevamped:farmer`, `runsVanillaBrain = false`.
 
 ## Entry points
 
-- `profession/farmer/FarmerProfession:init` declares it. Slot groups (one row each in the GUI): `tool` (1 slot, max
+- `profession/farmer/FarmerProfession:init` declares it. Slot groups (placed by cell in the Inventory tab, see [gui.md](gui.md); the tool is also shown in the golem's hand): `tool` (1 slot, max
   stack 1, filter `ItemTags.HOES` or `ItemTags.AXES`), `seeds` (1 slot x64, filter `FarmerLogic:isSeed`), `carry`
   (9 x64, any item). Inventory indices: `TOOL_SLOT` 0, `SEED_SLOT` 1, `CARRY_FROM` 2..10.
 - Assigns: `field` (`Kind.AREA`, "Assign Field", maxSize 9), `tools` (CHEST, "Assign Tool Chest"), `seeds` (CHEST,

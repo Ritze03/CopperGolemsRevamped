@@ -1,10 +1,11 @@
 package com.coppergolemsrevamped.test;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.core.DisplayItems;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.menu.GolemMenu;
-import com.coppergolemsrevamped.profession.Professions;
+import com.coppergolemsrevamped.menu.Tab;
 import com.coppergolemsrevamped.profession.crafter.CrafterProfession;
 
 import java.util.List;
@@ -12,6 +13,7 @@ import java.util.List;
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
@@ -21,6 +23,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.phys.AABB;
@@ -273,43 +276,52 @@ public class CrafterTest {
 		});
 	}
 
-	/** Rows 4; template cols 0..2, input cols 4..6 (mirroring the template), output col 8 row 2, filler elsewhere. */
+	/** Cell of grid cell {@code i} in the Inventory tab: one 3x3 grid at rows 2..4, columns 1..3. */
+	private static int gridCell(int i) {
+		return (2 + i / 3) * 9 + 1 + i % 3;
+	}
+
+	/**
+	 * Inventory tab: one 3x3 grid (rows 2..4, cols 1..3) whose cells remember their item (template slot i), the
+	 * crafting arrow at (3,5), the output at (3,7), filler elsewhere; the template itself is not shown.
+	 */
 	@GameTest
-	public void guiLayoutIsCraftingTableLike(GameTestHelper helper) {
+	public void guiLayoutIsOneRememberingGrid(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[2];
 		CopperGolem golem = setup(helper, true, 0, c);
 		@SuppressWarnings("removal")
 		ServerPlayer player = helper.makeMockServerPlayerInLevel();
-		GolemMenu menu = new GolemMenu(1, player.getInventory(), golem);
-		int slotRows = Professions.get(CrafterProfession.ID).slotRows();
-		helper.assertTrue(slotRows == 3, "slotRows " + slotRows);
-		helper.assertTrue(menu.slots.size() == 4 * 9 + 36, "slots " + menu.slots.size());
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), golem, Tab.INVENTORY);
+		helper.assertTrue(menu.slots.size() == 6 * 9 + 36, "slots " + menu.slots.size());
 		ItemStack planks = new ItemStack(Items.OAK_PLANKS, 64);
-		boolean[] special = new boolean[4 * 9];
+		boolean[] special = new boolean[6 * 9];
 		for (int i = 0; i < 9; i++) {
-			int row = 1 + i / 3;
-			int t = row * 9 + i % 3;
-			int in = row * 9 + 4 + i % 3;
-			special[t] = true;
-			special[in] = true;
-			Slot template = menu.slots.get(t);
-			Slot input = menu.slots.get(in);
-			helper.assertTrue(template.getMaxStackSize(planks) == 1, "template " + i + " max stack " + template.getMaxStackSize(planks));
-			helper.assertTrue(!menu.canTakeItemForPickAll(planks, template), "template " + i + " must refuse PICKUP_ALL");
-			helper.assertTrue(template.getContainerSlot() == i, "template " + i + " container slot " + template.getContainerSlot());
-			helper.assertTrue(input.getContainerSlot() == IN + i, "input " + i + " container slot " + input.getContainerSlot());
-			helper.assertTrue(input.getMaxStackSize(planks) == 64, "input " + i + " max stack " + input.getMaxStackSize(planks));
-			helper.assertTrue(menu.canTakeItemForPickAll(planks, input), "input " + i + " must allow PICKUP_ALL");
-			// cells 0 and 3 are planks in the template
+			int cell = gridCell(i);
+			special[cell] = true;
+			Slot input = menu.slots.get(cell);
+			// cells 0 and 3 remember planks, the others remember nothing yet (and accept anything)
 			boolean plank = i == 0 || i == 3;
-			helper.assertTrue(input.mayPlace(planks) == plank, "input " + i + " mayPlace planks = " + input.mayPlace(planks));
-			helper.assertTrue(!input.mayPlace(new ItemStack(Items.STICK)), "input " + i + " must refuse sticks");
+			helper.assertTrue(input.getMaxStackSize(planks) == 64, "cell " + i + " max stack " + input.getMaxStackSize(planks));
+			helper.assertTrue(input.mayPlace(planks), "cell " + i + " must accept planks");
+			helper.assertTrue(input.mayPlace(new ItemStack(Items.STICK)) == !plank, "cell " + i + " sticks: " + input.mayPlace(new ItemStack(Items.STICK)));
+			ItemStack shown = input.getItem();
+			if (plank) {
+				helper.assertTrue(shown.is(Items.OAK_PLANKS) && DisplayItems.is(shown), "cell " + i + " must show a faded copy: " + shown);
+				helper.assertTrue(!input.mayPickup(player) && !menu.canTakeItemForPickAll(planks, input), "cell " + i + " copy must not be takeable");
+			} else {
+				helper.assertTrue(shown.isEmpty(), "cell " + i + " must be empty: " + shown);
+			}
 		}
-		Slot output = menu.slots.get(2 * 9 + 8);
-		special[2 * 9 + 8] = true;
-		helper.assertTrue(output.getContainerSlot() == OUT, "output container slot " + output.getContainerSlot());
+		Slot arrow = menu.slots.get(3 * 9 + 5);
+		special[3 * 9 + 5] = true;
+		helper.assertTrue(arrow.getItem().is(Items.SPECTRAL_ARROW) && !arrow.mayPlace(planks) && !arrow.mayPickup(player), "arrow " + arrow.getItem());
+		helper.assertTrue(lore(arrow.getItem()).contains("Stick x4"), "arrow lore: " + lore(arrow.getItem()));
+		Slot output = menu.slots.get(3 * 9 + 7);
+		special[3 * 9 + 7] = true;
 		helper.assertTrue(!output.mayPlace(planks), "players must not place into the output");
-		for (int cell = 9; cell < 4 * 9; cell++) {
+		helper.assertTrue(output.getItem().is(Items.STICK) && output.getItem().getCount() == 4 && DisplayItems.is(output.getItem())
+			&& !output.mayPickup(player), "empty output must show a ghost preview: " + output.getItem());
+		for (int cell = 9; cell < 6 * 9; cell++) {
 			if (special[cell]) continue;
 			Slot s = menu.slots.get(cell);
 			helper.assertTrue(s.getItem().is(Items.STAINED_GLASS_PANE.orange()) && !s.mayPlace(planks), "cell " + cell + " must be filler");
@@ -317,19 +329,29 @@ public class CrafterTest {
 		helper.succeed();
 	}
 
-	/** Shift-click routes planks into the input slot of a plank cell, never into the 1-stack template. */
+	private static String lore(ItemStack s) {
+		StringBuilder b = new StringBuilder();
+		for (var line : s.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines()) b.append(line.getString()).append('|');
+		return b.toString();
+	}
+
+	/** Shift-click routes planks into the input cell that remembers planks; items without a memory cell stay put. */
 	@GameTest
-	public void shiftClickFillsInputNotTemplate(GameTestHelper helper) {
+	public void shiftClickFillsRememberedInputOnly(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[2];
 		CopperGolem golem = setup(helper, true, 0, c);
 		@SuppressWarnings("removal")
 		ServerPlayer player = helper.makeMockServerPlayerInLevel();
-		GolemMenu menu = new GolemMenu(1, player.getInventory(), golem);
-		player.getInventory().setItem(9, new ItemStack(Items.OAK_PLANKS, 64)); // first main-inventory slot = menu slot 36
-		menu.quickMoveStack(player, 4 * 9);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), golem, Tab.INVENTORY);
+		player.getInventory().setItem(9, new ItemStack(Items.OAK_PLANKS, 64)); // first main-inventory slot = menu slot 54
+		player.getInventory().setItem(10, new ItemStack(Items.STICK, 5));
+		menu.quickMoveStack(player, 54);
 		GolemData d = GolemData.get(golem);
 		helper.assertTrue(d.items.get(IN).is(Items.OAK_PLANKS) && d.items.get(IN).getCount() == 64, "input 0: " + d.items.get(IN));
 		helper.assertTrue(d.items.get(0).getCount() == 1 && d.items.get(1).isEmpty(), "template changed: " + d.items.get(1));
+		helper.assertTrue(menu.quickMoveStack(player, 55).isEmpty() && player.getInventory().getItem(10).getCount() == 5,
+			"sticks have no remembering cell and must stay in the inventory");
+		helper.assertTrue(GolemData.get(golem).items.get(IN + 1).isEmpty() && GolemData.get(golem).items.get(1).isEmpty(), "shift-click must not set a memory");
 		helper.succeed();
 	}
 

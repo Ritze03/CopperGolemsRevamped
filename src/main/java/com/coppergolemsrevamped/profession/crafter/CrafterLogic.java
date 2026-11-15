@@ -91,6 +91,12 @@ public final class CrafterLogic {
 		return new Plan(result, cell, leftover);
 	}
 
+	/** What the template would craft right now (one craft's result), or EMPTY: the Inventory tab's ghost output. */
+	public static ItemStack preview(ServerLevel level, GolemData data) {
+		Plan p = plan(level, data);
+		return p == null ? ItemStack.EMPTY : p.result();
+	}
+
 	// ---- slot helpers (all on GolemData.items) ----
 
 	private static ItemStack at(GolemData data, int idx) {

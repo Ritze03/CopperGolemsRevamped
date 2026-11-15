@@ -10,6 +10,13 @@
 					"type": "minecraft:model",
 					"model": "coppergolemsrevamped:item/gui/profession_chest_sorter"
 				}
+			},
+			{
+				"when": "coppergolemsrevamped:icon_settings",
+				"model": {
+					"type": "minecraft:model",
+					"model": "coppergolemsrevamped:item/gui/icon_settings"
+				}
 			}
 		],
 		"fallback": {

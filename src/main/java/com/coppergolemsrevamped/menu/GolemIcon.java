@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.menu;
 
 import com.coppergolemsrevamped.CopperGolemsRevamped;
+import com.coppergolemsrevamped.core.DisplayItems;
 
 import it.unimi.dsi.fastutil.objects.ReferenceSortedSets;
 
@@ -8,8 +9,10 @@ import java.util.List;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -42,7 +45,11 @@ public enum GolemIcon {
 	ASSIGN_SEEDS("assign_seeds", Items.WHEAT_SEEDS),
 	ASSIGN_TREE("assign_tree", Items.OAK_SAPLING),
 	HELP("help", Items.BOOK),
-	HELD_EMPTY("held_empty", Items.GLASS_BOTTLE);
+	BACK("icon_back", Items.ARROW),
+	STATUS("icon_status", Items.WRITABLE_BOOK),
+	INVENTORY("icon_inventory", Items.CHEST),
+	SETTINGS("icon_settings", Items.COMPARATOR),
+	CRAFT_ARROW("craft_arrow", Items.SPECTRAL_ARROW);
 
 	public final String iconName;
 	public final Item base;
@@ -66,9 +73,48 @@ public enum GolemIcon {
 
 	/** Filler cell: a plain vanilla orange pane with no tooltip and no custom model (it must not read as an item). */
 	public static ItemStack filler() {
-		ItemStack s = new ItemStack(Items.STAINED_GLASS_PANE.orange());
+		return pane(Items.STAINED_GLASS_PANE.orange());
+	}
+
+	/** The black pane beside the tab bar: marks the top row as another part of the UI than the tab content. */
+	public static ItemStack barFiller() {
+		return pane(Items.STAINED_GLASS_PANE.black());
+	}
+
+	private static ItemStack pane(Item pane) {
+		ItemStack s = new ItemStack(pane);
 		s.set(DataComponents.TOOLTIP_DISPLAY, new TooltipDisplay(true, ReferenceSortedSets.emptySet()));
 		return s;
+	}
+
+	/** A plain vanilla item as an icon (no custom model data): name and lore only. */
+	public static ItemStack plain(Item item, Component name, List<Component> lore, boolean glint) {
+		ItemStack s = new ItemStack(item);
+		s.set(DataComponents.ITEM_NAME, name);
+		s.set(DataComponents.LORE, new ItemLore(lore));
+		s.set(DataComponents.TOOLTIP_DISPLAY, new TooltipDisplay(false, ReferenceSortedSets.singleton(DataComponents.ATTRIBUTE_MODIFIERS)));
+		if (glint) s.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+		return s;
+	}
+
+	/** Icon for a {@link com.coppergolemsrevamped.profession.Profession.Label}: a mod icon name, else a vanilla item id. */
+	public static ItemStack label(String icon, String name, List<Component> lore) {
+		GolemIcon g = byName(icon);
+		Component n = Component.literal(name);
+		if (g != null) return g.stack(n, lore, false);
+		return plain(BuiltInRegistries.ITEM.getValue(Identifier.parse(icon)), n, lore, false);
+	}
+
+	/**
+	 * A display-only copy of {@code like} (see {@link DisplayItems}) named "&lt;item&gt; (note)" in gray, with the given
+	 * lore. Never a real stack: it is marked and only ever returned from {@code Slot#getItem}, never stored.
+	 */
+	public static ItemStack ghost(ItemStack like, String note, List<Component> lore) {
+		ItemStack s = like.copy();
+		s.set(DataComponents.CUSTOM_NAME, Component.literal(like.getHoverName().getString() + " (" + note + ")")
+			.withStyle(Style.EMPTY.withItalic(false).withColor(ChatFormatting.GRAY)));
+		s.set(DataComponents.LORE, new ItemLore(lore));
+		return DisplayItems.mark(s);
 	}
 
 	public ItemStack stack(Component name, List<Component> lore, boolean glint) {
@@ -88,6 +134,11 @@ public enum GolemIcon {
 
 	/** One lore line: not italic, gray. */
 	public static Component line(String text) {
-		return Component.literal(text).withStyle(Style.EMPTY.withItalic(false).withColor(ChatFormatting.GRAY));
+		return line(text, ChatFormatting.GRAY);
+	}
+
+	/** One lore line or name in the given color, not italic. */
+	public static Component line(String text, ChatFormatting color) {
+		return Component.literal(text).withStyle(Style.EMPTY.withItalic(false).withColor(color));
 	}
 }

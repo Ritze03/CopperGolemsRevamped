@@ -18,7 +18,8 @@ public final class TransporterProfession {
 		Professions.register(new Profession(
 			CopperGolemsRevamped.id("transporter"),
 			Component.literal("Transporter"),
-			List.of(new SlotGroup("carry", 9, 64, s -> true)),
+			List.of(new SlotGroup("carry", 9, 64, s -> true).at(3, 0).shownInHand()
+				.labeled(2, 4, "assign_output", "Carry", "Nine carry slots in the row below")),
 			List.of(
 				new AssignSpec("input", Component.literal("Assign Chest A"), Kind.CHEST, 0),
 				new AssignSpec("output", Component.literal("Assign Chest B"), Kind.CHEST, 0)),

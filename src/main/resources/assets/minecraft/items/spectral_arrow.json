@@ -1,0 +1,20 @@
+{
+	"model": {
+		"type": "minecraft:select",
+		"property": "minecraft:custom_model_data",
+		"index": 0,
+		"cases": [
+			{
+				"when": "coppergolemsrevamped:craft_arrow",
+				"model": {
+					"type": "minecraft:model",
+					"model": "coppergolemsrevamped:item/gui/craft_arrow"
+				}
+			}
+		],
+		"fallback": {
+			"type": "minecraft:model",
+			"model": "minecraft:item/spectral_arrow"
+		}
+	}
+}
