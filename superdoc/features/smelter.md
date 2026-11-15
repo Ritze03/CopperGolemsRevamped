@@ -9,18 +9,26 @@ delivers the results to an output chest. Id `coppergolemsrevamped:smelter`, `run
 - Assigns: `furnaces` (`Kind.AREA`, max 16x16, Y is the span of the two corners, scanned at most 32 high), `input`,
   `fuel`, `output` (`Kind.CHEST`). Icons: `assign_input`, `assign_output` are reused, `assign_fuel` (chest with a coal
   badge, base item coal) is new, the area uses the generic `assign_area`.
-- Slots (`SmelterProfession:SLOTS` = 9): group `furnace` (8 slots, row 3, columns 0..7, label centred above at (2,4)) and group
-  `xp` (1 slot at row 3, column 8, take-only for players, label "XP bottles" at (2,8)). Slot `i` (0..7, `MAX_FURNACES`) is the
-  golem's buffer for furnace `i`. Slot 8 (`XP_SLOT`) holds the XP bottles made from the golem's stored XP, see
-  [xp-bottles.md](xp-bottles.md). Nothing is shown in the golem's hand.
-  Why 9: the user asked for a row of 9 ("looks nicer"); the furnace cap stays 8, so slot 8 got the XP bottle job (user
-  request: the 9th slot shows the bottle count). It used to be a shared overflow buffer for results; that is gone: a result
-  goes into its own furnace's buffer (`SmelterLogic:resultSlot`), and a furnace whose buffer is busy waits until the next
-  pass, since every result is collected each cycle anyway. `kindOf` reads slot 8 as RESULT, so `DELIVER` takes it to the
-  output chest (also an item an older version left there: nothing is lost) and `FEED`, `FUEL`, `RETURN` never touch it.
-- Older golems saved with 8 slots: `SmelterLogic:tick` grows `GolemData.items` to `SLOTS` (items kept, slot 8 empty) and
-  saves, on its first tick. Until then `GolemMenu:stillValid` closes an open menu (stored list shorter than the profession's
-  size), which is one tick at most.
+- Slots (`SmelterProfession:SLOTS` = 12), in data order: group `furnace` (8 slots 0..7, row 3, columns 0..7, label centred
+  above at (2,4)), group `xp` (slot 8, `XP_SLOT`, at (3,8), take-only for players, label "XP bottles" at (2,8)) and group
+  `output` (slots 9..11, `RESULT_FIRST`..`SLOTS-1`, row 4, columns 3..5, take-only for players like the Crafter output,
+  no label). Slot `i` (0..7, `MAX_FURNACES`) is the golem's **input** buffer for furnace `i`: raw items to feed and fuel
+  to feed or return, never results. Slots 9..11 are the 3 **shared result slots**: every furnace's results, merged by item.
+  Slot 8 holds the XP bottles made from the golem's stored XP, see [xp-bottles.md](xp-bottles.md). Nothing is shown in the
+  golem's hand.
+  Why the result slots (user request, from a screenshot of the Inventory tab: "bottom 3 should be the output slots, add two,
+  for reliability/speed"): with a result in its own furnace's buffer a furnace whose buffer was busy had to wait for the next
+  pass, and results and input took turns in one stack. Now COLLECT empties any furnace into the shared row at once, and the
+  buffers only ever hold input. Why 3: the user's choice; it covers three kinds of product per delivery trip. Why no label
+  for the row: every label sits above its slots, and the cells above (row 3) are the furnace buffers.
+  Why 8 + XP in row 3 unchanged: the 9-wide row was the user's wish ("looks nicer").
+- Older golems (saved with 8 or 9 slots): `SmelterLogic:tick` calls `migrate` before anything else (before the cooldown, so
+  the list grows on the first tick; until then `GolemMenu:stillValid` closes an open menu, one tick at most): the list is
+  grown to `SLOTS` (items kept), and a result an older version left in a furnace buffer moves to the result slots. Which item
+  is a result is only certain for what is neither smeltable nor fuel (iron ingot, diamond); a smeltable one (stone) stays in
+  its buffer as raw input (fed or returned to the input chest, never lost). What does not fit the 3 result slots stays in its
+  buffer too and goes back to the input chest. A non-bottle item in the XP slot (an older version's leftover) is swept into
+  the result slots on each tick (`sweepXpSlot`); `DELIVER` also takes whatever is left in slot 8.
 - Icon `profession_smelter` on base item `furnace` (copper furnace with a flame).
 - Status: `SmelterLogic:status` ("Smelting in N furnaces", "No furnaces in the area", "No furnace area set", "No
   reachable furnaces", "Output chest is full or missing", "Out of fuel", "Nothing to smelt"), hooked in `ProfessionStatus`.
@@ -50,12 +58,16 @@ Batch rule: `SmelterLogic:BATCH` = 8. A furnace's input is only topped up to 8 i
 furnace for the whole run; with 8 the cycle comes back to collect long before a batch is done, and still re-tops every
 furnace before it runs dry, so few furnaces with lots of input stay busy. Raising it trades earlier output for fewer trips.
 
-1. `COLLECT`: result slot into the buffer, and a non-fuel leftover in the fuel slot (the empty bucket of lava) the same
-   way. Any result is collected, no threshold (the old "8 or more, or done" rule is gone: results must come out regularly).
+1. `COLLECT`: a furnace's result slot into the shared result slots (`SmelterLogic:addResult`: same item first, then an empty
+   slot), and a non-fuel leftover in the fuel slot (the empty bucket of lava) the same way. Any result is collected, no
+   threshold (the old "8 or more, or done" rule is gone: results must come out regularly). A furnace is only collectable
+   while the result slots have room for its item (`resultSpace`: free room in same-item stacks plus empty slots); with 3
+   different kinds or 3 full stacks COLLECT has no work and the cycle moves on to DELIVER, the furnaces keep their output
+   until there is room.
    The furnace's stored XP goes into the golem's store (`SmelterLogic:takeFurnaceXp`, no orbs, see
    [xp-bottles.md](xp-bottles.md)) and the map is cleared through `mixin/AbstractFurnaceAccessor` (vanilla clears it only in
    the player variant; without that the XP would be paid on every collect and the map grows forever).
-2. `DELIVER` (output chest): every RESULT buffer, the XP bottle slot included, goes to the chest, even a few items.
+2. `DELIVER` (output chest): the result slots and the XP bottle slot go to the chest, even a few items (`deliverSlots`).
 3. `FETCH` (input chest): `planFetch`. For each smeltable item type in chest order, the furnaces that can take it (their
    own type has a recipe, checked with `RecipeManager.createCheck(RecipeType.SMELTING/BLASTING/SMOKING)`; input empty or
    the same item; room left up to `BATCH`) share it one item at a time to the lowest level, into their empty buffers. 24 ore
@@ -70,12 +82,15 @@ furnace before it runs dry, so few furnaces with lots of input stay busy. Raisin
    single coal.
 6. `FUEL`: the buffer goes into the fuel slot. Never into the input slot.
 7. `RETURN`: a RAW buffer that no furnace can take for 200 ticks goes back to the input chest, a FUEL buffer to the fuel
-   chest. A full chest keeps them.
+   chest. A full chest keeps them. Results are never returned, they are delivered.
 
-A buffer has a transient `Kind` (RAW, FUEL, RESULT) set when the golem fills it. After a restart or a player's edit it is
-derived: smeltable -> RAW, fuel -> FUEL, anything else -> RESULT. Known limit: after a restart an item that is both a
-result and smeltable (stone) or both fuel and smeltable (logs) is read as RAW.
-Why a buffer holds one thing at a time: one stack per furnace, so raw, fuel and results take turns; lossless because every
+A furnace buffer has a transient `Kind` (RAW, FUEL) set when the golem fills it. After a restart or a player's edit it is
+derived (`SmelterLogic:kindOf`): smeltable -> RAW, fuel -> FUEL, anything else -> RAW (fits no furnace, so `RETURN` takes it
+back to the input chest). Why only two kinds: buffers are input only, results live in the result slots. That removes the old
+ambiguity "stone reads as RAW after a restart" (stone is a result of cobblestone and smeltable): a result is never in a
+buffer, so nothing has to guess. Remaining limit: an item that is both smeltable and fuel (logs) is read as RAW after a
+restart.
+Why a buffer holds one thing at a time: one stack per furnace, so raw and fuel take turns; lossless because every
 step moves items slot to slot or chest to slot and leaves the remainder where it came from (D9, `GolemData.save` after
 each action).
 
@@ -89,8 +104,9 @@ Each rule has a test in `SmelterTest`.
 
 - Unsmeltable input items are never pulled (`planFetch` only takes types a usable furnace smelts).
 - A furnace input holding a different item is never touched or fed; its output is still collected.
-- Full or missing output chest: results stay in the buffer, `outBlockedUntil` skips `DELIVER` for 200 ticks, the other
-  furnaces keep being served; the buffer's furnace just waits. Same for full input and fuel chests on `RETURN`.
+- Full or missing output chest: results stay in the result slots, `outBlockedUntil` skips `DELIVER` for 200 ticks, the
+  other furnaces keep being served and collected until the result slots are full (then COLLECT has no work, the furnaces
+  keep their output and the rest of the loop goes on). Same for full input and fuel chests on `RETURN`.
 - Missing or unassigned targets, no furnaces: nothing is planned, the golem idles every 40 ticks with a status. Nothing throws.
 - Unreachable target (furnace or chest): no progress for 200 ticks (airborne ticks do not count) -> ignored for 600 ticks
   (`State.skip`), the golem carries on with the rest. Why not idle like the Crafter: one bad furnace must not stop the other seven.
@@ -102,5 +118,13 @@ Each rule has a test in `SmelterTest`.
 `evenSplitAcrossThreeFurnaces`, `atMostEightFurnacesAreUsed`, `typeSplitSmokerAndFurnace`,
 `unsmeltableItemsStayInTheInputChest`, `foreignInputIsNeverFought`, `fullOutputChestKeepsResultsAndKeepsFeeding`,
 `noFuelStillCollectsAndFeeds`, `noFurnacesAndMissingTargetsIdle`, `lavaBucketLeavesAnEmptyBucketInTheOutput`,
-`unreachableFurnaceIsGivenUp` (furnace 4 blocks above the floor), `frozenSmelterDoesNothing`, `inventoryTabIsOneFullRowOfNine` (8 buffer cells + the take-only XP cell, labels at (2,4) and (2,8)), `eightSlotSmelterGrowsToNine`, `phasesRunInCycleOrder`, `earlyOutput`, `inputNeverExceedsBatch`,
-`blastFurnaceAndFurnaceSplit` (ore reaches the blast furnace, beef never does), `blastFurnaceAloneWorksEndToEnd`. XP tests are in `XpTest` ([xp-bottles.md](xp-bottles.md)).
+`unreachableFurnaceIsGivenUp` (furnace 4 blocks above the floor), `frozenSmelterDoesNothing`, `phasesRunInCycleOrder`,
+`earlyOutput`, `inputNeverExceedsBatch`, `blastFurnaceAndFurnaceSplit` (ore reaches the blast furnace, beef never does),
+`blastFurnaceAloneWorksEndToEnd`.
+Result slots: `inventoryTabLayout` (buffers row 3 cols 0..7, take-only XP at (3,8), take-only results at row 4 cols 3..5,
+labels, 12 slots), `resultsNeverLandInFurnaceBuffers` (two products from three furnaces, never in a buffer, seen in the result
+slots), `fullResultRowTriggersDeliver` (3 kinds held: DELIVER is the first phase, the furnace output waits, then follows),
+`sameResultsMergeIntoOneSlot`, `eightSlotSmelterGrowsToTwelve`, `nineSlotSmelterMigratesWithoutLoss` (4 results + ore + fuel
+in the buffers of a 9-slot golem: 3 move to the result slots, the 4th and the rest return, nothing lost).
+XP tests are in `XpTest` ([xp-bottles.md](xp-bottles.md)). Why `fullResultRowTriggersDeliver` polls `phaseOf` instead of
+`phaseListener`: the hook is one static shared with `phasesRunInCycleOrder`, and game tests run in parallel.
