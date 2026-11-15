@@ -274,6 +274,19 @@ public final class FarmerLogic {
 				return;
 			}
 		}
+		// 5. idle (no field work, nothing to deliver): top up damaged Mending tools from the tools chest, whatever they miss
+		BlockPos toolsPos = data.assignments.get(FarmerProfession.TOOLS);
+		Container toolsChest = toolsPos == null || s.skip.containsKey(toolsPos) ? null : TransporterLogic.containerAt(level, toolsPos);
+		if (toolsChest != null && GolemMending.canRepair(level, tool, toolsChest, FarmerLogic::isTool, true)) {
+			if (walkTo(level, s, golem, toolsPos, now)) {
+				int used = GolemMending.repair(level, tool, toolsChest, FarmerLogic::isTool, TransferBudget.remaining(level, golem), true);
+				TransferBudget.spend(level, golem, used);
+				boolean more = TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, tool, toolsChest, FarmerLogic::isTool, true);
+				if (used > 0 || more) Interact.openChest(level, golem, toolsPos, Interact.Action.TAKE);
+				done(s, golem, data, more ? TransferBudget.waitTicks(level) : used > 0 ? Interact.OPEN_TICKS : SCAN_TICKS);
+			}
+			return;
+		}
 		golem.getNavigation().stop();
 		s.cooldown = SCAN_TICKS;
 	}

@@ -32,6 +32,20 @@ different tool"). Bottles come from [xp-bottles.md](xp-bottles.md) (`GolemXp:XP_
   (`wantsRepair`) does not apply there. It does not call `GolemMending:repair` (that keeps the rule); it uses only
   `hasMending`, `perBottle` and `bottlesIn`. Budget rules as usual (1 item per bottle). Test: `LumberTest:repairsMendingAxeWhileWaitingForGrowth`.
 
+## Top-up while idle
+
+Why: user request, "while waiting, it should also just repair mending tools instead of waiting". The one-bottle rule above
+exists so a golem does not walk back after every hit; idle golems have nothing better to do, so they ignore it.
+
+- Shared entry: `GolemMending:canRepair(..., topUp=true)` / `GolemMending:repair(..., limit, topUp=true)`: any damaged Mending
+  tool (held, or of the profession's kind in the chest) is repaired to full while bottles last, whatever it misses.
+  Transfer budget 1 per bottle, bottles only from the tool chest, a cut visit stays at the chest and goes on next window.
+- Callers, each only in idle time: Lumber `LumberLogic:mendVisit` (waiting for growth, input chest), Butcher
+  `ButcherLogic:mendVisit` (cycle did nothing, before WAIT, tools chest), Farmer step 6 of the loop in `FarmerLogic:tick`
+  (no field work, tools chest). The felling/cull/field-time rules are unchanged.
+- Tests: `LumberTest:repairsMendingAxeWhileWaitingForGrowth`, `MendingTest:butcherTopsUpSwordWhileIdle`,
+  `MendingTest:farmerTopsUpHoeWhileIdle`.
+
 ## Never break a Mending tool
 
 - `GolemMending:MENDING_SAFE_DURABILITY` = **10**. `GolemMending:canUse(tool)` is false for a Mending tool with 10 or fewer
@@ -77,10 +91,10 @@ A tool only moves slot to chest slot, never dropped; bottles are shrunk by exact
 from `perBottle`); a chest that cannot take the tool leaves it in the slot. The tests assert exactly one Mending tool exists
 every tick.
 
-## Tests (`MendingTest`, 9)
+## Tests (`MendingTest`, 11)
 
 `guardAndConversion`; Lumber: `lumberRepairsWithBottles` (damage 20, 5 bottles: 2 used, axe whole then 3 chops),
 `lumberNeverBreaksMendingAxeAndChopsByHand` (threshold + 1, no other axe), `lumberSwitchesToPlainAxe`,
 `lumberRepairsStoredMendingAxeAndReusesIt` (18 bottles, more than one window); Butcher: `butcherNeverBreaksMendingSword`,
 `butcherRepairsWithBottles`; Farmer: `farmerReturnsMendingHoeAndDoesNotTill` (also: ripe wheat is still harvested by hand),
-`farmerRepairsStoredMendingHoeAndReusesIt`.
+`farmerRepairsStoredMendingHoeAndReusesIt`; idle top-up: `butcherTopsUpSwordWhileIdle`, `farmerTopsUpHoeWhileIdle`.

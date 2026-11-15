@@ -66,10 +66,10 @@ public final class GolemMending {
 	 * Worth a bottle: a damaged Mending tool that is resting (not usable) or lacks at least one bottle's worth of durability.
 	 * Why: without this the golem would walk back to the chest after every single hit to burn a bottle on 1 point.
 	 */
-	private static boolean wantsRepair(ServerLevel level, ItemStack s, Predicate<ItemStack> isTool) {
+	private static boolean wantsRepair(ServerLevel level, ItemStack s, Predicate<ItemStack> isTool, boolean topUp) {
 		if (s.getCount() != 1 || !isTool.test(s) || !hasMending(s) || !s.isDamaged()) return false;
 		int per = perBottle(level, s);
-		return per > 0 && (s.getDamageValue() >= per || !canUse(s));
+		return per > 0 && (topUp || s.getDamageValue() >= per || !canUse(s));
 	}
 
 	public static int bottlesIn(Container chest) {
@@ -78,11 +78,19 @@ public final class GolemMending {
 		return n;
 	}
 
-	/** Is there a bottle in {@code chest} and a damaged Mending tool (held or in the chest) to use it on. */
+	/** Is there a bottle in {@code chest} and a damaged Mending tool (held or in the chest) worth using it on. */
 	public static boolean canRepair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool) {
+		return canRepair(level, held, chest, isTool, false);
+	}
+
+	/**
+	 * {@code topUp}: idle-time variant, any damaged Mending tool counts however little it misses (no one-bottle rule).
+	 * Why: user request, repair while waiting instead of idling; an idle golem has nothing better to do.
+	 */
+	public static boolean canRepair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool, boolean topUp) {
 		if (bottlesIn(chest) <= 0) return false;
-		if (wantsRepair(level, held, isTool)) return true;
-		for (int i = 0; i < chest.getContainerSize(); i++) if (wantsRepair(level, chest.getItem(i), isTool)) return true;
+		if (wantsRepair(level, held, isTool, topUp)) return true;
+		for (int i = 0; i < chest.getContainerSize(); i++) if (wantsRepair(level, chest.getItem(i), isTool, topUp)) return true;
 		return false;
 	}
 
@@ -92,11 +100,16 @@ public final class GolemMending {
 	 * bottles consumed (the caller spends them from the transfer budget).
 	 */
 	public static int repair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool, int limit) {
+		return repair(level, held, chest, isTool, limit, false);
+	}
+
+	/** As above; with {@code topUp} every damaged Mending tool is repaired to full, ignoring the one-bottle rule (idle time). */
+	public static int repair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool, int limit, boolean topUp) {
 		int used = 0;
 		for (int i = -1; i < chest.getContainerSize() && used < limit; i++) {
 			ItemStack t = i < 0 ? held : chest.getItem(i);
 			// once a tool is worth repairing it is repaired to full (the last bottle may overshoot)
-			boolean go = wantsRepair(level, t, isTool);
+			boolean go = wantsRepair(level, t, isTool, topUp);
 			while (go && used < limit && t.isDamaged() && takeBottle(chest)) {
 				t.setDamageValue(Math.max(0, t.getDamageValue() - perBottle(level, t)));
 				used++;

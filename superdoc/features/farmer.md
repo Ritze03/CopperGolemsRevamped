@@ -104,7 +104,11 @@ Transient state (cooldown, walk state, skip map) in a `WeakHashMap` like the Cle
      the carry holds no seed). Why: either leftover policy loses nothing; "stay and retry" would keep the golem
      walking to a full chest every 40 ticks and stall its harvest as the carry fills, overflow to output cannot.
    Leftovers that fit nowhere stay and are retried every 40 ticks.
-6. Else idle, rescan every 20 ticks.
+6. Else (no field work, nothing to deliver) top up damaged Mending tools, held or in the tools chest, from the tools chest's
+   XP bottles, however little they miss (the golem walks there, 1 transfer item per bottle). Why: user request, repair while
+   waiting instead of idling; it only runs when steps 1 to 5 found nothing, so real work is never interrupted. See
+   [mending.md](mending.md). Test: `MendingTest:farmerTopsUpHoeWhileIdle`.
+7. Else idle, rescan every 20 ticks.
 
 Why the seed chest is both source and sink (user): "Farmers should drop their seeds into their 'seeds' chest. Not the
 output." Seeds the harvest yields feed the next planting round instead of piling up in the output.

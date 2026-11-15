@@ -262,6 +262,7 @@ public final class ButcherLogic {
 			if (s.worked) {
 				setPhase(s, golem, Phase.BREED);
 			} else {
+				if (mendVisit(level, golem, data, s)) return; // idle time repairs Mending weapons, however little they miss
 				s.doing = "Herd is in balance";
 				setPhase(s, golem, Phase.WAIT);
 				idle(level, golem, s, WAIT_TICKS);
@@ -811,6 +812,27 @@ public final class ButcherLogic {
 		if (acted) Interact.openChest(level, golem, pos, Interact.Action.TAKE);
 		s.walk.reset();
 		s.cooldown = Interact.OPEN_TICKS;
+		GolemData.save(golem, data);
+		return true;
+	}
+
+	/**
+	 * Idle time (nothing to breed, kill or deliver): walk to the tool chest and top up damaged Mending weapons with its
+	 * bottles, whatever they miss. True while busy. See mending.md.
+	 */
+	private static boolean mendVisit(ServerLevel level, CopperGolem golem, GolemData data, State s) {
+		BlockPos pos = data.assignments.get(ButcherProfession.TOOLS);
+		Container chest = pos == null ? null : TransporterLogic.containerAt(level, pos);
+		if (chest == null || !GolemMending.canRepair(level, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, true)) return false;
+		s.doing = "Repairing tool with XP bottles";
+		if (!Interact.approach(level, golem, pos, s.walk, SPEED)) return true;
+		golem.getLookControl().setLookAt(Vec3.atCenterOf(pos));
+		int used = GolemMending.repair(level, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, TransferBudget.remaining(level, golem), true);
+		TransferBudget.spend(level, golem, used);
+		boolean more = TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, data.items.get(ButcherProfession.TOOL_SLOT), chest, ButcherLogic::isWeapon, true);
+		if (used > 0 || more) Interact.openChest(level, golem, pos, Interact.Action.TAKE);
+		if (!more) s.walk.reset();
+		s.cooldown = more ? TransferBudget.waitTicks(level) : used > 0 ? Interact.OPEN_TICKS : RETRY_TICKS;
 		GolemData.save(golem, data);
 		return true;
 	}

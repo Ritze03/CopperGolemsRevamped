@@ -123,6 +123,10 @@ only `GolemData`. `ButcherLogic:Phase`: **BREED -> KILL -> DELIVER -> (WAIT) -> 
    `WAIT_TICKS` (100 = 5 s), status "Herd is in balance" (or "Output chest is full"), then starts over. Why 100: nothing in
    a pen changes faster (breeding cooldown 5 min, calves 20 min), so the old 20-tick rescan was wasted work; 5 s still
    notices new animals, food or a weapon quickly. A cycle that did something goes straight to BREED.
+   Before the idle starts, `ButcherLogic:mendVisit` tops up damaged Mending weapons (held or in the tool chest) from the
+   tool chest's XP bottles, however little they miss, then WAIT as usual. Why: user request, repair while waiting instead of
+   idling. Only when the cycle did nothing and nothing is carried, so real work is never interrupted. See
+   [mending.md](mending.md). Test: `MendingTest:butcherTopsUpSwordWhileIdle`.
 
 Never blocks: no weapon still breeds, no food still kills, a full output keeps the carry.
 

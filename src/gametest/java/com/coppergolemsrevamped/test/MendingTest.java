@@ -244,6 +244,18 @@ public class MendingTest {
 		});
 	}
 
+	/** Idle Butcher (no animals: nothing to breed, kill or deliver), sword missing 5 points: topped up from the tool chest, 1 bottle. */
+	@GameTest(maxTicks = 1500)
+	public void butcherTopsUpSwordWhileIdle(GameTestHelper helper) {
+		ButcherTest.Pen p = herd(helper, 0, mending(helper, Items.IRON_SWORD, 250 - 5));
+		p.tools.setItem(0, new ItemStack(Items.EXPERIENCE_BOTTLE, 5));
+		helper.succeedWhen(() -> {
+			ItemStack s = GolemData.get(p.golem).items.get(ButcherProfession.TOOL_SLOT);
+			helper.assertTrue(s.is(Items.IRON_SWORD) && s.getDamageValue() == 0, "sword damage: " + s.getDamageValue());
+			helper.assertTrue(ButcherTest.count(p.tools, Items.EXPERIENCE_BOTTLE) == 4, "bottles left: " + ButcherTest.count(p.tools, Items.EXPERIENCE_BOTTLE));
+		});
+	}
+
 	// ---- Farmer ----------------------------------------------------------------------------------------------------
 
 	/** Mending hoe at the threshold, no other tool: it goes back, the dirt is not tilled, the ripe wheat is still harvested by hand. */
@@ -319,6 +331,31 @@ public class MendingTest {
 			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
 			helper.assertTrue(t.is(Items.IRON_HOE) && t.getDamageValue() == 2, "hoe repaired, then 2 tills: " + t);
 			helper.assertTrue(count(toolChest, Items.EXPERIENCE_BOTTLE) == 3, "bottles left: " + count(toolChest, Items.EXPERIENCE_BOTTLE) + ", need " + need);
+		});
+	}
+
+	/** Idle Farmer (field of stone: nothing to plant, harvest or till), hoe missing 5 points: topped up from the tools chest, 1 bottle. */
+	@GameTest(maxTicks = 1500)
+	public void farmerTopsUpHoeWhileIdle(GameTestHelper helper) {
+		BlockPos tools = new BlockPos(5, 1, 0), out = new BlockPos(5, 1, 4);
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		helper.setBlock(tools, Blocks.CHEST);
+		helper.setBlock(out, Blocks.CHEST);
+		ChestBlockEntity toolChest = chest(helper, tools);
+		toolChest.setItem(0, new ItemStack(Items.EXPERIENCE_BOTTLE, 5));
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 2));
+		GolemService.changeProfession(helper.getLevel(), golem, FarmerProfession.ID);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("field_a", helper.absolutePos(new BlockPos(0, 0, 0)));
+		data.assignments.put("field_b", helper.absolutePos(new BlockPos(1, 0, 0)));
+		data.assignments.put("tools", helper.absolutePos(tools));
+		data.assignments.put("output", helper.absolutePos(out));
+		data.items.set(FarmerProfession.TOOL_SLOT, mending(helper, Items.IRON_HOE, 250 - 5));
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> {
+			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
+			helper.assertTrue(t.is(Items.IRON_HOE) && t.getDamageValue() == 0, "hoe damage: " + t.getDamageValue());
+			helper.assertTrue(count(toolChest, Items.EXPERIENCE_BOTTLE) == 4, "bottles left: " + count(toolChest, Items.EXPERIENCE_BOTTLE));
 		});
 	}
 }
