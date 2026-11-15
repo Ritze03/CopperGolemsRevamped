@@ -105,12 +105,7 @@ public class GolemMenu extends AbstractContainerMenu {
 			int x = 8 + (cell % COLS) * 18;
 			int y = 18 + (cell / COLS) * 18;
 			if (cell == HELD_CELL) {
-				addSlot(new Slot(held, 0, x, y) {
-					@Override
-					public boolean mayPlace(ItemStack stack) {
-						return false;
-					}
-				});
+				addSlot(new HeldSlot(held, x, y));
 			} else if (cell >= ITEMS_START && cell < ITEMS_START + itemCount) {
 				int k = cell - ITEMS_START;
 				addSlot(new GroupSlot(items, k, x, y, maxStacks.get(k), filters.get(k)));
@@ -164,7 +159,8 @@ public class GolemMenu extends AbstractContainerMenu {
 	}
 
 	private static ItemStack assignIcon(AssignSpec spec, GolemData data) {
-		GolemIcon icon = switch (spec.kind()) {
+		GolemIcon keyed = GolemIcon.byName("assign_" + spec.key());
+		GolemIcon icon = keyed != null ? keyed : switch (spec.kind()) {
 			case CHEST -> GolemIcon.ASSIGN_CHEST;
 			case CRAFTING_TABLE -> GolemIcon.ASSIGN_CRAFTING_TABLE;
 			case BLOCK -> GolemIcon.ASSIGN_BLOCK;
@@ -235,7 +231,13 @@ public class GolemMenu extends AbstractContainerMenu {
 			}
 			return;
 		}
+		// empty hand: the cell shows a placeholder that no input may touch (QUICK_CRAFT still goes on, mayPlace refuses it)
+		if (slotId == HELD_CELL && input != ContainerInput.QUICK_CRAFT && heldIsEmpty()) return;
 		super.clicked(slotId, button, input, player);
+	}
+
+	private boolean heldIsEmpty() {
+		return golem.getMainHandItem().isEmpty();
 	}
 
 	/** First player-inventory slot index. */
@@ -245,6 +247,7 @@ public class GolemMenu extends AbstractContainerMenu {
 	public ItemStack quickMoveStack(Player player, int index) {
 		if (index < 0 || index >= slots.size()) return ItemStack.EMPTY;
 		if (index < playerStart() && iconCell[index]) return ItemStack.EMPTY;
+		if (index == HELD_CELL && heldIsEmpty()) return ItemStack.EMPTY;
 		Slot slot = slots.get(index);
 		if (!slot.hasItem()) return ItemStack.EMPTY;
 		ItemStack stack = slot.getItem();
@@ -285,6 +288,36 @@ public class GolemMenu extends AbstractContainerMenu {
 		@Override
 		public boolean mayPickup(Player player) {
 			return false;
+		}
+	}
+
+	/**
+	 * The golem's carried item, take-out only. While the hand is empty {@code getItem} returns a cached placeholder
+	 * icon so the cell is distinguishable from an empty slot; the placeholder is not pickable and every click on the
+	 * cell is dropped in {@link #clicked}. {@code remove} / {@code set} only ever touch the real container.
+	 */
+	private static class HeldSlot extends Slot {
+		private final ItemStack placeholder = GolemIcon.HELD_EMPTY.stack(Component.literal("Held item"),
+			List.of(GolemIcon.line("The golem is holding nothing")), false);
+
+		HeldSlot(Container c, int x, int y) {
+			super(c, 0, x, y);
+		}
+
+		@Override
+		public ItemStack getItem() {
+			ItemStack real = container.getItem(0);
+			return real.isEmpty() ? placeholder : real;
+		}
+
+		@Override
+		public boolean mayPlace(ItemStack stack) {
+			return false;
+		}
+
+		@Override
+		public boolean mayPickup(Player player) {
+			return !container.getItem(0).isEmpty();
 		}
 	}
 

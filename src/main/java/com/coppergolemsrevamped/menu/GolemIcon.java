@@ -36,7 +36,9 @@ public enum GolemIcon {
 	ASSIGN_CRAFTING_TABLE("assign_crafting_table", Items.CRAFTING_TABLE),
 	ASSIGN_BLOCK("assign_block", Items.TARGET),
 	ASSIGN_AREA("assign_area", Items.MAP),
-	FILLER("filler", Items.STAINED_GLASS_PANE.gray());
+	ASSIGN_INPUT("assign_input", Items.CHEST),
+	ASSIGN_OUTPUT("assign_output", Items.CHEST),
+	HELD_EMPTY("held_empty", Items.GLASS_BOTTLE);
 
 	public final String iconName;
 	public final Item base;
@@ -52,10 +54,15 @@ public enum GolemIcon {
 		return PROFESSION_NONE;
 	}
 
-	/** Filler cell: the pane with its tooltip removed entirely. */
+	/** Icon by exact name, or null. */
+	public static GolemIcon byName(String name) {
+		for (GolemIcon i : values()) if (i.iconName.equals(name)) return i;
+		return null;
+	}
+
+	/** Filler cell: a plain vanilla gray pane with no tooltip and no custom model (it must not read as an item). */
 	public static ItemStack filler() {
-		ItemStack s = new ItemStack(FILLER.base);
-		s.set(DataComponents.CUSTOM_MODEL_DATA, FILLER.model());
+		ItemStack s = new ItemStack(Items.STAINED_GLASS_PANE.gray());
 		s.set(DataComponents.TOOLTIP_DISPLAY, new TooltipDisplay(true, ReferenceSortedSets.emptySet()));
 		return s;
 	}
