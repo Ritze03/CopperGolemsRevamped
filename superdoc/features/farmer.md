@@ -160,3 +160,9 @@ skips the cell for 1200 ticks. `FarmerLogic:isSkipped` is the test hook.
 - Unbreaking on the tool is not tested (the server `hurtAndBreak` overload should apply it; unverified).
 - No bone meal, no watering: dry farmland reverts to dirt when empty and is then re-tilled (costing durability).
 - Field Y variance (slopes) is not handled: only the lower click's layer is farmed.
+
+## Mending
+
+A Mending hoe or axe is repaired with XP bottles from the **tools chest** and never used below 10 durability: it is parked
+in the chest (or swapped for a usable same-type tool); without a tool the golem still harvests but does not till or break
+fruit. Parking empties the slot, so the empty-slot rule above decides the next tool. See [mending.md](mending.md).

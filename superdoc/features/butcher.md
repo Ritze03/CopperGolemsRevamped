@@ -158,3 +158,9 @@ D9 (no loss or duplication): items only move between slots, chests and carry (ki
 
 `ButcherTest`, see [../architecture/testing.md](../architecture/testing.md). The test pen is 6x6 inside a 2-high stone wall
 with the three chests set into the west wall.
+
+## Mending
+
+A Mending weapon is repaired with XP bottles from the **tools chest** and never used below 10 durability: it is parked in the
+chest (or swapped for a usable weapon) and the golem culls bare-handed (1 damage per hit) meanwhile. Only a Mending weapon
+enables bare hands; "Without a weapon it does not kill" still holds otherwise. See [mending.md](mending.md).

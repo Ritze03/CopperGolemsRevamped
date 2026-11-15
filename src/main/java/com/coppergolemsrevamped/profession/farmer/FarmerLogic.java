@@ -5,6 +5,7 @@ import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
+import com.coppergolemsrevamped.core.GolemMending;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import java.util.ArrayList;
@@ -162,24 +163,19 @@ public final class FarmerLogic {
 
 		// 1. tool: fill an empty slot (any hoe/axe: that sets the type) or swap a tool that breaks on its next use
 		//    (same type only). Nothing is fetched when this tool type has no work in the field.
-		boolean needTool = mode == Mode.NONE ? anyTill || anyFruit
-			: tool.nextDamageWillBreak() && (mode == Mode.HOE ? anyTill : anyFruit);
-		if (needTool) {
+		boolean worn = tool.nextDamageWillBreak() || !GolemMending.canUse(tool); // a Mending tool near its end counts as worn
+		boolean toolWork = mode == Mode.NONE ? anyTill || anyFruit : mode == Mode.HOE ? anyTill : anyFruit;
+		if (toolWork) {
 			BlockPos pos = data.assignments.get(FarmerProfession.TOOLS);
 			Container chest = pos == null || s.skip.containsKey(pos) ? null : TransporterLogic.containerAt(level, pos);
-			if (chest != null && findTool(chest, tool) >= 0) {
-				if (walkTo(level, s, golem, pos, now)) {
-					if (TransferBudget.remaining(level, golem) >= 1) {
-						fetchTool(chest, data);
-						TransferBudget.spend(level, golem, 1); // a swap counts as one item
-						Interact.openChest(level, golem, pos, Interact.Action.TAKE);
-						done(s, golem, data, Interact.OPEN_TICKS);
-					} else { // budget used up: stay and fetch next window
-						Interact.openChest(level, golem, pos, Interact.Action.TAKE);
-						done(s, golem, data, TransferBudget.waitTicks(level));
-					}
+			if (chest != null) {
+				boolean repair = GolemMending.canRepair(level, tool, chest, FarmerLogic::isTool);
+				boolean swap = (mode == Mode.NONE || worn) && findTool(chest, tool) >= 0;
+				boolean park = mode != Mode.NONE && GolemMending.mustPark(tool) && GolemMending.canPark(chest, tool);
+				if (repair || swap || park) {
+					if (walkTo(level, s, golem, pos, now)) toolVisit(level, golem, data, s, chest, pos);
+					return;
 				}
-				return;
 			}
 		}
 		// 2. seeds
@@ -318,12 +314,12 @@ public final class FarmerLogic {
 			}
 			case FRUIT -> {
 				// never use the last durability point: the slot must keep the tool (and with it the type)
-				if (!tool.is(ItemTags.AXES) || tool.nextDamageWillBreak()) yield false;
+				if (!tool.is(ItemTags.AXES) || !usable(tool)) yield false;
 				BlockState st = level.getBlockState(soil.above());
 				yield fitsAll(data, drops(level, soil.above(), st, false, tool));
 			}
 			case PLANT -> seed;
-			case TILL -> seed && tool.is(ItemTags.HOES) && !tool.nextDamageWillBreak();
+			case TILL -> seed && tool.is(ItemTags.HOES) && usable(tool);
 		};
 	}
 
@@ -358,12 +354,12 @@ public final class FarmerLogic {
 			case FRUIT -> {
 				ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
 				BlockState st = level.getBlockState(crop);
-				if (!isFruit(st) || !tool.is(ItemTags.AXES) || tool.nextDamageWillBreak()) yield false;
+				if (!isFruit(st) || !tool.is(ItemTags.AXES) || !usable(tool)) yield false;
 				List<ItemStack> drops = drops(level, crop, st, true, tool);
 				if (!fitsAll(data, drops)) yield false;
 				level.destroyBlock(crop, false, golem);
 				storeAll(data, drops);
-				tool.hurtAndBreak(1, level, null, broken -> {});
+				GolemMending.damage(level, tool, 1);
 				yield true;
 			}
 			case PLANT -> plant(level, data, soil);
@@ -372,7 +368,7 @@ public final class FarmerLogic {
 				level.setBlock(soil, Blocks.FARMLAND.defaultBlockState(), 3);
 				level.playSound(null, soil, SoundEvents.HOE_TILL.value(), SoundSource.BLOCKS, 1.0F, 1.0F);
 				// workable() guarantees this is not the last durability point, so the slot never empties
-				tool.hurtAndBreak(1, level, null, broken -> {});
+				GolemMending.damage(level, tool, 1);
 				yield plant(level, data, soil);
 			}
 		};
@@ -438,6 +434,46 @@ public final class FarmerLogic {
 
 	// ---- chest fetching -------------------------------------------------------------------------------------------
 
+	static boolean isTool(ItemStack s) {
+		return modeOf(s) != Mode.NONE;
+	}
+
+	/** A tool the golem may use now: not on its last durability point, and a Mending tool not near its end. */
+	static boolean usable(ItemStack tool) {
+		return !tool.nextDamageWillBreak() && GolemMending.canUse(tool);
+	}
+
+	/**
+	 * One visit to the tool chest: repair Mending tools with the chest's XP bottles (held one first, then those lying in
+	 * the chest), then swap a worn tool for a usable one (same type; the worn one goes into the chest slot), or park a
+	 * resting Mending tool when nothing replaces it (the golem then works without a tool: it harvests but does not till).
+	 */
+	private static void toolVisit(ServerLevel level, CopperGolem golem, GolemData data, State s, Container chest, BlockPos pos) {
+		int used = GolemMending.repair(level, data.items.get(FarmerProfession.TOOL_SLOT), chest, FarmerLogic::isTool, TransferBudget.remaining(level, golem));
+		TransferBudget.spend(level, golem, used);
+		ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
+		boolean worn = tool.nextDamageWillBreak() || !GolemMending.canUse(tool);
+		boolean acted = used > 0;
+		if ((tool.isEmpty() || worn) && findTool(chest, tool) >= 0) {
+			if (TransferBudget.remaining(level, golem) >= 1) {
+				fetchTool(chest, data);
+				TransferBudget.spend(level, golem, 1); // a swap counts as one item
+				acted = true;
+			}
+		} else if (GolemMending.mustPark(tool) && TransferBudget.remaining(level, golem) >= 1 && GolemMending.park(chest, tool)) {
+			data.items.set(FarmerProfession.TOOL_SLOT, ItemStack.EMPTY);
+			TransferBudget.spend(level, golem, 1);
+			acted = true;
+		}
+		ItemStack now = data.items.get(FarmerProfession.TOOL_SLOT);
+		// budget used up while work remains: stay, keep the lid open, go on next window (not "nothing to do")
+		boolean more = TransferBudget.exhausted(level, golem) && (GolemMending.canRepair(level, now, chest, FarmerLogic::isTool)
+			|| GolemMending.mustPark(now) && GolemMending.canPark(chest, now)
+			|| (now.isEmpty() || now.nextDamageWillBreak() || GolemMending.mustPark(now)) && findTool(chest, now) >= 0);
+		if (acted || more) Interact.openChest(level, golem, pos, Interact.Action.TAKE);
+		done(s, golem, data, more ? TransferBudget.waitTicks(level) : acted ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+	}
+
 	/**
 	 * Slot of a tool in {@code chest} that may go into the tool slot; -1 if none. Empty slot: the first hoe or axe.
 	 * Otherwise only the same type (hoe for hoe, axe for axe). Never one that breaks on its next use.
@@ -447,7 +483,7 @@ public final class FarmerLogic {
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
 			Mode m = modeOf(st);
-			if (m != Mode.NONE && (mode == Mode.NONE || m == mode) && !st.nextDamageWillBreak()) return i;
+			if (m != Mode.NONE && (mode == Mode.NONE || m == mode) && usable(st)) return i;
 		}
 		return -1;
 	}

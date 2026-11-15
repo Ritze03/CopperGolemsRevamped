@@ -4,6 +4,7 @@ import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.core.GolemData;
+import com.coppergolemsrevamped.core.GolemMending;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import java.util.ArrayDeque;
@@ -352,7 +353,7 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.BONEMEAL, now);
 			return;
 		}
-		if (in != null && wantsFetch(data, in, false, true, false, s.topUp)) {
+		if (in != null && wantsFetch(level, data, in, false, true, false, s.topUp)) {
 			fetchVisit(s, level, golem, data, in, inPos, now, false, true, false);
 			return;
 		}
@@ -367,7 +368,7 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.PICKUP, now);
 			return;
 		}
-		if (in != null && wantsFetch(data, in, false, false, true, s.topUp)) {
+		if (in != null && wantsFetch(level, data, in, false, false, true, s.topUp)) {
 			fetchVisit(s, level, golem, data, in, inPos, now, false, false, true);
 			return;
 		}
@@ -387,13 +388,14 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.PICKUP, now);
 			return;
 		}
-		boolean fetch = in != null && wantsFetch(data, in, true, false, false, false);
-		if (fetch || axeSlot(data) < 0 || s.mustDeliver) ToolSwing.end(level, golem); // not chopping now: back to IDLE at once
+		boolean fetch = in != null && wantsFetch(level, data, in, true, false, false, false);
+		boolean bare = axeSlot(data) < 0 && mendingBlocked(data, in);
+		if (fetch || (axeSlot(data) < 0 && !bare) || s.mustDeliver) ToolSwing.end(level, golem); // not chopping now: back to IDLE at once
 		if (fetch) {
 			fetchVisit(s, level, golem, data, in, inPos, now, true, false, false);
 			return;
 		}
-		if (axeSlot(data) < 0) { // no axe, no work
+		if (axeSlot(data) < 0 && !bare) { // no axe, no work (a resting Mending axe: bare hands, see mending.md)
 			idle(s, golem);
 			return;
 		}
@@ -404,7 +406,7 @@ public final class LumberLogic {
 			}
 			return;
 		}
-		fell(s, level, golem, data, t, logs, now);
+		fell(s, level, golem, data, t, logs, bare, now);
 	}
 
 	/**
@@ -442,9 +444,20 @@ public final class LumberLogic {
 		if (!reach(s, level, golem, inPos, inPos, now)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
 		int took = 0;
-		if (axe && TransferBudget.remaining(level, golem) >= 1 && fetchAxe(in, data)) {
-			took++; // a swap counts as one item
-			TransferBudget.spend(level, golem, 1);
+		if (axe) {
+			// Mending: bottles from the input chest repair the axe (and Mending axes lying there), 1 item per bottle
+			int b = GolemMending.repair(level, data.items.get(LumberProfession.AXE_SLOT), in, LumberLogic::isAxe, TransferBudget.remaining(level, golem));
+			TransferBudget.spend(level, golem, b);
+			took += b;
+			if (TransferBudget.remaining(level, golem) >= 1 && fetchAxe(in, data)) {
+				took++; // a swap counts as one item
+				TransferBudget.spend(level, golem, 1);
+			} else if (TransferBudget.remaining(level, golem) >= 1 && GolemMending.mustPark(data.items.get(LumberProfession.AXE_SLOT))
+				&& GolemMending.park(in, data.items.get(LumberProfession.AXE_SLOT))) {
+				data.items.set(LumberProfession.AXE_SLOT, ItemStack.EMPTY); // no other axe: it rests in the chest, the golem chops by hand
+				took++;
+				TransferBudget.spend(level, golem, 1);
+			}
 		}
 		if (saplings) {
 			int n = fetchSupply(in, data, LumberLogic::isSapling, 64, TransferBudget.remaining(level, golem));
@@ -458,7 +471,7 @@ public final class LumberLogic {
 		}
 		s.anchored = false;
 		// budget used up while the golem still wants more: stay, keep the lid open, go on next window (not "chest empty")
-		boolean pending = TransferBudget.exhausted(level, golem) && wantsFetch(data, in, axe, saplings, bone, true);
+		boolean pending = TransferBudget.exhausted(level, golem) && wantsFetch(level, data, in, axe, saplings, bone, true);
 		s.topUp = pending;
 		if (took > 0 || pending) Interact.openChest(level, golem, inPos, Interact.Action.TAKE);
 		if (!pending) s.walk.reset();
@@ -592,7 +605,7 @@ public final class LumberLogic {
 		return best;
 	}
 
-	private static void fell(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, Set<BlockPos> logs, long now) {
+	private static void fell(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, Set<BlockPos> logs, boolean bare, long now) {
 		BlockPos target = s.breakPos != null && logs.contains(s.breakPos) ? s.breakPos : null;
 		if (target == null) {
 			s.breakPos = null;
@@ -626,8 +639,9 @@ public final class LumberLogic {
 			BlockState st = level.getBlockState(target);
 			// whole swings, at least MIN_SWINGS: a fast axe still visibly chops (see lumber.md "Chopping animation")
 			int axe = axeSlot(data);
-			if (axe < 0) return; // axe gone since the last check; the next tick idles or fetches
-			s.breakTotal = ToolSwing.swingTicks(breakTicks(st.getDestroySpeed(level, target), data.items.get(axe).getDestroySpeed(st)), MIN_SWINGS);
+			if (axe < 0 && !bare) return; // axe gone since the last check; the next tick idles or fetches
+			ItemStack tool = axe < 0 ? ItemStack.EMPTY : data.items.get(axe); // bare hands: destroy speed 1
+			s.breakTotal = ToolSwing.swingTicks(breakTicks(st.getDestroySpeed(level, target), tool.getDestroySpeed(st)), MIN_SWINGS);
 			s.breakLeft = s.breakTotal;
 		}
 		// held, not pulsed: one continuous interaction loop for the whole felling (see lumber.md "Chopping animation")
@@ -635,7 +649,7 @@ public final class LumberLogic {
 		if (--s.breakLeft > 0) return;
 		s.breakPos = null;
 		ToolSwing.clearCrack(level, golem); // the state carries over to the next log; a longer walk ends it via the hook
-		switch (breakBlock(level, golem, data, logs, target)) {
+		switch (breakBlock(level, golem, data, logs, target, bare)) {
 			case BROKEN -> GolemData.save(golem, data);
 			case FULL -> s.mustDeliver = true;
 			case DENIED -> s.unreach.add(target);
@@ -667,19 +681,26 @@ public final class LumberLogic {
 	 * when the drops would not fit, so nothing is ever dropped on the ground or lost. Leaves are never broken.
 	 */
 	public static Result breakBlock(ServerLevel level, CopperGolem golem, GolemData data, Set<BlockPos> tree, BlockPos pos) {
+		return breakBlock(level, golem, data, tree, pos, false);
+	}
+
+	/** {@code bare}: no usable axe because a Mending axe is resting; the log is then broken by hand (no tool, no wear). */
+	static Result breakBlock(ServerLevel level, CopperGolem golem, GolemData data, Set<BlockPos> tree, BlockPos pos, boolean bare) {
 		if (!breakAllowed(golem.getX(), golem.getZ(), tree, pos)) return Result.DENIED;
 		BlockState st = level.getBlockState(pos);
 		// capture the slot once: after the axe breaks axeSlot() finds nothing and returns -1 (crash on 2026-11-15)
 		int slot = axeSlot(data);
-		if (!st.is(BlockTags.LOGS) || slot < 0) return Result.DENIED;
-		ItemStack tool = data.items.get(slot);
+		if (!st.is(BlockTags.LOGS) || (slot < 0 && !bare)) return Result.DENIED;
+		ItemStack tool = slot < 0 ? ItemStack.EMPTY : data.items.get(slot);
 		List<ItemStack> drops = Block.getDrops(st, level, pos, null, null, tool);
 		if (!fitsAll(data, drops)) return Result.FULL;
 		level.destroyBlock(pos, false, golem);
 		storeAll(data, drops);
 		// breaking empties the stack (vanilla behaviour); the item is gone, never duplicated
-		tool.hurtAndBreak(1, level, null, broken -> {});
-		if (tool.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
+		if (slot >= 0) {
+			GolemMending.damage(level, tool, 1); // a Mending axe is never broken (axeSlot only offers a usable one)
+			if (tool.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
+		}
 		return Result.BROKEN;
 	}
 
@@ -972,16 +993,29 @@ public final class LumberLogic {
 	// ---- chest fetching -------------------------------------------------------------------------------------------
 
 	static int axeSlot(GolemData data) {
-		return isAxe(data.items.get(LumberProfession.AXE_SLOT)) ? LumberProfession.AXE_SLOT : -1;
+		ItemStack a = data.items.get(LumberProfession.AXE_SLOT);
+		return isAxe(a) && GolemMending.canUse(a) ? LumberProfession.AXE_SLOT : -1; // a resting Mending axe is not an axe to use
+	}
+
+	/**
+	 * Bare hands are allowed only because of a Mending axe: one resting in the slot, or (empty slot) lying unusable in the
+	 * input chest. Without such an axe a golem with no axe still does no work, as before.
+	 */
+	static boolean mendingBlocked(GolemData data, @Nullable Container in) {
+		ItemStack cur = data.items.get(LumberProfession.AXE_SLOT);
+		if (GolemMending.mustPark(cur)) return true;
+		if (!cur.isEmpty() || in == null) return false;
+		for (int i = 0; i < in.getContainerSize(); i++) if (isAxe(in.getItem(i)) && GolemMending.mustPark(in.getItem(i))) return true;
+		return false;
 	}
 
 	/** Chest slot of an axe that may be taken: fills the empty axe slot or replaces a worn one (about to break); -1 if none. */
 	static int fetchableAxe(Container chest, GolemData data) {
 		ItemStack cur = data.items.get(LumberProfession.AXE_SLOT);
-		if (!cur.isEmpty() && !cur.nextDamageWillBreak()) return -1;
+		if (!cur.isEmpty() && !cur.nextDamageWillBreak() && GolemMending.canUse(cur)) return -1;
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (isAxe(st) && st.getCount() == 1 && (cur.isEmpty() || !st.nextDamageWillBreak())) return i;
+			if (isAxe(st) && st.getCount() == 1 && GolemMending.canUse(st) && (cur.isEmpty() || !st.nextDamageWillBreak())) return i;
 		}
 		return -1;
 	}
@@ -999,8 +1033,12 @@ public final class LumberLogic {
 	}
 
 	/** Anything to fetch right now? Mirrors the fetch methods' preconditions exactly (no endless walking to the chest). */
-	private static boolean wantsFetch(GolemData data, Container in, boolean felling, boolean wantSap, boolean growing, boolean topUp) {
+	private static boolean wantsFetch(ServerLevel level, GolemData data, Container in, boolean felling, boolean wantSap, boolean growing, boolean topUp) {
 		if (felling && fetchableAxe(in, data) >= 0) return true;
+		// Mending: bottles to use, or a resting Mending axe the chest can take back
+		ItemStack held = data.items.get(LumberProfession.AXE_SLOT);
+		if (felling && (GolemMending.canRepair(level, held, in, LumberLogic::isAxe)
+			|| GolemMending.mustPark(held) && GolemMending.canPark(in, held))) return true;
 		// topUp: a fetch the transfer budget cut short goes on up to its full target, not just above the low mark
 		if (wantSap && countOf(data, LumberLogic::isSapling) < (topUp ? 64 : SAPLING_LOW) && supplySource(in, data, LumberLogic::isSapling) >= 0) return true;
 		return growing && countOf(data, LumberLogic::isBone) < (topUp ? BONE_TARGET : BONE_LOW) && supplySource(in, data, LumberLogic::isBone) >= 0;

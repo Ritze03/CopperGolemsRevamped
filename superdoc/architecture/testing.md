@@ -61,6 +61,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   the hit), `durabilityGoesToTheRealStack`, `wornWeaponIsSwappedNotLost`, `breedsPigsWithCarrots`, `noBreedingAtTheBabyCap`,
   `noWeaponStillBreeds`, `cycleOrder` (recorded phases BREED, KILL, DELIVER), `dropsGoStraightToCarry` (no item entity, drops in the carry), `noCullingWithoutCarryRoom`, `fullOutputStopsCullingKeepsTheCarry`, `frozenButcherDoesNothing`,
   `butcherDeclaration` ([butcher.md](../features/butcher.md)). Each test builds a walled 6x6 pen with the chests in the wall.
+- `MendingTest` (9): Mending repair with bottles and never breaking a Mending tool for Lumber, Butcher and Farmer, stored tools repaired and reused, D9 every tick ([mending.md](../features/mending.md)).
 - `XpTest` (9): stored XP and XP bottles for Smelter and Butcher, full chest, profession change, save/load ([xp-bottles.md](../features/xp-bottles.md)).
 - `SmelterTest` (18 incl. blast furnace cases): even split, 8-furnace cap, furnace types, one test per never-block rule, lava bucket, freeze, Inventory layout ([smelter.md](../features/smelter.md)).
 - `TransferLimitTest` (2): `transporterNeverMovesMoreThan16PerWindow` (256 items A to B, chest totals sampled every tick, at most 16 per 5-tick window, A's lid open during the whole take, at least 150 ticks), `smelterFetchOf64OreCompletes` (a fetch cut by the budget several times still gives 8 to each of 8 furnaces and 64 ingots). See [transfer-limit.md](transfer-limit.md). No existing test needed a larger tick budget.
@@ -70,8 +71,8 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 176 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 177 required tests passed` (see Gotchas). Update the numbers here when
+Total: 189 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 190 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An
