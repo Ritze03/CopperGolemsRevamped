@@ -40,6 +40,7 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | `profession/transporter/` | Transporter declaration and work loop |
 | `profession/chest_sorter/` | Chest Sorter declaration and visited-chest limit, see [chest-sorter.md](../features/chest-sorter.md) |
 | `profession/cleaner/` | Cleaner declaration and area pickup loop, see [cleaner.md](../features/cleaner.md) |
+| `profession/crafter/` | Crafter declaration and fetch/craft/deliver loop, see [crafter.md](../features/crafter.md) |
 | `ai/` | `FollowMode` |
 | `assign/` | `AssignMode`: armed next-click target assignment |
 | `menu/` | `GolemMenu` (chest-type layout built from the profession declaration, click handling), `GolemIcon` (icon stacks), containers over `GolemData`, `GolemMenuOpener` |
@@ -59,6 +60,7 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change when the vanilla brain runs: `core/GolemTicker:tick`.
 - Change the Transporter's item moving: `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`.
 - Change the Cleaner area or pickup rules: `profession/cleaner/CleanerLogic:box`, `CleanerLogic:tick`.
+- Change the Crafter recipe matching or loop: `profession/crafter/CrafterLogic:plan`, `CrafterLogic:decide`, see [crafter.md](../features/crafter.md).
 - Change the Chest Sorter chest limit: `profession/chest_sorter/ChestSorterProfession:visitedLimit`, mixin `mixin/TransportItemsBetweenContainersMixin`.
 - Change death/statue drops: `core/GolemService:dropAll`, hooks in `mixin/CopperGolemMixin`.
 - Write a GameTest: `src/gametest/java/com/coppergolemsrevamped/test/TransporterTest`, notes in [testing.md](testing.md).
