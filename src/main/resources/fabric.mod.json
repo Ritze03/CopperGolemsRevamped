@@ -11,17 +11,10 @@
 	"entrypoints": {
 		"main": [
 			"com.coppergolemsrevamped.CopperGolemsRevamped"
-		],
-		"client": [
-			"com.coppergolemsrevamped.client.CopperGolemsRevampedClient"
 		]
 	},
 	"mixins": [
-		"coppergolemsrevamped.mixins.json",
-		{
-			"config": "coppergolemsrevamped.client.mixins.json",
-			"environment": "client"
-		}
+		"coppergolemsrevamped.mixins.json"
 	],
 	"depends": {
 		"fabricloader": ">=0.20.1",
