@@ -38,6 +38,9 @@ public enum GolemIcon {
 	ASSIGN_AREA("assign_area", Items.MAP),
 	ASSIGN_INPUT("assign_input", Items.CHEST),
 	ASSIGN_OUTPUT("assign_output", Items.CHEST),
+	ASSIGN_TOOLS("assign_tools", Items.IRON_PICKAXE),
+	ASSIGN_SEEDS("assign_seeds", Items.WHEAT_SEEDS),
+	ASSIGN_TREE("assign_tree", Items.OAK_SAPLING),
 	HELD_EMPTY("held_empty", Items.GLASS_BOTTLE);
 
 	public final String iconName;

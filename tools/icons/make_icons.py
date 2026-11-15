@@ -203,6 +203,34 @@ CROSS = [
 ]
 
 
+PICK_BADGE = [                                     # small iron pickaxe, 8x6
+    ".111111.",
+    "13333321",
+    "12.wv.21",
+    "1..wv..1",
+    "...wv...",
+    "...uu...",
+]
+SPROUT_BADGE = [                                   # seedling, 8x6
+    "nn....nn",
+    "nMn..nMn",
+    ".nMnnMn.",
+    "..nNNn..",
+    "...nN...",
+    "...nN...",
+]
+TREE_CROWN = [                                     # 9x8 leaf crown
+    "..nnnnn..",
+    ".nMMMNNn.",
+    "nMMNMMNNn",
+    "nMNMMNMNn",
+    "nNMMNNMNn",
+    "nNNNNNNNn",
+    ".nNNnNNn.",
+    "..nnnnn..",
+]
+TREE_TRUNK = ["uwu", "wVw", "wVw", "wvw", "wVw", "uuu"]
+
 ARROW_DOWN = [                                     # 7x8 green arrow, tip down
     ".nnnnn.",
     ".nMMNn.",
@@ -443,7 +471,25 @@ def build():
     stamp(cv, 10, 0, PIN)
     icons["assign_output"] = cv
 
-    cv = blank()                                   # 16 faint ghost hand (empty held-item slot)
+    cv = blank()                                   # 16 chest + pickaxe badge + pin
+    stamp(cv, 0, 6, chest(11, 9))
+    stamp(cv, 1, 0, PICK_BADGE)
+    stamp(cv, 10, 0, PIN)
+    icons["assign_tools"] = cv
+
+    cv = blank()                                   # 17 chest + sprout badge + pin
+    stamp(cv, 0, 6, chest(11, 9))
+    stamp(cv, 1, 0, SPROUT_BADGE)
+    stamp(cv, 10, 0, PIN)
+    icons["assign_seeds"] = cv
+
+    cv = blank()                                   # 18 tree + pin
+    stamp(cv, 1, 2, TREE_CROWN)
+    stamp(cv, 4, 10, TREE_TRUNK)
+    stamp(cv, 10, 0, PIN)
+    icons["assign_tree"] = cv
+
+    cv = blank()                                   # 19 faint ghost hand (empty held-item slot)
     stamp(cv, 1, 1, ghost_hand())
     icons["held_empty"] = cv
 
@@ -459,11 +505,40 @@ def rgba(cv, pal):
     return bytes(raw)
 
 
-def png(raw):
+def png(raw, w=16, h=16):
     def chunk(t, d):
         return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xFFFFFFFF)
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 16, 16, 8, 6, 0, 0, 0))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
             + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+def sheet(icons, path, scale, per):
+    cell, names = 8, list(icons)
+    nrows = -(-len(names) // per)
+    w, h = cell + per * (16 * scale + cell), cell + nrows * (16 * scale + cell)
+    px = [[(139, 139, 139, 255)] * w for _ in range(h)]
+    for n, name in enumerate(names):
+        x0 = cell + (n % per) * (16 * scale + cell)
+        y0 = cell + (n // per) * (16 * scale + cell)
+        for y, row in enumerate(icons[name]):
+            for x, ch in enumerate(row):
+                if ch == ".":
+                    continue
+                c = PAL[ch]
+                r, g, b = (int(c[k:k + 2], 16) for k in (0, 2, 4))
+                a = int(c[6:8], 16) if len(c) == 8 else 255
+                bgc = px[0][0]
+                col = tuple((v * a + bv * (255 - a)) // 255 for v, bv in zip((r, g, b), bgc[:3])) + (255,)
+                for dy in range(scale):
+                    for dx in range(scale):
+                        px[y0 + y * scale + dy][x0 + x * scale + dx] = col
+    raw = bytearray()
+    for row in px:
+        raw.append(0)
+        for c in row:
+            raw += bytes(c)
+    with open(path, "wb") as f:
+        f.write(png(bytes(raw), w, h))
 
 
 def main():
@@ -473,6 +548,9 @@ def main():
         assert len(cv) == 16 and all(len(r) == 16 for r in cv), name
         with open(os.path.join(OUT, name + ".png"), "wb") as f:
             f.write(png(rgba(cv, PAL)))
+    here = os.path.dirname(os.path.abspath(__file__))
+    sheet(icons, os.path.join(here, "preview.png"), 8, 8)
+    sheet(icons, os.path.join(here, "preview_1x.png"), 1, 19)
     print("wrote", len(icons), "icons to", os.path.normpath(OUT))
 
 

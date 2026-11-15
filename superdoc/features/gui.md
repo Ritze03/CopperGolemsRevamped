@@ -146,7 +146,15 @@ item, so the pack is optional (decision D18).
 | `assign_chest`, `assign_input`, `assign_output` | `chest` | chest (its override copies vanilla's special seasonal model) |
 | `assign_block` | `target` | target block |
 | `assign_area` | `map` | empty map |
+| `assign_tools` | `iron_pickaxe` | iron pickaxe (chest with a pickaxe badge; Farmer tool chest) |
+| `assign_seeds` | `wheat_seeds` | wheat seeds (chest with a sprout badge; Farmer seed chest) |
+| `assign_tree` | `oak_sapling` | oak sapling (a tree with the pin; Lumber tree) |
 | `held_empty` | `glass_bottle` | glass bottle (empty-container look, plain model, unlike the filler pane) |
+
+Why `assign_tools` / `assign_seeds` / `assign_tree` exist: the screenshot review showed the Farmer's two chest buttons
+on the same generic chest icon and the Lumber tree button on the copper cube (`assign_block`); each now has its own
+icon, base item picked so a vanilla client also sees a hint of the meaning. `tools/icons/make_icons.py` also rewrites
+the `tools/icons/preview*.png` contact sheets.
 
 Profession -> icon: `profession_<profession id path>` (`GolemIcon:profession`), `profession_none` when there is no
 such icon, so a new profession only needs its texture, model and a `GolemIcon` entry plus a base-item case.

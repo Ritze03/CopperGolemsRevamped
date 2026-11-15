@@ -24,6 +24,13 @@ import net.minecraft.world.item.Items;
  * (superdoc/architecture/testing.md).
  */
 public class GolemGuiClientTest implements FabricClientGameTest {
+	/** Clears toasts (e.g. "New Recipes Unlocked") so they do not cover the top-right cell, then screenshots. */
+	private static void shot(ClientGameTestContext context, String name) {
+		context.runOnClient(mc -> mc.gui.toastManager().clear());
+		context.waitTick();
+		context.takeScreenshot(name);
+	}
+
 	@Override
 	public void runTest(ClientGameTestContext context) {
 		context.getInput().resizeWindow(1280, 720);
@@ -44,7 +51,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 			});
 			context.waitForScreen(ContainerScreen.class);
 			context.waitTicks(20);
-			context.takeScreenshot("golem-gui-no-profession");
+			shot(context, "golem-gui-no-profession");
 
 			// (b) transporter with items and one assignment
 			world.getServer().runOnServer(server -> {
@@ -59,12 +66,12 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 				GolemMenuOpener.open(player, golem);
 			});
 			context.waitTicks(20);
-			context.takeScreenshot("golem-gui-transporter");
+			shot(context, "golem-gui-transporter");
 
 			// (c) hover the first control slot to show its tooltip (slot centre at GUI scale 3, 1280x720)
 			context.getInput().setCursorPos(422, 212);
 			context.waitTicks(10);
-			context.takeScreenshot("golem-gui-transporter-tooltip");
+			shot(context, "golem-gui-transporter-tooltip");
 
 			// (d) chest sorter with 12 waxed copper blocks
 			world.getServer().runOnServer(server -> {
@@ -77,7 +84,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 				GolemMenuOpener.open(player, golem);
 			});
 			context.waitTicks(20);
-			context.takeScreenshot("golem-gui-chest-sorter");
+			shot(context, "golem-gui-chest-sorter");
 
 			// (e) cleaner with area and output assigned
 			world.getServer().runOnServer(server -> {
@@ -92,7 +99,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 				GolemMenuOpener.open(player, golem);
 			});
 			context.waitTicks(20);
-			context.takeScreenshot("golem-gui-cleaner");
+			shot(context, "golem-gui-cleaner");
 
 			// (f) crafter: sticks template (slots 0 and 3 = a vertical pair in the 3x3), planks in the buffer
 			world.getServer().runOnServer(server -> {
@@ -110,7 +117,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 				GolemMenuOpener.open(player, golem);
 			});
 			context.waitTicks(20);
-			context.takeScreenshot("golem-gui-crafter");
+			shot(context, "golem-gui-crafter");
 
 			// (g) farmer: hoe, wheat seeds, a few wheat in carry, every assignment set
 			world.getServer().runOnServer(server -> {
@@ -131,7 +138,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 				GolemMenuOpener.open(player, golem);
 			});
 			context.waitTicks(20);
-			context.takeScreenshot("golem-gui-farmer");
+			shot(context, "golem-gui-farmer");
 
 			// (h) lumber: axe + shears, 16 oak saplings, some logs in carry, every assignment set
 			world.getServer().runOnServer(server -> {
@@ -152,7 +159,7 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 				GolemMenuOpener.open(player, golem);
 			});
 			context.waitTicks(20);
-			context.takeScreenshot("golem-gui-lumber");
+			shot(context, "golem-gui-lumber");
 		}
 	}
 }
