@@ -19,6 +19,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/crafter.md](features/crafter.md): Crafter profession, ghost 3x3 recipe, fetch from input, craft at a table, deliver to output.
 - [features/farmer.md](features/farmer.md): Farmer profession, farms a field (max 9x9): a hoe tills, plants and harvests, an axe harvests melons and pumpkins; seeds go to the seed chest.
 - [features/lumber.md](features/lumber.md): Lumber profession, fells a whole assigned tree from the ground (flood fill, 2x2 and branches), collects drops, replants, bone meal, axe wear.
+- [features/smelter.md](features/smelter.md): Smelter profession, feeds up to 8 furnaces of an area (even split, fuel, collect, XP), never blocks on a full chest, foreign input or unreachable furnace.
 - [features/freeze.md](features/freeze.md): Settings-tab Freeze toggle, a frozen golem does nothing and stands still so its inventory can be changed.
 - [features/chunk-loading.md](features/chunk-loading.md): profession golems keep a 3x3 chunk area loaded and ticking (persistent ticket), limits.
 

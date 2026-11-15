@@ -254,6 +254,49 @@ ARROW_DOWN = [                                     # 7x8 green arrow, tip down
 # orange (copper) arrow pointing up: the same shape flipped, recolored
 ARROW_UP = recolor(ARROW_DOWN[::-1], {"n": "k", "M": "C", "N": "c"})
 
+COAL_BADGE = [                                     # coal lump, 8x6
+    "..1111..",
+    ".133321.",
+    "13322221",
+    "12322221",
+    ".122221.",
+    "..1111..",
+]
+FLAME = [                                          # 6x5 flame in the furnace mouth
+    "..Z...",
+    ".ZY.Z.",
+    ".ZYYZ.",
+    "YYZZYC",
+    "CCYYCe",
+]
+
+
+def furnace():
+    """Copper furnace front: bright top slab, dark mouth with a flame, vents under it."""
+    cv = blank()
+    for y in range(1, 15):
+        for x in range(1, 15):
+            if y in (1, 14) or x in (1, 14):
+                ch = "k"
+            elif y <= 4:
+                ch = "h" if y == 2 else "C"
+            elif y == 5:
+                ch = "d"
+            elif x == 2:
+                ch = "h"
+            elif y == 13 or x == 13:
+                ch = "d"
+            else:
+                ch = "c"
+            cv[y][x] = ch
+    for y in range(7, 13):
+        for x in range(4, 12):
+            edge = y in (7, 12) or x in (4, 11)
+            cv[y][x] = "K" if edge else "k"
+    stamp(cv, 5, 8, FLAME)
+    return cv
+
+
 def outlined(sprite, fill, edge):
     """Recolor `fill` pixels that touch transparency (4-neighbour) with `edge`."""
     out = []
@@ -452,6 +495,8 @@ def build():
     stamp(cv, 9, 9, LOG)
     icons["profession_lumber"] = cv
 
+    icons["profession_smelter"] = furnace()        # 7b copper furnace with a flame
+
     for name, col, badge in (("follow_on", "d", CHECK), ("follow_off", "2", CROSS)):
         cv = blank()                               # 8/9 footprints + on/off badge
         foot, foot2 = recolor(FOOT, {"f": col}), recolor([r[::-1] for r in FOOT], {"f": col})
@@ -512,6 +557,12 @@ def build():
     stamp(cv, 4, 10, TREE_TRUNK)
     stamp(cv, 10, 0, PIN)
     icons["assign_tree"] = cv
+
+    cv = blank()                                   # chest + coal badge + pin
+    stamp(cv, 0, 6, chest(11, 9))
+    stamp(cv, 1, 0, COAL_BADGE)
+    stamp(cv, 10, 0, PIN)
+    icons["assign_fuel"] = cv
 
     cv = blank()                                   # 20 copper-bound book with a "?" (Help)
     for y in range(1, 15):

@@ -8,6 +8,7 @@ import com.coppergolemsrevamped.profession.cleaner.CleanerProfession;
 import com.coppergolemsrevamped.profession.crafter.CrafterProfession;
 import com.coppergolemsrevamped.profession.farmer.FarmerProfession;
 import com.coppergolemsrevamped.profession.lumber.LumberProfession;
+import com.coppergolemsrevamped.profession.smelter.SmelterProfession;
 import com.coppergolemsrevamped.profession.transporter.TransporterProfession;
 
 import net.fabricmc.api.ModInitializer;
@@ -31,6 +32,7 @@ public class CopperGolemsRevamped implements ModInitializer {
 		CrafterProfession.init();
 		FarmerProfession.init();
 		LumberProfession.init();
+		SmelterProfession.init();
 		AssignMode.init();
 		LOGGER.info("Copper Golems Revamped initialized");
 	}

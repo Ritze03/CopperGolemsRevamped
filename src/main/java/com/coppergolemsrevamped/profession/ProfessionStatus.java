@@ -7,6 +7,7 @@ import com.coppergolemsrevamped.profession.Profession.Kind;
 import com.coppergolemsrevamped.profession.crafter.CrafterLogic;
 import com.coppergolemsrevamped.profession.lumber.LumberLogic;
 import com.coppergolemsrevamped.profession.lumber.LumberLogic.Phase;
+import com.coppergolemsrevamped.profession.smelter.SmelterLogic;
 
 import org.jspecify.annotations.Nullable;
 
@@ -48,6 +49,7 @@ public final class ProfessionStatus {
 			case "crafter" -> CrafterLogic.preview(level, data).isEmpty()
 				? "No valid recipe" : "Crafting " + CrafterLogic.preview(level, data).getHoverName().getString();
 			case "lumber" -> lumber(LumberLogic.phaseOf(golem));
+			case "smelter" -> SmelterLogic.status(golem);
 			default -> "Working";
 		};
 	}
@@ -65,6 +67,7 @@ public final class ProfessionStatus {
 			case "cleaner" -> "Next: deliver to the output chest";
 			case "farmer" -> "Next: deliver the harvest to the output chest";
 			case "crafter" -> "Next: refill the recipe grid";
+			case "smelter" -> "Next: keep the furnaces fed";
 			case "lumber" -> {
 				Phase ph = LumberLogic.phaseOf(golem);
 				yield "Next: " + lower(lumber(ph == null ? Phase.FELL : Phase.values()[(ph.ordinal() + 1) % Phase.values().length]));

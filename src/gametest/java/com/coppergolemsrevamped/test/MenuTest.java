@@ -10,6 +10,7 @@ import com.coppergolemsrevamped.menu.GolemMenu;
 import com.coppergolemsrevamped.menu.Tab;
 import com.coppergolemsrevamped.profession.crafter.CrafterProfession;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
@@ -125,11 +126,11 @@ public class MenuTest {
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g);
 		helper.assertTrue(menu.tab() == Tab.STATUS && !menu.confirming(), "tab " + menu.tab());
 		helper.assertTrue(menu.slots.size() == 54 + 36, "slots " + menu.slots.size());
-		helper.assertTrue(at(menu, 0, 0).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 1).is(Items.STAINED_GLASS_PANE.black())
-			&& at(menu, 0, 7).is(Items.STAINED_GLASS_PANE.black()), "black panes beside the tab bar, no Back at (0,0)");
+		helper.assertTrue(at(menu, 0, 5).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 6).is(Items.STAINED_GLASS_PANE.black())
+			&& at(menu, 0, 7).is(Items.STAINED_GLASS_PANE.black()), "black panes between the tabs and Help, tabs from (0,0)");
 		Item[] bases = {Items.WRITABLE_BOOK, Items.TARGET, Items.CHEST, Items.COMPARATOR, Items.IRON_AXE};
 		for (int k = 0; k < 5; k++) {
-			ItemStack t = at(menu, 0, 2 + k);
+			ItemStack t = at(menu, 0, k);
 			helper.assertTrue(t.is(bases[k]), "tab " + k + " base " + t);
 			helper.assertTrue(glint(t) == (k == 0), "tab " + k + " glint " + glint(t));
 		}
@@ -145,16 +146,16 @@ public class MenuTest {
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g);
 		player.containerMenu = menu;
-		click(menu, player, 0, 4); // Inventory
+		click(menu, player, 0, 2); // Inventory
 		helper.assertTrue(player.containerMenu == menu && menu.tab() == Tab.INVENTORY, "inventory tab: " + menu.tab());
 		helper.assertTrue(slot(menu, 2, 3).mayPlace(new ItemStack(Items.IRON_AXE)), "the axe slot is shown");
-		helper.assertTrue(glint(at(menu, 0, 4)) && !glint(at(menu, 0, 2)), "glint follows the active tab");
-		click(menu, player, 0, 3); // Targets
+		helper.assertTrue(glint(at(menu, 0, 2)) && !glint(at(menu, 0, 0)), "glint follows the active tab");
+		click(menu, player, 0, 1); // Targets
 		helper.assertTrue(player.containerMenu == menu && menu.tab() == Tab.TARGETS && !slot(menu, 2, 3).mayPlace(new ItemStack(Items.IRON_AXE)),
 			"targets tab: " + menu.tab());
-		click(menu, player, 0, 6); // Profession
+		click(menu, player, 0, 4); // Profession
 		helper.assertTrue(player.containerMenu == menu && menu.tab() == Tab.PROFESSION, "profession tab: " + menu.tab());
-		helper.assertTrue(glint(at(menu, 3, 7)) && lore(at(menu, 3, 7)).contains("Current profession"), "current profession: " + at(menu, 3, 7));
+		helper.assertTrue(glint(at(menu, 3, 6)) && lore(at(menu, 3, 6)).contains("Current profession"), "current profession: " + at(menu, 3, 6));
 		helper.succeed();
 	}
 
@@ -169,20 +170,20 @@ public class MenuTest {
 				for (int cell = 0; cell < 54; cell++) {
 					helper.assertTrue(!name(menu.slots.get(cell).getItem()).equals("Back"), id + "/" + t + ": Back at cell " + cell);
 				}
-				helper.assertTrue(at(menu, 0, 0).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 7).is(Items.STAINED_GLASS_PANE.black())
+				helper.assertTrue(at(menu, 0, 7).is(Items.STAINED_GLASS_PANE.black()) && !at(menu, 0, 0).is(Items.STAINED_GLASS_PANE.black())
 					&& name(at(menu, 0, 8)).equals("Help"), id + "/" + t + ": bar edges");
 			}
 			GolemMenu menu = new GolemMenu(1, player.getInventory(), g);
 			int tabs = 0;
-			for (int col = 1; col <= 6; col++) if (!at(menu, 0, col).is(Items.STAINED_GLASS_PANE.black())) tabs++;
+			for (int col = 0; col <= 7; col++) if (!at(menu, 0, col).is(Items.STAINED_GLASS_PANE.black())) tabs++;
 			helper.assertTrue(tabs == (CRAFTER.equals(id) ? 6 : 5), id + " tab count " + tabs);
 			if (CRAFTER.equals(id)) {
 				String[] names = {"Status", "Targets", "Recipe", "Inventory", "Settings", "Profession"};
-				for (int k = 0; k < 6; k++) helper.assertTrue(name(at(menu, 0, 1 + k)).equals(names[k]), "crafter tab " + k + ": " + name(at(menu, 0, 1 + k)));
-				click(menu, player, 0, 3);
-				helper.assertTrue(menu.tab() == Tab.RECIPE && glint(at(menu, 0, 3)) && !glint(at(menu, 0, 4)), "Recipe tab opens in place");
+				for (int k = 0; k < 6; k++) helper.assertTrue(name(at(menu, 0, k)).equals(names[k]), "crafter tab " + k + ": " + name(at(menu, 0, k)));
+				click(menu, player, 0, 2);
+				helper.assertTrue(menu.tab() == Tab.RECIPE && glint(at(menu, 0, 2)) && !glint(at(menu, 0, 3)), "Recipe tab opens in place");
 			} else {
-				helper.assertTrue(at(menu, 0, 1).is(Items.STAINED_GLASS_PANE.black()), id + " keeps a pane at (0,1)");
+				helper.assertTrue(at(menu, 0, 5).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 6).is(Items.STAINED_GLASS_PANE.black()), id + " keeps panes at (0,5) and (0,6)");
 			}
 		}
 		helper.succeed();
@@ -216,8 +217,8 @@ public class MenuTest {
 		CopperGolem g = golem(helper, null);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.PROFESSION);
-		helper.assertTrue(glint(at(menu, 3, 1)) && lore(at(menu, 3, 1)).contains("Current profession"), "None is current");
-		click(menu, player, 3, 2); // Transporter
+		helper.assertTrue(glint(at(menu, 3, 0)) && lore(at(menu, 3, 0)).contains("Current profession"), "None is current");
+		click(menu, player, 3, 1); // Transporter
 		helper.assertTrue(!menu.confirming() && TRANSPORTER.equals(GolemData.get(g).profession), "profession " + GolemData.get(g).profession);
 		helper.succeed();
 	}
@@ -232,7 +233,7 @@ public class MenuTest {
 		GolemData.save(g, data);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.PROFESSION);
-		click(menu, player, 3, 2); // Transporter: asks first
+		click(menu, player, 3, 1); // Transporter: asks first
 		helper.assertTrue(menu.confirming() && LUMBER.equals(GolemData.get(g).profession), "must ask before switching");
 		helper.assertTrue(!at(menu, 0, 0).is(Items.ARROW) && orange(at(menu, 0, 0)), "the confirm screen has no tab bar");
 		helper.assertTrue(at(menu, 2, 2).is(Items.IRON_AXE) && name(at(menu, 2, 2)).equals("Lumber"), "current " + at(menu, 2, 2));
@@ -244,7 +245,7 @@ public class MenuTest {
 		click(menu, player, 4, 3); // Cancel
 		helper.assertTrue(!menu.confirming() && menu.tab() == Tab.PROFESSION && LUMBER.equals(GolemData.get(g).profession)
 			&& GolemData.get(g).items.get(0).is(Items.IRON_AXE) && GolemData.get(g).assignments.containsKey("tree"), "cancel changes nothing");
-		click(menu, player, 3, 2);
+		click(menu, player, 3, 1);
 		click(menu, player, 4, 5); // Confirm
 		GolemData after = GolemData.get(g);
 		helper.assertTrue(TRANSPORTER.equals(after.profession) && after.assignments.isEmpty(), "switched, targets cleared: " + after.profession);
@@ -680,6 +681,28 @@ public class MenuTest {
 		// a vanilla-brain profession shows nothing
 		GolemHandDisplay.sync(t);
 		helper.assertTrue(t.getMainHandItem().isEmpty(), "sorter keeps its hand to itself");
+		helper.succeed();
+	}
+
+	/** Profession tab: None plus every profession, up to 9 per row centred (rounded left), more than 9 wrap to row 4. */
+	@GameTest
+	public void professionTabIsCentredAndWraps(GameTestHelper helper) {
+		CopperGolem g = golem(helper, null);
+		ServerPlayer player = player(helper, g);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.PROFESSION);
+		List<String> names = new ArrayList<>();
+		names.add("None");
+		for (var p : com.coppergolemsrevamped.profession.Professions.all()) names.add(p.name().getString());
+		int n = names.size();
+		int row3 = Math.min(9, n);
+		int start = (9 - row3) / 2;
+		helper.assertTrue(n <= 9 || n - 9 > 0, "entries: " + n);
+		for (int k = 0; k < Math.min(n, 9); k++) {
+			helper.assertTrue(name(at(menu, 3, start + k)).equals(names.get(k)), "row 3 col " + (start + k) + ": " + name(at(menu, 3, start + k)));
+		}
+		if (start > 0) helper.assertTrue(orange(at(menu, 3, start - 1)), "a pane before the first entry");
+		if (n < 9) helper.assertTrue(orange(at(menu, 3, start + n)), "a pane after the last entry");
+		helper.assertTrue(n >= 8 && start == 0 || n < 8, "8 or 9 entries start at column 0: " + n);
 		helper.succeed();
 	}
 }

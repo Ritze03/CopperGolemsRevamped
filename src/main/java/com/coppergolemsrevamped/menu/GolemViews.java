@@ -96,15 +96,16 @@ final class GolemViews {
 	// ---- tab bar (row 0) ----
 
 	/**
-	 * Row 0: black panes, the profession's tabs right-aligned to end at column 6 (5 tabs start at 2, with a Recipe tab
-	 * at 1) and Help at column 8. There is no Back button: players close the menu with Esc like any chest.
+	 * Row 0: the profession's tabs from column 0 going right (5 tabs fill 0..4, 6 with a Recipe tab 0..5), black panes
+	 * up to Help, which stays at column 8 (user request: tabs left, only Help right-bound). There is no Back button:
+	 * players close the menu with Esc like any chest.
 	 */
 	private static void bar(GolemMenu m, Cell[] cells) {
 		// black panes mark the bar as another part of the UI than the orange tab content
 		for (int c = 0; c < GolemMenu.COLS; c++) set(cells, 0, c, icon(GolemIcon.barFiller()));
 		Profession prof = m.profession();
 		List<Tab> tabs = Tab.forProfession(prof);
-		int start = 7 - tabs.size();
+		int start = 0;
 		for (int k = 0; k < tabs.size(); k++) {
 			Tab t = tabs.get(k);
 			boolean active = t == m.tab();
@@ -321,11 +322,15 @@ final class GolemViews {
 		for (Profession p : Professions.all()) order.add(p.id());
 		for (int k = 0; k < order.size(); k++) {
 			@Nullable Identifier id = order.get(k);
+			// up to 9 per row, centred (rounded left); more than 9 wrap to the next row
+			int inRow = Math.min(GolemMenu.COLS, order.size() - (k / GolemMenu.COLS) * GolemMenu.COLS);
+			int col = (GolemMenu.COLS - inRow) / 2 + k % GolemMenu.COLS;
+			int row = 3 + k / GolemMenu.COLS;
 			boolean current = Objects.equals(id, m.currentId());
 			List<Component> lore = new ArrayList<>();
 			lore.add(current ? GolemIcon.line("Current profession", ChatFormatting.GREEN)
 				: GolemIcon.line("Click to switch to " + nameOf(id)));
-			set(cells, 3, 1 + k, icon(iconOf(id).stack(Component.literal(nameOf(id)), lore, current), (p, b) -> m.choose(id, p)));
+			set(cells, row, col, icon(iconOf(id).stack(Component.literal(nameOf(id)), lore, current), (p, b) -> m.choose(id, p)));
 		}
 	}
 
