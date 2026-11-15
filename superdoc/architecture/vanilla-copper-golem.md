@@ -306,7 +306,11 @@ Read from the decompiled 26.3 client classes `CopperGolemModel`, `CopperGolemRen
 - **No other trigger:** no `handleEntityEvent` case on the golem, no pose-dependent rendering (sitting/running layers are
   statue only), walk animation speed comes from client-side position deltas.
 - **Restarting** an animation = state non-IDLE, then IDLE for at least one tick, then non-IDLE again (client sees each
-  synced value; the same value twice does not restart). This is what `ai/ToolSwing` does.
+  synced value; the same value twice does not restart). This is what `ai/ToolSwing:tick` does (Farmer, Butcher).
+- **Holding** a state instead (`ai/ToolSwing:hold`, Lumber): the same state every tick keeps the 3 s loop running without a
+  restart. Why: user asked for the continuous interaction loop instead of restarting it. GETTING_ITEM is held because its loop
+  keeps both arms overhead longest (arms up ~0.45 to 2.9 s); GETTING_NO_ITEM rests the arms from 2.2 s and the drop loops
+  lower them at 1.5 to 2.3 s. See [lumber.md](../features/lumber.md) "Chopping animation".
 
 ## 12. Behavioural summary and corrections to earlier assumptions
 

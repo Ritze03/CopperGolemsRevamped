@@ -79,14 +79,24 @@ moving; farther logs trigger the second walk.
 ## Chopping animation
 
 Each log takes whole swings of `ai/ToolSwing` (12 ticks each, at least `LumberLogic.MIN_SWINGS` = 2), the break lands right
-after the last chop: iron axe 24 ticks (base 10), wood 36 (30), diamond 24 (8), bare hand 60. Per swing the golem is raised
-(arm up about 90 degrees, axe overhead) for 10 ticks, then IDLE for 2 (snap down = the chop) with a hit sound and the crack
-overlay (`destroyBlockProgress`, stage grows per swing). `ToolSwing:end` clears crack and pose; abandoned work is cleaned by
-a hook after 3 ticks. The resting two-hands look is untouched (IDLE).
-Why: the vanilla copper golem model cannot render a swing, the only arm motion a server can trigger is the chest-reach
-state; see [vanilla-copper-golem.md](../architecture/vanilla-copper-golem.md) "Animations the client can show". Why 12 ticks:
-the reach animation needs ~9 ticks to get the arm up, shorter swings never show the raised pose. Cost: at most +16 ticks
-(0.8 s) per log over the pure vanilla formula. Test: `LumberTest:chopsInSwingsAndReturnsToIdle`, `toolSwingRulesAndCleanup`.
+after the last chop: iron axe 24 ticks (base 10), wood 36 (30), diamond 24 (8), bare hand 60. While felling, the golem is
+**held** in one interaction state (`ToolSwing.HELD` = GETTING_ITEM) via `ToolSwing:hold`, with no IDLE pulses, so the vanilla
+client plays its 3 s looping chest-interaction animation uninterrupted. The per-chop hit sound and crack overlay
+(`destroyBlockProgress`, stage grows per swing) keep the 12-tick cadence (phase 10 of each swing); break timings are unchanged.
+Between logs `ToolSwing:clearCrack` removes only the crack, so the state carries over to the next log without a restart. A walk
+to another standing spot longer than 3 ticks lets the stale-swing hook end the state (IDLE, normal walk arms), and the next
+log starts the loop again; shorter walks (a step) keep it. Delivering mid-tree, fetching an axe, giving up and a finished tree
+call `ToolSwing:end` at once (IDLE). Abandoned work is cleaned by the hook after 3 ticks. The resting two-hands look is
+untouched (IDLE). The Farmer and Butcher still use the pulsed `ToolSwing:tick` (raised 10, IDLE 2).
+Why held: the user asked for the continuous interaction loop instead of restarting it (the earlier pulse restarted the
+animation every swing, which read as a snap). Why GETTING_ITEM: of the four loops (`CopperGolemAnimation` NOITEM_GET, NOITEM_NOGET,
+ITEM_DROP, ITEM_NODROP) it keeps both arms overhead longest (about 0.45 s to 2.9 s of the 3 s, right arm swinging between
+-56 and -129 degrees, left arm swaying), while NOITEM_NOGET (GETTING_NO_ITEM) rests its arms from 2.2 s and the two drop
+loops lower them at 1.5 to 2.3 s or turn sideways; the only cost is one short arm reset at the 3 s loop point. Why walks end it: the chest pose is
+wrong for a longer walk, and the 3-tick grace avoids flicker on a one-step shuffle. The vanilla model cannot render a swing,
+see [vanilla-copper-golem.md](../architecture/vanilla-copper-golem.md) "Animations the client can show". Cost: at most +16
+ticks (0.8 s) per log over the pure vanilla formula (whole swings). Test: `LumberTest:chopsHoldTheInteractionStateAndReturnsToIdle`,
+`toolSwingRulesAndCleanup`, `toolSwingHoldAndCleanup`.
 
 ## Leaves
 

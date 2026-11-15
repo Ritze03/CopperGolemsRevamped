@@ -379,10 +379,13 @@ public final class LumberLogic {
 			s.breakPos = null;
 			s.anchored = false;
 			s.mustDeliver = false;
+			ToolSwing.end(level, golem);
 			setPhase(s, golem, Phase.PICKUP, now);
 			return;
 		}
-		if (in != null && wantsFetch(data, in, true, false, false)) {
+		boolean fetch = in != null && wantsFetch(data, in, true, false, false);
+		if (fetch || axeSlot(data) < 0 || s.mustDeliver) ToolSwing.end(level, golem); // not chopping now: back to IDLE at once
+		if (fetch) {
 			fetchVisit(s, level, golem, data, in, inPos, now, true, false, false);
 			return;
 		}
@@ -599,10 +602,11 @@ public final class LumberLogic {
 			s.breakTotal = ToolSwing.swingTicks(breakTicks(st.getDestroySpeed(level, target), data.items.get(axe).getDestroySpeed(st)), MIN_SWINGS);
 			s.breakLeft = s.breakTotal;
 		}
-		ToolSwing.tick(level, golem, target, s.breakTotal - s.breakLeft, s.breakTotal, true);
+		// held, not pulsed: one continuous interaction loop for the whole felling (see lumber.md "Chopping animation")
+		ToolSwing.hold(level, golem, target, s.breakTotal - s.breakLeft, s.breakTotal, true);
 		if (--s.breakLeft > 0) return;
 		s.breakPos = null;
-		ToolSwing.end(level, golem);
+		ToolSwing.clearCrack(level, golem); // the state carries over to the next log; a longer walk ends it via the hook
 		switch (breakBlock(level, golem, data, logs, target)) {
 			case BROKEN -> GolemData.save(golem, data);
 			case FULL -> s.mustDeliver = true;
