@@ -33,6 +33,11 @@ A golem with no profession stands still. A golem with a profession keeps its chu
    still; otherwise the vanilla brain runs only for professions with `runsVanillaBrain` (Chest Sorter), every other
    profession runs its own tick (`profession/Profession#tick`, e.g. `profession/transporter/TransporterLogic:tick`).
    See [transporter.md](../features/transporter.md).
+   **Safety net:** `GolemTicker:tick` wraps all of that in a `try/catch (RuntimeException)`. A throwing golem is logged
+   once per minute at most (UUID, profession) and its tick is skipped for 200 ticks, then retried (it keeps backing off
+   if it keeps failing). Why: a single golem must never take down the server (user-visible crash 2026-11-15, array index
+   error in Lumber at a raised tick rate). `GolemTicker.rethrow` (set by `CoreFeedbackTest`) makes GameTests rethrow so
+   real bugs still fail them.
 5. Death and statue conversion drop stored items via `core/GolemService:dropAll` (mixin hooks).
 
 ## Module map

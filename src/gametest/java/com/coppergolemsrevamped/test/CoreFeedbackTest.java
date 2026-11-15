@@ -5,6 +5,7 @@ import com.coppergolemsrevamped.ai.WalkTo;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
+import com.coppergolemsrevamped.core.GolemTicker;
 
 import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.ProfessionHelp;
@@ -30,6 +31,11 @@ import net.minecraft.world.phys.Vec3;
 /** Core behaviour feedback: spawn chest, item hand-over, None standing still, profession name, walk-to. */
 public class CoreFeedbackTest {
 	private static final Identifier TRANSPORTER = CopperGolemsRevamped.id("transporter");
+	static {
+		// All test classes are loaded at startup, so this covers every test: a throwing profession fails the test.
+		GolemTicker.rethrow = true;
+	}
+
 	private static final Identifier LUMBER = CopperGolemsRevamped.id("lumber");
 
 	private static void floor(GameTestHelper helper) {
@@ -263,6 +269,32 @@ public class CoreFeedbackTest {
 					"area prompt must state the max size: " + prompt);
 			}
 			helper.assertTrue(ProfessionHelp.lines(p).size() >= p.help().size() + p.assigns().size(), p.id() + " help lines");
+		}
+		helper.succeed();
+	}
+
+	// ---- safety net ----
+
+	/** A throwing tick is swallowed (no exception reaches the server) and the golem is paused, not retried each tick. */
+	@GameTest
+	public void throwingGolemBacksOff(GameTestHelper helper) {
+		floor(helper);
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 3));
+		GolemService.changeProfession(helper.getLevel(), golem, CopperGolemsRevamped.id("chest_sorter"));
+		int[] calls = { 0 };
+		Runnable boom = () -> {
+			calls[0]++;
+			throw new IllegalStateException("test failure");
+		};
+		GolemTicker.rethrow = false; // same server thread, nothing interleaves before it is restored
+		try {
+			GolemTicker.tick(helper.getLevel(), golem, boom);
+			helper.assertTrue(calls[0] == 1, "tick ran once: " + calls[0]);
+			helper.assertTrue(GolemTicker.coolingDown(golem), "golem backs off");
+			for (int i = 0; i < 50; i++) GolemTicker.tick(helper.getLevel(), golem, boom);
+			helper.assertTrue(calls[0] == 1, "skipped while cooling down: " + calls[0]);
+		} finally {
+			GolemTicker.rethrow = true;
 		}
 		helper.succeed();
 	}

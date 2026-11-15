@@ -594,7 +594,9 @@ public final class LumberLogic {
 			s.breakPos = target;
 			BlockState st = level.getBlockState(target);
 			// whole swings, at least MIN_SWINGS: a fast axe still visibly chops (see lumber.md "Chopping animation")
-			s.breakTotal = ToolSwing.swingTicks(breakTicks(st.getDestroySpeed(level, target), data.items.get(axeSlot(data)).getDestroySpeed(st)), MIN_SWINGS);
+			int axe = axeSlot(data);
+			if (axe < 0) return; // axe gone since the last check; the next tick idles or fetches
+			s.breakTotal = ToolSwing.swingTicks(breakTicks(st.getDestroySpeed(level, target), data.items.get(axe).getDestroySpeed(st)), MIN_SWINGS);
 			s.breakLeft = s.breakTotal;
 		}
 		ToolSwing.tick(level, golem, target, s.breakTotal - s.breakLeft, s.breakTotal, true);
@@ -635,15 +637,17 @@ public final class LumberLogic {
 	public static Result breakBlock(ServerLevel level, CopperGolem golem, GolemData data, Set<BlockPos> tree, BlockPos pos) {
 		if (!breakAllowed(golem.getX(), golem.getZ(), tree, pos)) return Result.DENIED;
 		BlockState st = level.getBlockState(pos);
-		if (!st.is(BlockTags.LOGS) || axeSlot(data) < 0) return Result.DENIED;
-		ItemStack tool = data.items.get(axeSlot(data));
+		// capture the slot once: after the axe breaks axeSlot() finds nothing and returns -1 (crash on 2026-11-15)
+		int slot = axeSlot(data);
+		if (!st.is(BlockTags.LOGS) || slot < 0) return Result.DENIED;
+		ItemStack tool = data.items.get(slot);
 		List<ItemStack> drops = Block.getDrops(st, level, pos, null, null, tool);
 		if (!fitsAll(data, drops)) return Result.FULL;
 		level.destroyBlock(pos, false, golem);
 		storeAll(data, drops);
 		// breaking empties the stack (vanilla behaviour); the item is gone, never duplicated
 		tool.hurtAndBreak(1, level, null, broken -> {});
-		if (tool.isEmpty()) data.items.set(axeSlot(data), ItemStack.EMPTY);
+		if (tool.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
 		return Result.BROKEN;
 	}
 

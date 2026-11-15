@@ -63,6 +63,10 @@ level that contains T (`LumberLogic:bottomSquare`), else just T. The footprint i
 4. Durability 1 per log (`hurtAndBreak`, server overload). A worn axe (`nextDamageWillBreak`) is swapped for a fresh
    one from the input chest, the old one going into that chest slot: nothing lost or duplicated. No axe: the golem
    idles and the tree is untouched. Axes are fetched only when there is a tree to fell.
+   Broken-axe handling: `LumberLogic:breakBlock` reads the axe slot once before `hurtAndBreak` and clears that slot
+   index afterwards. Why: `axeSlot` finds the slot by testing for an axe, so after the axe broke it returned -1 and
+   `items.set(-1, ...)` crashed the server (2026-11-15). Never call a slot-finder again after the stack may have
+   changed. The golem then idles or fetches a new axe from the input chest (`LumberTest:brokenAxeEmptiesSlotAndRefetches`).
 5. Drops go to carry (supply slots first when the same item). A break is refused (`Result.FULL`) unless all drops fit
    (checked on a copy of the inventory); the golem then delivers first (`State.mustDeliver`), walks back
    (`anchored = false`) and continues. Nothing is dropped or lost (D9).

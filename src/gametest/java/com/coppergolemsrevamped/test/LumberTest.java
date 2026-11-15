@@ -295,6 +295,38 @@ public class LumberTest {
 	}
 
 	/**
+	 * The axe has 1 durability left and the chest holds no replacement: the chop breaks it, the slot becomes empty, no
+	 * exception (it used to crash with index -1), the golem idles. A new axe put in the chest later is fetched and the work finishes.
+	 */
+	@GameTest(maxTicks = 2500)
+	public void brokenAxeEmptiesSlotAndRefetches(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 3, 0);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		in.setItem(1, new ItemStack(Items.OAK_SAPLING, 4));
+		CopperGolem golem = lumber(helper);
+		GolemData d = GolemData.get(golem);
+		ItemStack worn = new ItemStack(Items.IRON_AXE);
+		worn.setDamageValue(worn.getMaxDamage() - 1);
+		d.items.set(LumberProfession.AXE_SLOT, worn);
+		GolemData.save(golem, d);
+		boolean[] gaveNew = { false };
+
+		helper.succeedWhen(() -> {
+			if (!gaveNew[0]) {
+				helper.assertTrue(helper.getBlockState(T.above()).is(Blocks.OAK_LOG) && !helper.getBlockState(T).is(Blocks.OAK_LOG),
+					"first log not chopped yet");
+				helper.assertTrue(GolemData.get(golem).items.get(LumberProfession.AXE_SLOT).isEmpty(), "axe slot empty after the break");
+				in.setItem(0, new ItemStack(Items.DIAMOND_AXE));
+				gaveNew[0] = true;
+				helper.assertTrue(false, "new axe offered");
+			}
+			helper.assertTrue(count(out, Items.OAK_LOG) == 3, "oak logs in output: " + count(out, Items.OAK_LOG));
+			helper.assertTrue(GolemData.get(golem).items.get(LumberProfession.AXE_SLOT).is(Items.DIAMOND_AXE), "golem fetched the new axe");
+		});
+	}
+
+	/**
 	 * All four neighbours of T are stone, so there is no 1-block stand spot: the golem falls back to the 2-block reach
 	 * and still fells the tree (the Lumber reach exception), leaves untouched.
 	 */
