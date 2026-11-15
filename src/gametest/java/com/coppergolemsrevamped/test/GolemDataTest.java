@@ -40,6 +40,8 @@ public class GolemDataTest {
 		data.items.set(4, new ItemStack(Items.DIAMOND, 3));
 		data.following = true;
 		data.followPlayer = player;
+		data.spawnChest = input;
+		data.autoName = "Transporter";
 		GolemData.save(golem, data);
 
 		TagValueOutput out = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, level.registryAccess());
@@ -58,6 +60,8 @@ public class GolemDataTest {
 		helper.assertTrue(d.items.size() == 9, "items size: " + d.items.size());
 		helper.assertTrue(ItemStack.matches(d.items.get(0), new ItemStack(Items.COBBLESTONE, 64)), "slot 0: " + d.items.get(0));
 		helper.assertTrue(ItemStack.matches(d.items.get(4), new ItemStack(Items.DIAMOND, 3)), "slot 4: " + d.items.get(4));
+		helper.assertTrue(input.equals(d.spawnChest), "spawnChest: " + d.spawnChest);
+		helper.assertTrue("Transporter".equals(d.autoName), "autoName: " + d.autoName);
 		helper.assertTrue(d.following, "following lost");
 		helper.assertTrue(player.equals(d.followPlayer), "followPlayer: " + d.followPlayer);
 		helper.succeed();

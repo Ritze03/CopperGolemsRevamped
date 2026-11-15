@@ -1,8 +1,10 @@
 package com.coppergolemsrevamped.assign;
 
+import com.coppergolemsrevamped.ai.WalkTo;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.profession.Profession;
+import com.coppergolemsrevamped.profession.ProfessionHelp;
 import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Profession.Kind;
 
@@ -22,6 +24,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -86,8 +89,8 @@ public final class AssignMode {
 			return;
 		}
 		PENDING.put(player.getUUID(), new Pending(golem, prof.id(), spec, player.level().getServer().getTickCount()));
-		msg(player, "Right-click " + prompt(spec.kind(), false) + " to set " + spec.label().getString()
-			+ " (sneak-right-click to cancel)");
+		msg(player, spec.label().getString() + ": " + capitalize(ProfessionHelp.prompt(spec))
+			+ ". Sneak-right-click to cancel.");
 	}
 
 	private static void click(ServerPlayer player, Pending p, BlockPos pos) {
@@ -125,6 +128,7 @@ public final class AssignMode {
 			return;
 		}
 		String label = spec.label().getString();
+		boolean outline = false;
 		if (spec.kind() == Kind.AREA) {
 			if (p.first == null) {
 				p.first = pos.immutable();
@@ -132,19 +136,25 @@ public final class AssignMode {
 				msg(player, "First corner set to " + fmt(pos) + ". Right-click the opposite corner.");
 				return;
 			}
-			if (!areaFits(p.first, pos, spec.maxSize())) {
-				msg(player, "Area too large: " + (Math.abs(p.first.getX() - pos.getX()) + 1) + "x"
-					+ (Math.abs(p.first.getZ() - pos.getZ()) + 1) + ", max " + spec.maxSize() + "x" + spec.maxSize());
-				return;
-			}
+			BlockPos second = clampCorner(p.first, pos, spec.maxSize());
 			data.assignments.put(spec.key() + "_a", p.first);
-			data.assignments.put(spec.key() + "_b", pos.immutable());
-			msg(player, label + " set to " + fmt(p.first) + " to " + fmt(pos));
+			data.assignments.put(spec.key() + "_b", second);
+			msg(player, label + " set to " + fmt(p.first) + " to " + fmt(second));
+			if (!second.equals(pos)) {
+				msg(player, "Area capped to " + spec.maxSize() + "x" + spec.maxSize() + " (max)");
+			}
+			pos = second;
+			outline = true;
 		} else {
 			data.assignments.put(spec.key(), pos.immutable());
 			msg(player, label + " set to " + fmt(pos));
 		}
 		GolemData.save(p.golem, data);
+		// visual confirmation: walk next to the block, or once around the area
+		if (p.golem.level() instanceof ServerLevel level) {
+			if (outline) WalkTo.outline(level, p.golem, p.first, pos);
+			else WalkTo.toBlock(level, p.golem, pos);
+		}
 		PENDING.remove(id);
 	}
 
@@ -168,6 +178,17 @@ public final class AssignMode {
 		return Math.abs(a.getX() - b.getX()) + 1 <= max && Math.abs(a.getZ() - b.getZ()) + 1 <= max;
 	}
 
+	/**
+	 * The second corner pulled toward the first until the footprint is at most {@code max} on each axis
+	 * (first + sign(d) * (max - 1)); Y is kept. Why: a too large request is capped, not refused (user decision).
+	 */
+	public static BlockPos clampCorner(BlockPos first, BlockPos second, int max) {
+		int dx = second.getX() - first.getX(), dz = second.getZ() - first.getZ();
+		int cx = Math.max(-(max - 1), Math.min(max - 1, dx));
+		int cz = Math.max(-(max - 1), Math.min(max - 1, dz));
+		return new BlockPos(first.getX() + cx, second.getY(), first.getZ() + cz);
+	}
+
 	/** Distance from the golem to the block centre is at most {@link #MAX_RANGE}. */
 	public static boolean inRange(Vec3 golemPos, BlockPos pos) {
 		return golemPos.distanceToSqr(Vec3.atCenterOf(pos)) <= MAX_RANGE * MAX_RANGE;
@@ -188,6 +209,10 @@ public final class AssignMode {
 			case BLOCK -> "a block";
 			case AREA -> secondCorner ? "a block (opposite corner)" : "a block (first corner)";
 		};
+	}
+
+	private static String capitalize(String s) {
+		return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
 	}
 
 	private static String fmt(BlockPos p) {

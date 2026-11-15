@@ -164,6 +164,11 @@ Statue conversion (oxidised golem -> statue block), all in `CopperGolem`:
 - Reverse: `WeatheringCopperGolemStatueBlock#useItemOn(ItemStack, BlockState, Level, BlockPos, Player, InteractionHand, BlockHitResult)`
   with an axe on an UNAFFECTED statue -> `CopperGolemStatueBlockEntity#removeStatue(BlockState): CopperGolem` (fresh golem, only custom name restored).
 - Other golem creation: `CarvedPumpkinBlock` (build pattern) via `EntityTypes.COPPER_GOLEM.create(level, EntitySpawnReason.TRIGGERED)`.
+  `CarvedPumpkinBlock#trySpawnGolem` (private) matches `copperGolemFull` (pumpkin = pattern cell 0,0,0, copper block =
+  0,1,0 below it), `spawnGolemInWorld` clears the pattern and adds the golem at the pumpkin, then
+  `replaceCopperBlockWithChest(Level, BlockPatternMatch)` sets `CopperChestBlock.getFromCopperBlock` at the copper block's
+  position, then `CopperGolem#spawn(WeatherState)`. The mod wraps the `replaceCopperBlockWithChest` call
+  (`mixin/GolemSpawnMixin`, `@Local CopperGolem`) and stores that position in `GolemData.spawnChest`.
 
 ## 7. Fabric API: data attachments (fabric-data-attachment-api-v1)
 
