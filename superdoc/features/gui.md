@@ -44,13 +44,14 @@ declaration only (slot groups, labels, assigns) and from `profession/ProfessionS
 
 There is **no Back button**: players close the menu with Esc or E like any chest (user request). Row 0 starts as black
 stained glass panes (user request: "to indicate it's another part of the UI"); `GolemViews:bar` then places the tabs
-of `Tab:forProfession` right-aligned so they end at column 6, and Help at column 8:
+of `Tab:forProfession` from column 0 going right, with black panes between the last tab and Help at column 8
+(user request: "move the tabs all the way to the left, with only the help staying rightbound"):
 
 | Cell | Content |
 |---|---|
-| 0, 7 (and 1 with five tabs) | Black pane filler |
-| 2..6 (five tabs) | Status (`icon_status`), Targets (`assign_block`), Inventory (`icon_inventory`), Settings (`icon_settings`), Profession (the current profession's icon). The active tab has the glint |
-| 1..6 (six tabs) | Status, Targets, **Recipe** (plain `knowledge_book`), Inventory, Settings, Profession |
+| 5..7 (cols after the tabs; 6..7 with six tabs) | Black pane filler |
+| 0..4 (five tabs) | Status (`icon_status`), Targets (`assign_block`), Inventory (`icon_inventory`), Settings (`icon_settings`), Profession (the current profession's icon). The active tab has the glint |
+| 0..5 (six tabs) | Status, Targets, **Recipe** (plain `knowledge_book`), Inventory, Settings, Profession |
 | 8 | Help (`help`): `GolemMenu:sendHelp` sends the tab's help to chat, the menu stays open |
 
 Which professions get the sixth tab is declared, not coded in `menu/`: `Tab.RECIPE` appears only when
@@ -96,8 +97,8 @@ on else null, `GolemData.save`; refused with a chat message while frozen. (3,5) 
 
 ### Profession and the confirm screen
 
-Row 3, columns 1..7: None, then `Professions.all()` in registration order (transporter, chest_sorter, cleaner, crafter,
-farmer, lumber). The current one has the glint and the green lore "Current profession". Clicking another one: from None
+Row 3: None, then `Professions.all()` in registration order, up to 9 per row centred (rounded left: 8 entries use cols 0..7,
+7 use 1..7), more than 9 wrap to row 4 (`GolemViews:professions`; why: Smelter and Butcher made the old fixed cols 1..7 too small). The current one has the glint and the green lore "Current profession". Clicking another one: from None
 it switches at once; otherwise it shows the **confirm screen** (`GolemMenu:choose`):
 
 - No tab bar (all filler except): (2,2) current profession, (2,4) arrow "Switch to X", (2,6) the new profession,
@@ -300,6 +301,7 @@ item, so the pack is optional (decision D18).
 | `profession_crafter`, `assign_crafting_table` | `crafting_table` | crafting table |
 | `profession_farmer` | `iron_hoe` | iron hoe |
 | `profession_lumber` | `iron_axe` | iron axe |
+| `profession_smelter` | `furnace` | furnace (copper furnace with a flame) |
 | `profession_butcher` | `iron_sword` | copper-hilted sword with a ham badge |
 | `follow_on`, `follow_off` | `lead` | lead (glint when on) |
 | `assign_chest`, `assign_input`, `assign_output`, `icon_inventory` | `chest` | chest (its override copies vanilla's special seasonal model) |
@@ -307,6 +309,7 @@ item, so the pack is optional (decision D18).
 | `assign_area` | `map` | empty map |
 | `assign_tools` | `iron_pickaxe` | iron pickaxe (chest with a pickaxe badge; Farmer tool chest, holds hoes and axes) |
 | `assign_seeds` | `wheat_seeds` | wheat seeds (chest with a sprout badge; Farmer seed chest) |
+| `assign_fuel` | `coal` | coal (chest with a coal badge; Smelter fuel chest) |
 | `assign_tree` | `oak_sapling` | oak sapling (a tree with the pin; Lumber tree) |
 | `help` | `book` | book (copper-bound book with a "?") |
 | `icon_status` | `writable_book` | book and quill (copper clipboard; Status tab) |

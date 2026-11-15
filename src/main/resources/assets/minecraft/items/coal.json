@@ -1,0 +1,20 @@
+{
+	"model": {
+		"type": "minecraft:select",
+		"property": "minecraft:custom_model_data",
+		"index": 0,
+		"cases": [
+			{
+				"when": "coppergolemsrevamped:assign_fuel",
+				"model": {
+					"type": "minecraft:model",
+					"model": "coppergolemsrevamped:item/gui/assign_fuel"
+				}
+			}
+		],
+		"fallback": {
+			"type": "minecraft:model",
+			"model": "minecraft:item/coal"
+		}
+	}
+}
