@@ -50,7 +50,7 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | `profession/crafter/` | Crafter declaration and fetch/craft/deliver loop, see [crafter.md](../features/crafter.md) |
 | `profession/farmer/` | Farmer declaration and till/plant/harvest/deliver loop, see [farmer.md](../features/farmer.md) |
 | `profession/lumber/` | Lumber declaration and fell/replant/deliver loop, see [lumber.md](../features/lumber.md) |
-| `ai/` | `FollowMode`; `WalkTo` (walk to an assigned block or area outline); `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md) |
+| `ai/` | `FollowMode`; `WalkTo` (walk to an assigned block or area outline); `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md); `ToolSwing`: visible chopping/hoeing motion for Lumber and Farmer, see [lumber.md](../features/lumber.md) |
 | `assign/` | `AssignMode`: armed next-click target assignment, area capping (`clampCorner`), walk-to trigger |
 | `menu/` | `GolemMenu` (6-row tabbed menu, fixed slots routed to cells, click handling), `GolemViews` (cells per tab), `Cell`, `Tab`, `GolemIcon` (icon stacks), `GolemItemsContainer` over `GolemData`, `GolemMenuOpener` |
 | `src/main/resources/assets/` | Icon models and `minecraft/items/*` overrides; also zipped as the optional resource pack |

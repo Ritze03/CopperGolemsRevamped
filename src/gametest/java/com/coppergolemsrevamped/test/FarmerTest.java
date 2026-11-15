@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.test;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
@@ -112,6 +113,42 @@ public class FarmerTest {
 			helper.assertTrue(count(out, Items.WHEAT_SEEDS) == 0, "seeds in output");
 			helper.assertTrue(count(d.items, Items.WHEAT) == 0, "wheat left in carry");
 		});
+	}
+
+	/**
+	 * A hoe harvest swings first (one swing = one chop), a bare-handed harvest does not. Two ripe wheat with an iron hoe:
+	 * raised state seen, at least 2 chops, then back to IDLE with nothing active.
+	 */
+	@GameTest(maxTicks = 1000)
+	public void hoeWorkSwingsAndReturnsToIdle(GameTestHelper helper) {
+		world(helper);
+		field(helper, 2, 1, Blocks.FARMLAND);
+		for (int x = 0; x < 2; x++) helper.setBlock(new BlockPos(x, 1, 0), ((CropBlock) Blocks.WHEAT).getStateForAge(7));
+		ChestBlockEntity out = chest(helper, OUT);
+		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, new ItemStack(Items.IRON_HOE)));
+		boolean[] raised = { false };
+		int[] chops = { 0 };
+		helper.onEachTick(() -> {
+			boolean r = golem.getState() == ToolSwing.RAISED;
+			if (raised[0] && !r && ToolSwing.active(golem)) chops[0]++;
+			raised[0] = r || (raised[0] && ToolSwing.active(golem));
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.WHEAT) == 2, "wheat in output: " + count(out, Items.WHEAT));
+			helper.assertTrue(chops[0] >= 2, "chops seen: " + chops[0]);
+			helper.assertTrue(!ToolSwing.active(golem) && golem.getState() != ToolSwing.RAISED, "golem stuck raised: " + golem.getState());
+		});
+	}
+
+	/** Swing counts: hoe harvest/till 1, axe on a fruit 2, planting and bare hands none. */
+	@GameTest
+	public void swingCounts(GameTestHelper helper) {
+		helper.assertTrue(FarmerLogic.swingsFor(FarmerLogic.Mode.HOE, FarmerLogic.Act.HARVEST) == 1, "hoe harvest");
+		helper.assertTrue(FarmerLogic.swingsFor(FarmerLogic.Mode.HOE, FarmerLogic.Act.TILL) == 1, "hoe till");
+		helper.assertTrue(FarmerLogic.swingsFor(FarmerLogic.Mode.AXE, FarmerLogic.Act.FRUIT) == 2, "axe fruit");
+		helper.assertTrue(FarmerLogic.swingsFor(FarmerLogic.Mode.HOE, FarmerLogic.Act.PLANT) == 0, "plant");
+		helper.assertTrue(FarmerLogic.swingsFor(FarmerLogic.Mode.NONE, FarmerLogic.Act.HARVEST) == 0, "bare hands");
+		helper.succeed();
 	}
 
 	/** 2x2 dirt, hoe in the tool chest, seeds in the seed chest: till, plant, hoe loses one durability per tilled cell. */

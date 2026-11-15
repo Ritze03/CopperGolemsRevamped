@@ -18,7 +18,8 @@
 			"com.coppergolemsrevamped.test.ChunkLoadTest"
 		],
 		"fabric-client-gametest": [
-			"com.coppergolemsrevamped.test.GolemGuiClientTest"
+			"com.coppergolemsrevamped.test.GolemGuiClientTest",
+			"com.coppergolemsrevamped.test.ToolSwingClientTest"
 		]
 	},
 	"depends": {

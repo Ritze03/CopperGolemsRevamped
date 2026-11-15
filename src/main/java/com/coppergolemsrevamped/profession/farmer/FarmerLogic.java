@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.profession.farmer;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
@@ -52,7 +53,7 @@ public final class FarmerLogic {
 	/** The seed slot is topped up from the seed chest when it holds fewer than this. */
 	static final int SEED_LOW = 16;
 
-	enum Act { HARVEST, FRUIT, PLANT, TILL }
+	public enum Act { HARVEST, FRUIT, PLANT, TILL }
 
 	private static final class State {
 		int cooldown;
@@ -61,6 +62,9 @@ public final class FarmerLogic {
 		/** The seed chest could not take all carried seeds: the rest goes to the output chest. */
 		boolean seedChestFull;
 		@Nullable BlockPos target;
+		/** Soil cell being worked on with a tool swing, and ticks swung so far. */
+		@Nullable BlockPos swingCell;
+		int swingElapsed;
 		double bestDist;
 		int stuck;
 		/** Given-up cell or chest position -> game time until which it is ignored. */
@@ -105,7 +109,7 @@ public final class FarmerLogic {
 	}
 
 	/** What the tool slot makes the golem: no tool, hoe (crops) or axe (only melon/pumpkin blocks). */
-	enum Mode { NONE, HOE, AXE }
+	public enum Mode { NONE, HOE, AXE }
 
 	static Mode modeOf(ItemStack tool) {
 		return tool.is(ItemTags.HOES) ? Mode.HOE : tool.is(ItemTags.AXES) ? Mode.AXE : Mode.NONE;
@@ -199,6 +203,20 @@ public final class FarmerLogic {
 			// the crop block (soil + 1) is the target: the golem stands beside it (or diagonally below), not on it
 			if (!walkTo(level, s, golem, best.above(), now)) return;
 			golem.getLookControl().setLookAt(Vec3.atCenterOf(best.above()));
+			// tool work swings first (hoe: 1 swing, axe on a fruit: 2); the work lands after the last swing
+			int swings = swingsFor(mode, bestAct);
+			if (swings > 0) {
+				if (!best.equals(s.swingCell)) {
+					s.swingCell = best;
+					s.swingElapsed = 0;
+				}
+				int total = swings * ToolSwing.PERIOD;
+				if (s.swingElapsed < total) {
+					ToolSwing.tick(level, golem, bestAct == Act.TILL ? best : best.above(), s.swingElapsed++, total, bestAct == Act.FRUIT);
+					return;
+				}
+				ToolSwing.end(level, golem);
+			}
 			// a plant that cannot survive there (e.g. too dark) must not repeat every 5 ticks: skip the cell
 			if (!act(level, golem, data, best, bestAct)) s.skip.put(best, now + SKIP_TICKS);
 			done(s, golem, data, AFTER_ACTION_TICKS);
@@ -244,7 +262,18 @@ public final class FarmerLogic {
 		return false;
 	}
 
+	/** Swings before an action: tool work only (hoe harvests and tills, axe breaks a fruit); planting and bare hands none. */
+	public static int swingsFor(Mode mode, Act act) {
+		if (mode == Mode.NONE) return 0;
+		return switch (act) {
+			case HARVEST, TILL -> 1;
+			case FRUIT -> 2;
+			case PLANT -> 0;
+		};
+	}
+
 	private static void done(State s, CopperGolem golem, GolemData data, int cooldown) {
+		s.swingCell = null;
 		golem.getNavigation().stop();
 		s.walk.reset();
 		s.repath = 0;

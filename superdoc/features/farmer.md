@@ -65,6 +65,13 @@ allowed to break keeps the slot filled, and the item in the slot IS the type. A 
 reverse) would silently change what the golem does. Consequence: a worn tool is kept at 1 durability until the user
 puts a same-type tool in the tool chest; tell the user via the Help text, no extra UI.
 
+## Tool swing
+
+With a tool in hand the farmer swings (`ai/ToolSwing`, see [lumber.md](lumber.md) "Chopping animation") before the action
+lands: hoe harvest and tilling 1 swing (12 ticks), axe on melon/pumpkin 2 swings (24, with crack overlay). Planting and
+bare-handed harvest do not swing. `FarmerLogic:swingsFor`; the swing counter lives in `State.swingElapsed`, reset in `done`.
+Tests: `FarmerTest:hoeWorkSwingsAndReturnsToIdle`, `swingCounts`.
+
 ## Loop
 
 Transient state (cooldown, walk state, skip map) in a `WeakHashMap` like the Cleaner; persistent state is only

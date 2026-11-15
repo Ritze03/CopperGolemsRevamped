@@ -43,28 +43,31 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `noCraftWithoutTable`, `noCraftWhenTableReplaced`, `deliversEverythingWhenTemplateCleared`, `staleInputItemsAreDelivered`,
   `lidsOpenAndReachIsOneBlock`, `guiLayoutIsOneRememberingGrid`, `shiftClickFillsRememberedInputOnly`,
   `itemsDropOnProfessionChange` ([crafter.md](../features/crafter.md)).
-- `FarmerTest` (17): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
+- `FarmerTest` (19): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
   `harvestWithNearlyFullCarryLosesNothing`, `stemSeedsIgnored`, `seedsGoToSeedChestRestToOutput`, `seedsOverflowToOutput`,
   `noSeedChestSeedsToOutput`, `axeHarvestsFruitLeavesStems`, `hoeIgnoresMelons`, `wornHoeReplacedOnlyByHoe`,
   `wornAxeReplacedOnlyByAxe`, `noReplacementKeepsWornHoe`, `noReplacementKeepsWornAxe`, `emptySlotTakesFirstToolAndFilter`,
-  `fieldLimit9`, `seedDefinition` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
+  `fieldLimit9`, `seedDefinition`, `hoeWorkSwingsAndReturnsToIdle`, `swingCounts` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
   through the global hook `FarmerLogic:testDropRoll` (filtered to its own crop position, since tests run in parallel).
-- `LumberTest` (18): `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`,
+- `LumberTest` (20): `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`,
   `bonemealGrowsTheSaplingThenFellsIt`, `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped`,
   `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `fullCycleOrder`, `twoByTwoSiteWaitsForFourSaplings`,
   `neverStandsInTheSapling`, `stepsOutOfTheSapling`, `breakAllowedRules`, `detectTreeRules`,
-  `breakTimeFollowsAxeSpeed`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
+  `breakTimeFollowsAxeSpeed`, `chopsInSwingsAndReturnsToIdle`, `toolSwingRulesAndCleanup`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 106 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 107 required tests passed` (see Gotchas). Update the numbers here when
+Total: 110 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 111 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An
 unregistered class is not an error: it silently runs 0 tests and the pass count just stays lower.
 
 ## Client tests (headless sway only)
+
+`ToolSwingClientTest` (second client entrypoint, runs in the same `runClientGameTest`): real Lumber loop on a 3-log tree,
+40 screenshots (`chop-NN`) while it chops; look at them to judge the swing pose.
 
 `GolemGuiClientTest` (`fabric-client-gametest` entrypoint, `enableClientGameTests = true` in
 `build.gradle`) launches the real client, creates a singleplayer world, spawns a golem next to the

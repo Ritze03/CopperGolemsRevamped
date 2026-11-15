@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.profession.lumber;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -55,6 +56,8 @@ public final class LumberLogic {
 
 	static final int RETRY_TICKS = 40;
 	static final int SCAN_TICKS = 20;
+	/** A log takes at least this many swings (each {@link ToolSwing#PERIOD} ticks), however fast the axe is. */
+	static final int MIN_SWINGS = 2;
 	static final int AFTER_ACTION_TICKS = 5;
 	static final int REPATH_TICKS = 20;
 	static final double SPEED = 1.0;
@@ -118,6 +121,8 @@ public final class LumberLogic {
 		int stuck;
 		@Nullable BlockPos breakPos;
 		int breakLeft;
+		/** Length of the current break in ticks (whole {@link ToolSwing} swings). */
+		int breakTotal;
 		/** The next drop did not fit into the carry slots: deliver before felling on. */
 		boolean mustDeliver;
 		/** The golem has walked to its stand spot for the current felling round. */
@@ -588,10 +593,14 @@ public final class LumberLogic {
 		if (!target.equals(s.breakPos)) {
 			s.breakPos = target;
 			BlockState st = level.getBlockState(target);
-			s.breakLeft = breakTicks(st.getDestroySpeed(level, target), data.items.get(axeSlot(data)).getDestroySpeed(st));
+			// whole swings, at least MIN_SWINGS: a fast axe still visibly chops (see lumber.md "Chopping animation")
+			s.breakTotal = ToolSwing.swingTicks(breakTicks(st.getDestroySpeed(level, target), data.items.get(axeSlot(data)).getDestroySpeed(st)), MIN_SWINGS);
+			s.breakLeft = s.breakTotal;
 		}
+		ToolSwing.tick(level, golem, target, s.breakTotal - s.breakLeft, s.breakTotal, true);
 		if (--s.breakLeft > 0) return;
 		s.breakPos = null;
+		ToolSwing.end(level, golem);
 		switch (breakBlock(level, golem, data, logs, target)) {
 			case BROKEN -> GolemData.save(golem, data);
 			case FULL -> s.mustDeliver = true;

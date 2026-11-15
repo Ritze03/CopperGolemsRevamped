@@ -285,6 +285,29 @@ public void sortsItems(GameTestHelper h) {
 Verify each descriptor against the compiled class (`javap -p`) when writing the mixin; the targets above
 come from decompiled source (names exact, synthetic details unverified).
 
+## 11b. Animations the client can show (arm motion, swing)
+
+Read from the decompiled 26.3 client classes `CopperGolemModel`, `CopperGolemRenderer`, `CopperGolemRenderState`,
+`CopperGolemAnimation`, `ItemInHandLayer`. The mod is server-side only, so only what entity data can trigger counts.
+
+- **Swing is not rendered.** `CopperGolemModel#setupAnim` never reads swing progress; `LivingEntity#swing` /
+  `ClientboundAnimatePacket` moves no arm. The only swing consumer is `ItemInHandLayer`, which for a `STAB`
+  `SwingAnimation` (spear) thrusts the held item itself, no arm and wrong for an axe. 26.3 swing API:
+  `swing(InteractionHand, SwingAnimation, boolean)`.
+- **Arm poses.** Held item (main hand not empty): `poseHeldItemArmsIfStill` pins both arms forward (xRot <= -50 degrees),
+  the "two hands" rest look. `translateToHand`: in IDLE the item is held rotated at the hands; in any other state it is
+  scaled 0.55 and moved (the chest-carry look).
+- **The only server-triggerable arm motion** is the synced `CopperGolemState` entity data (IDLE, GETTING_ITEM,
+  GETTING_NO_ITEM, DROPPING_ITEM, DROPPING_NO_ITEM). The client starts a 3 s looping keyframe animation for the state
+  (`startIfStopped` on state entry, all others stopped) and IDLE stops them. All four are chest-reach animations:
+  both arms go to about -93 to -118 degrees x (90 degrees forward) within ~0.45 s (9 ticks), body leans/bobs; later
+  parts differ (drop: arms sweep sideways and spin 270+ degrees at 2.6 s; get: arm dips to -56 at 1.5 s).
+  Everything after tick ~25 is chest-specific, so only the first ~20 ticks are usable for tool work.
+- **No other trigger:** no `handleEntityEvent` case on the golem, no pose-dependent rendering (sitting/running layers are
+  statue only), walk animation speed comes from client-side position deltas.
+- **Restarting** an animation = state non-IDLE, then IDLE for at least one tick, then non-IDLE again (client sees each
+  synced value; the same value twice does not restart). This is what `ai/ToolSwing` does.
+
 ## 12. Behavioural summary and corrections to earlier assumptions
 
 - Visited-chest limit is **10** (11th triggers wander), not 9; it is a literal in `setVisitedBlockPos`.

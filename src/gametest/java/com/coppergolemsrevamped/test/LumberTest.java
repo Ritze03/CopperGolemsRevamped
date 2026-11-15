@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.test;
 
+import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.profession.Profession;
@@ -17,6 +18,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
+import net.minecraft.world.entity.animal.golem.CopperGolemState;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -489,6 +491,59 @@ public class LumberTest {
 		helper.assertTrue(LumberLogic.breakTicks(0.0F, 1.0F) == 1, "instant blocks take at least 1 tick");
 		helper.assertTrue(LumberLogic.breakTicks(2.0F, 1.0F) == 60, "bare hand " + LumberLogic.breakTicks(2.0F, 1.0F));
 		helper.succeed();
+	}
+
+	/**
+	 * Chopping is visible: an iron axe (10 base ticks) still takes two whole swings (24 ticks) per log, the golem is in the
+	 * raised state during a swing and drops back to IDLE on the chop, and when the tree is done it is back to IDLE with
+	 * no swing left active (no crack, no stuck pose). 3 logs give at least 6 chops.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void chopsInSwingsAndReturnsToIdle(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 3, 1);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		give(in, Items.IRON_AXE, Items.OAK_SAPLING, 8);
+		CopperGolem golem = lumber(helper);
+		boolean[] raised = { false };
+		int[] chops = { 0 };
+		long[] lastBreak = { -1 };
+		int[] logsLeft = { 3 };
+		helper.onEachTick(() -> {
+			boolean r = golem.getState() == ToolSwing.RAISED;
+			if (raised[0] && !r && ToolSwing.active(golem)) chops[0]++;
+			raised[0] = r || (raised[0] && ToolSwing.active(golem));
+			int left = 0;
+			for (int k = 0; k < 3; k++) if (helper.getBlockState(T.above(k)).is(Blocks.OAK_LOG)) left++;
+			if (left < logsLeft[0]) {
+				long now = helper.getLevel().getGameTime();
+				// the first log needs the walk too; later ones must each take two whole swings
+				if (lastBreak[0] >= 0) helper.assertTrue(now - lastBreak[0] >= 2L * ToolSwing.PERIOD, "log broke after " + (now - lastBreak[0]) + " ticks");
+				lastBreak[0] = now;
+				logsLeft[0] = left;
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.OAK_LOG) == 3, "oak logs in output: " + count(out, Items.OAK_LOG));
+			helper.assertTrue(chops[0] >= 6, "chops seen: " + chops[0]);
+			helper.assertTrue(!ToolSwing.active(golem), "a swing is still active");
+			helper.assertTrue(golem.getState() != ToolSwing.RAISED, "golem stuck raised: " + golem.getState());
+		});
+	}
+
+	/** {@link ToolSwing}: whole swings with a minimum, and a swing nobody ends is cleaned up (never stuck raised). */
+	@GameTest
+	public void toolSwingRulesAndCleanup(GameTestHelper helper) {
+		helper.assertTrue(ToolSwing.swingTicks(10, 2) == 24 && ToolSwing.swingTicks(8, 2) == 24, "fast axes take 2 swings");
+		helper.assertTrue(ToolSwing.swingTicks(30, 2) == 36 && ToolSwing.swingTicks(60, 2) == 60, "slow axes round up to whole swings");
+		helper.assertTrue(ToolSwing.swingTicks(1, 1) == ToolSwing.PERIOD, "one swing minimum");
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 4));
+		ToolSwing.tick(helper.getLevel(), golem, helper.absolutePos(new BlockPos(3, 1, 3)), 0, 24, false);
+		helper.assertTrue(golem.getState() == ToolSwing.RAISED && ToolSwing.active(golem), "raised on swing start");
+		helper.runAfterDelay(10, () -> {
+			helper.assertTrue(golem.getState() == CopperGolemState.IDLE && !ToolSwing.active(golem), "stale swing cleaned up: " + golem.getState());
+			helper.succeed();
+		});
 	}
 
 	/** Declaration: slot filters, inventory size, GUI visibility and assign keys. */

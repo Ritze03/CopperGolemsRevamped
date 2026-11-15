@@ -72,6 +72,18 @@ the world; preferring reachable logs avoids shuttling between a near and a far b
 Why a horizontal reach of 5.5: a mega trunk plus the golem's stand spot reaches the typical branch spread without
 moving; farther logs trigger the second walk.
 
+## Chopping animation
+
+Each log takes whole swings of `ai/ToolSwing` (12 ticks each, at least `LumberLogic.MIN_SWINGS` = 2), the break lands right
+after the last chop: iron axe 24 ticks (base 10), wood 36 (30), diamond 24 (8), bare hand 60. Per swing the golem is raised
+(arm up about 90 degrees, axe overhead) for 10 ticks, then IDLE for 2 (snap down = the chop) with a hit sound and the crack
+overlay (`destroyBlockProgress`, stage grows per swing). `ToolSwing:end` clears crack and pose; abandoned work is cleaned by
+a hook after 3 ticks. The resting two-hands look is untouched (IDLE).
+Why: the vanilla copper golem model cannot render a swing, the only arm motion a server can trigger is the chest-reach
+state; see [vanilla-copper-golem.md](../architecture/vanilla-copper-golem.md) "Animations the client can show". Why 12 ticks:
+the reach animation needs ~9 ticks to get the arm up, shorter swings never show the raised pose. Cost: at most +16 ticks
+(0.8 s) per log over the pure vanilla formula. Test: `LumberTest:chopsInSwingsAndReturnsToIdle`, `toolSwingRulesAndCleanup`.
+
 ## Leaves
 
 Leaves are **not** broken. After the logs are gone they decay naturally and drop saplings, sticks and apples on the
