@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.profession.farmer;
 
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
@@ -33,7 +34,7 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * Farmer work loop. Field = x/z rectangle of the two clicks; soil layer = Y of the lower click, crops at soil Y + 1.
- * Per cell: harvest a mature crop, plant a seed on empty farmland, till tillable soil with the hoe.
+ * One tool, two modes: hoe (or none) harvests mature crops, plants, tills; axe harvests only melon/pumpkin blocks.
  */
 public final class FarmerLogic {
 	private FarmerLogic() {}
@@ -51,11 +52,14 @@ public final class FarmerLogic {
 	/** The seed slot is topped up from the seed chest when it holds fewer than this. */
 	static final int SEED_LOW = 16;
 
-	enum Act { HARVEST, PLANT, TILL }
+	enum Act { HARVEST, FRUIT, PLANT, TILL }
 
 	private static final class State {
 		int cooldown;
 		int repath;
+		final Interact.Approach walk = new Interact.Approach();
+		/** The seed chest could not take all carried seeds: the rest goes to the output chest. */
+		boolean seedChestFull;
 		@Nullable BlockPos target;
 		double bestDist;
 		int stuck;
@@ -100,6 +104,23 @@ public final class FarmerLogic {
 		return tillable(s) ? Act.TILL : null;
 	}
 
+	/** What the tool slot makes the golem: no tool, hoe (crops) or axe (only melon/pumpkin blocks). */
+	enum Mode { NONE, HOE, AXE }
+
+	static Mode modeOf(ItemStack tool) {
+		return tool.is(ItemTags.HOES) ? Mode.HOE : tool.is(ItemTags.AXES) ? Mode.AXE : Mode.NONE;
+	}
+
+	/** Melon and pumpkin blocks (not carved pumpkins, not stems) at crop level are the axe's work. */
+	static boolean isFruit(BlockState st) {
+		return st.is(Blocks.MELON) || st.is(Blocks.PUMPKIN);
+	}
+
+	/** Axe mode: only a fruit block above the soil is work. */
+	static @Nullable Act actForAxe(ServerLevel level, BlockPos soil) {
+		return isFruit(level.getBlockState(soil.above())) ? Act.FRUIT : null;
+	}
+
 	public static void tick(ServerLevel level, CopperGolem golem, GolemData data) {
 		State s = STATES.computeIfAbsent(golem, g -> new State());
 		if (s.cooldown > 0) {
@@ -119,21 +140,29 @@ public final class FarmerLogic {
 
 		ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
 		ItemStack seed = data.items.get(FarmerProfession.SEED_SLOT);
-		boolean anyTill = false, anyPlant = false;
+		Mode mode = modeOf(tool);
+		boolean anyTill = false, anyPlant = false, anyFruit = false;
 		for (BlockPos c : cells) {
+			anyFruit |= actForAxe(level, c) != null;
 			Act a = actFor(level, c);
 			anyTill |= a == Act.TILL;
 			anyPlant |= a == Act.PLANT || a == Act.TILL;
 		}
+		// the axe does only the fruit work: it never tills or plants, so it needs no seeds
+		if (mode == Mode.AXE) anyPlant = false;
 
-		// 1. hoe
-		if (anyTill && (tool.isEmpty() || tool.nextDamageWillBreak())) {
+		// 1. tool: fill an empty slot (any hoe/axe: that sets the type) or swap a tool that breaks on its next use
+		//    (same type only). Nothing is fetched when this tool type has no work in the field.
+		boolean needTool = mode == Mode.NONE ? anyTill || anyFruit
+			: tool.nextDamageWillBreak() && (mode == Mode.HOE ? anyTill : anyFruit);
+		if (needTool) {
 			BlockPos pos = data.assignments.get(FarmerProfession.TOOLS);
 			Container chest = pos == null || s.skip.containsKey(pos) ? null : TransporterLogic.containerAt(level, pos);
-			if (chest != null && findHoe(chest, tool) >= 0) {
-				if (walkTo(s, golem, pos, now, true)) {
-					fetchHoe(chest, data);
-					done(s, golem, data, AFTER_ACTION_TICKS);
+			if (chest != null && findTool(chest, tool) >= 0) {
+				if (walkTo(level, s, golem, pos, now)) {
+					fetchTool(chest, data);
+					Interact.openChest(level, golem, pos, Interact.Action.TAKE);
+					done(s, golem, data, Interact.OPEN_TICKS);
 				}
 				return;
 			}
@@ -143,9 +172,10 @@ public final class FarmerLogic {
 			BlockPos pos = data.assignments.get(FarmerProfession.SEEDS);
 			Container chest = pos == null || s.skip.containsKey(pos) ? null : TransporterLogic.containerAt(level, pos);
 			if (chest != null && seedSlot(chest, seed) >= 0) {
-				if (walkTo(s, golem, pos, now, true)) {
+				if (walkTo(level, s, golem, pos, now)) {
 					fetchSeeds(chest, data);
-					done(s, golem, data, AFTER_ACTION_TICKS);
+					Interact.openChest(level, golem, pos, Interact.Action.TAKE);
+					done(s, golem, data, Interact.OPEN_TICKS);
 				}
 				return;
 			}
@@ -156,7 +186,7 @@ public final class FarmerLogic {
 		double bestD = Double.MAX_VALUE;
 		for (BlockPos c : cells) {
 			if (s.skip.containsKey(c)) continue;
-			Act a = actFor(level, c);
+			Act a = mode == Mode.AXE ? actForAxe(level, c) : actFor(level, c);
 			if (a == null || !workable(level, data, c, a)) continue;
 			double d = golem.distanceToSqr(c.getX() + 0.5, c.getY() + 1, c.getZ() + 0.5);
 			if (d < bestD) {
@@ -166,29 +196,57 @@ public final class FarmerLogic {
 			}
 		}
 		if (best != null) {
-			if (!walkTo(s, golem, best, now, false)) return;
-			golem.getLookControl().setLookAt(Vec3.atCenterOf(best));
+			// the crop block (soil + 1) is the target: the golem stands beside it (or diagonally below), not on it
+			if (!walkTo(level, s, golem, best.above(), now)) return;
+			golem.getLookControl().setLookAt(Vec3.atCenterOf(best.above()));
 			// a plant that cannot survive there (e.g. too dark) must not repeat every 5 ticks: skip the cell
 			if (!act(level, golem, data, best, bestAct)) s.skip.put(best, now + SKIP_TICKS);
 			done(s, golem, data, AFTER_ACTION_TICKS);
 			return;
 		}
-		// 4. deliver
-		if (!carryEmpty(data) && !s.skip.containsKey(outPos)) {
-			if (walkTo(s, golem, outPos, now, true)) {
-				NonNullList<ItemStack> carry = carryView(data);
-				TransporterLogic.insertAll(carry, out);
-				writeCarry(data, carry);
-				done(s, golem, data, carryEmpty(data) ? AFTER_ACTION_TICKS : RETRY_TICKS);
+		// 4. deliver: seed items to the seed chest (when assigned and not full), everything else to the output chest
+		if (!carryEmpty(data)) {
+			BlockPos seedsPos = data.assignments.get(FarmerProfession.SEEDS);
+			Container seedsChest = seedsPos == null || s.skip.containsKey(seedsPos) ? null : TransporterLogic.containerAt(level, seedsPos);
+			if (!hasCarrySeeds(data)) s.seedChestFull = false;
+			if (seedsChest != null && !s.seedChestFull && hasCarrySeeds(data)) {
+				if (walkTo(level, s, golem, seedsPos, now)) {
+					NonNullList<ItemStack> view = carryView(data);
+					for (int i = 0; i < view.size(); i++) if (!isSeed(view.get(i))) view.set(i, ItemStack.EMPTY);
+					boolean moved = TransporterLogic.insertAll(view, seedsChest);
+					for (int i = 0; i < view.size(); i++) {
+						if (isSeed(data.items.get(FarmerProfession.CARRY_FROM + i))) data.items.set(FarmerProfession.CARRY_FROM + i, view.get(i));
+					}
+					// leftovers (chest full) go to the output chest next: no loss, no endless retry
+					s.seedChestFull = hasCarrySeeds(data);
+					if (moved) Interact.openChest(level, golem, seedsPos, Interact.Action.INSERT);
+					done(s, golem, data, moved ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+				}
+				return;
 			}
-			return;
+			if (!s.skip.containsKey(outPos)) {
+				if (walkTo(level, s, golem, outPos, now)) {
+					NonNullList<ItemStack> carry = carryView(data);
+					boolean moved = TransporterLogic.insertAll(carry, out);
+					writeCarry(data, carry);
+					if (moved) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
+					done(s, golem, data, !moved ? RETRY_TICKS : carryEmpty(data) ? Interact.OPEN_TICKS : RETRY_TICKS);
+				}
+				return;
+			}
 		}
 		golem.getNavigation().stop();
 		s.cooldown = SCAN_TICKS;
 	}
 
+	private static boolean hasCarrySeeds(GolemData data) {
+		for (ItemStack st : carryView(data)) if (isSeed(st)) return true;
+		return false;
+	}
+
 	private static void done(State s, CopperGolem golem, GolemData data, int cooldown) {
 		golem.getNavigation().stop();
+		s.walk.reset();
 		s.repath = 0;
 		s.target = null;
 		s.cooldown = cooldown;
@@ -198,13 +256,20 @@ public final class FarmerLogic {
 	/** Inventory-aware cheap pre-check (a separate drop roll): {@link #act} is the authority and re-checks its own roll. */
 	private static boolean workable(ServerLevel level, GolemData data, BlockPos soil, Act act) {
 		boolean seed = isSeed(data.items.get(FarmerProfession.SEED_SLOT));
+		ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
 		return switch (act) {
 			case HARVEST -> {
 				BlockState st = level.getBlockState(soil.above());
-				yield fitsAll(data, drops(level, soil.above(), st, false));
+				yield fitsAll(data, drops(level, soil.above(), st, false, ItemStack.EMPTY));
+			}
+			case FRUIT -> {
+				// never use the last durability point: the slot must keep the tool (and with it the type)
+				if (!tool.is(ItemTags.AXES) || tool.nextDamageWillBreak()) yield false;
+				BlockState st = level.getBlockState(soil.above());
+				yield fitsAll(data, drops(level, soil.above(), st, false, tool));
 			}
 			case PLANT -> seed;
-			case TILL -> seed && data.items.get(FarmerProfession.TOOL_SLOT).is(ItemTags.HOES);
+			case TILL -> seed && tool.is(ItemTags.HOES) && !tool.nextDamageWillBreak();
 		};
 	}
 
@@ -214,13 +279,13 @@ public final class FarmerLogic {
 	 */
 	public static volatile @Nullable BiFunction<BlockPos, Boolean, List<ItemStack>> testDropRoll;
 
-	private static List<ItemStack> drops(ServerLevel level, BlockPos crop, BlockState st, boolean forAct) {
+	private static List<ItemStack> drops(ServerLevel level, BlockPos crop, BlockState st, boolean forAct, ItemStack tool) {
 		BiFunction<BlockPos, Boolean, List<ItemStack>> hook = testDropRoll;
 		if (hook != null) {
 			List<ItemStack> forced = hook.apply(crop, forAct);
 			if (forced != null) return forced;
 		}
-		return Block.getDrops(st, level, crop, null, null, ItemStack.EMPTY);
+		return Block.getDrops(st, level, crop, null, null, tool);
 	}
 
 	/** Does the work; false when nothing was placed (planting failed). */
@@ -230,10 +295,21 @@ public final class FarmerLogic {
 			case HARVEST -> {
 				BlockState st = level.getBlockState(crop);
 				// roll once; the roll that is checked is the roll that is stored. Nothing is destroyed unless it fits.
-				List<ItemStack> drops = drops(level, crop, st, true);
+				List<ItemStack> drops = drops(level, crop, st, true, ItemStack.EMPTY);
 				if (!fitsAll(data, drops)) yield false;
 				level.destroyBlock(crop, false, golem);
 				storeAll(data, drops);
+				yield true;
+			}
+			case FRUIT -> {
+				ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
+				BlockState st = level.getBlockState(crop);
+				if (!isFruit(st) || !tool.is(ItemTags.AXES) || tool.nextDamageWillBreak()) yield false;
+				List<ItemStack> drops = drops(level, crop, st, true, tool);
+				if (!fitsAll(data, drops)) yield false;
+				level.destroyBlock(crop, false, golem);
+				storeAll(data, drops);
+				tool.hurtAndBreak(1, level, null, broken -> {});
 				yield true;
 			}
 			case PLANT -> plant(level, data, soil);
@@ -241,9 +317,8 @@ public final class FarmerLogic {
 				ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
 				level.setBlock(soil, Blocks.FARMLAND.defaultBlockState(), 3);
 				level.playSound(null, soil, SoundEvents.HOE_TILL.value(), SoundSource.BLOCKS, 1.0F, 1.0F);
-				// breaking empties the stack (vanilla behaviour); the item is gone, never duplicated
+				// workable() guarantees this is not the last durability point, so the slot never empties
 				tool.hurtAndBreak(1, level, null, broken -> {});
-				if (tool.isEmpty()) data.items.set(FarmerProfession.TOOL_SLOT, ItemStack.EMPTY);
 				yield plant(level, data, soil);
 			}
 		};
@@ -266,41 +341,38 @@ public final class FarmerLogic {
 	// ---- walking with give-up -------------------------------------------------------------------------------------
 
 	/**
-	 * True when the golem is within reach of {@code pos} (soil position of a cell, or a chest) and may act now.
-	 * Otherwise keeps walking; a target that shows no progress for {@link #GIVE_UP_TICKS} is skipped for {@link #SKIP_TICKS}.
+	 * True when the golem stands within 1 block of {@code pos} (crop block of a cell, or a chest) and may act now
+	 * ({@link Interact#approach}, which has its own 2-block fallback). A target that shows no progress for
+	 * {@link #GIVE_UP_TICKS} is skipped for {@link #SKIP_TICKS}.
 	 */
-	private static boolean walkTo(State s, CopperGolem golem, BlockPos pos, long now, boolean chest) {
-		if (TransporterLogic.inReach(golem, pos)) return true;
+	private static boolean walkTo(ServerLevel level, State s, CopperGolem golem, BlockPos pos, long now) {
 		// airborne on the first ticks after spawning: paths are null, wait instead of counting no-progress ticks
 		// (bounded: a golem that never lands, e.g. floating in water, gives up like any stuck walk)
 		if (!golem.onGround()) {
-			if (++s.stuck >= GIVE_UP_TICKS) {
-				s.skip.put(pos, now + SKIP_TICKS);
-				s.target = null;
-				s.stuck = 0;
-				s.repath = 0;
-			}
+			if (++s.stuck >= GIVE_UP_TICKS) giveUp(s, golem, pos, now);
 			return false;
 		}
-		double dist = golem.distanceToSqr(pos.getX() + 0.5, pos.getY() + (chest ? 0 : 1), pos.getZ() + 0.5);
+		if (Interact.approach(level, golem, pos, s.walk, SPEED)) return true;
+		double dist = golem.distanceToSqr(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
 		if (!pos.equals(s.target) || dist < s.bestDist - PROGRESS_EPS) {
 			s.target = pos;
 			s.bestDist = dist;
 			s.stuck = 0;
 		} else if (++s.stuck >= GIVE_UP_TICKS) {
-			s.skip.put(pos, now + SKIP_TICKS);
-			s.target = null;
-			s.stuck = 0;
-			s.repath = 0;
-			golem.getNavigation().stop();
-			return false;
-		}
-		if (--s.repath <= 0 || golem.getNavigation().isDone()) {
-			// a null path is transient (spawn tick, mid-air): no progress, the timeout above decides
-			golem.getNavigation().moveTo(pos.getX() + 0.5, pos.getY() + (chest ? 0 : 1), pos.getZ() + 0.5, SPEED);
-			s.repath = REPATH_TICKS;
+			giveUp(s, golem, pos, now);
 		}
 		return false;
+	}
+
+	private static void giveUp(State s, CopperGolem golem, BlockPos pos, long now) {
+		// the cell is keyed by its soil block, the walk target is the crop block above it
+		s.skip.put(pos, now + SKIP_TICKS);
+		s.skip.put(pos.below(), now + SKIP_TICKS);
+		s.target = null;
+		s.stuck = 0;
+		s.repath = 0;
+		s.walk.reset();
+		golem.getNavigation().stop();
 	}
 
 	/** Test hook: is {@code pos} currently ignored by this golem. */
@@ -312,19 +384,24 @@ public final class FarmerLogic {
 
 	// ---- chest fetching -------------------------------------------------------------------------------------------
 
-	/** Slot of a hoe in {@code chest} that may replace {@code tool}; -1 if none. A replacement must not break next hit. */
-	static int findHoe(Container chest, ItemStack tool) {
+	/**
+	 * Slot of a tool in {@code chest} that may go into the tool slot; -1 if none. Empty slot: the first hoe or axe.
+	 * Otherwise only the same type (hoe for hoe, axe for axe). Never one that breaks on its next use.
+	 */
+	static int findTool(Container chest, ItemStack tool) {
+		Mode mode = modeOf(tool);
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (st.is(ItemTags.HOES) && (tool.isEmpty() || !st.nextDamageWillBreak())) return i;
+			Mode m = modeOf(st);
+			if (m != Mode.NONE && (mode == Mode.NONE || m == mode) && !st.nextDamageWillBreak()) return i;
 		}
 		return -1;
 	}
 
-	/** Empty tool slot: take one hoe. Hoe about to break: swap with a better one (the old hoe goes into that slot). */
-	static void fetchHoe(Container chest, GolemData data) {
+	/** Empty tool slot: take one tool. Worn tool: swap with a same-type one (the old tool goes into that chest slot). */
+	static void fetchTool(Container chest, GolemData data) {
 		ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
-		int i = findHoe(chest, tool);
+		int i = findTool(chest, tool);
 		if (i < 0) return;
 		ItemStack fresh = chest.removeItem(i, 1);
 		if (tool.isEmpty()) {
@@ -332,7 +409,7 @@ public final class FarmerLogic {
 		} else if (chest.getItem(i).isEmpty()) {
 			chest.setItem(i, tool);
 			data.items.set(FarmerProfession.TOOL_SLOT, fresh);
-		} else { // stacked hoes (cannot happen in vanilla): put it back, nothing changes
+		} else { // stacked tools (cannot happen in vanilla): put it back, nothing changes
 			chest.getItem(i).grow(fresh.getCount());
 		}
 		chest.setChanged();

@@ -13,7 +13,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.ItemTags;
 
-/** Farms an assigned field (at most 9x9): till, plant, harvest, deliver. See superdoc/features/farmer.md. */
+/** Farms an assigned field (at most 9x9) with one tool (hoe: crops, axe: melons/pumpkins), delivers seeds to the seed chest. See superdoc/features/farmer.md. */
 public final class FarmerProfession {
 	public static final Identifier ID = CopperGolemsRevamped.id("farmer");
 	public static final int MAX_FIELD = 9;
@@ -34,7 +34,7 @@ public final class FarmerProfession {
 			ID,
 			Component.literal("Farmer"),
 			List.of(
-				new SlotGroup("tool", 1, 1, s -> s.is(ItemTags.HOES)),
+				new SlotGroup("tool", 1, 1, s -> s.is(ItemTags.HOES) || s.is(ItemTags.AXES)),
 				new SlotGroup("seeds", 1, 64, FarmerLogic::isSeed),
 				new SlotGroup("carry", CARRY_SLOTS, 64, s -> true)),
 			List.of(

@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.test;
 
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
@@ -25,6 +26,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.FarmlandBlock;
+import net.minecraft.world.level.block.StemBlock;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 public class FarmerTest {
@@ -105,7 +107,9 @@ public class FarmerTest {
 				helper.assertBlockPresent(Blocks.BEETROOTS, new BlockPos(x, 1, z));
 			GolemData d = GolemData.get(golem);
 			helper.assertTrue(count(out, Items.WHEAT) == 4, "wheat in output: " + count(out, Items.WHEAT));
-			helper.assertTrue(count(seeds, Items.WHEAT_SEEDS) == 20, "wheat seeds left in chest: " + count(seeds, Items.WHEAT_SEEDS));
+			// harvest drops that are seeds come back to the seed chest (never the output)
+			helper.assertTrue(count(seeds, Items.WHEAT_SEEDS) >= 20, "wheat seeds left in chest: " + count(seeds, Items.WHEAT_SEEDS));
+			helper.assertTrue(count(out, Items.WHEAT_SEEDS) == 0, "seeds in output");
 			helper.assertTrue(count(d.items, Items.WHEAT) == 0, "wheat left in carry");
 		});
 	}
@@ -219,6 +223,236 @@ public class FarmerTest {
 		helper.succeedWhen(() -> {
 			for (int x = 0; x < 2; x++) for (int z = 0; z < 2; z++) helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(x, 1, z));
 			helper.assertTrue(count(seeds, Items.MELON_SEEDS) == 10, "melon seeds left in chest: " + count(seeds, Items.MELON_SEEDS));
+		});
+	}
+
+	private static ItemStack worn(Item item) {
+		ItemStack st = new ItemStack(item);
+		st.setDamageValue(st.getMaxDamage() - 1);
+		return st;
+	}
+
+	private static boolean carryEmptyOf(CopperGolem golem) {
+		GolemData d = GolemData.get(golem);
+		for (int i = 0; i < FarmerProfession.CARRY_SLOTS; i++) if (!d.items.get(FarmerProfession.CARRY_FROM + i).isEmpty()) return false;
+		return true;
+	}
+
+	/**
+	 * 1x1 field on stone (nothing to do there). The carry holds wheat, seed items (wheat seeds, carrots) and melon
+	 * seeds (not a seed). Seed items go to the seed chest, the rest to the output chest; the lid opens meanwhile.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void seedsGoToSeedChestRestToOutput(GameTestHelper helper) {
+		world(helper);
+		ChestBlockEntity seeds = chest(helper, SEEDS), out = chest(helper, OUT);
+		CopperGolem golem = farmer(helper, 1, 1, (g, d) -> {
+			d.items.set(FarmerProfession.CARRY_FROM, new ItemStack(Items.WHEAT, 3));
+			d.items.set(FarmerProfession.CARRY_FROM + 1, new ItemStack(Items.WHEAT_SEEDS, 5));
+			d.items.set(FarmerProfession.CARRY_FROM + 2, new ItemStack(Items.CARROT, 2));
+			d.items.set(FarmerProfession.CARRY_FROM + 3, new ItemStack(Items.MELON_SEEDS, 2));
+		});
+		boolean[] lid = { false };
+		helper.onEachTick(() -> lid[0] |= Interact.isOpen(golem));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(seeds, Items.WHEAT_SEEDS) == 5 && count(seeds, Items.CARROT) == 2, "seed chest wrong");
+			helper.assertTrue(count(seeds, Items.WHEAT) == 0 && count(seeds, Items.MELON_SEEDS) == 0, "non-seed in seed chest");
+			helper.assertTrue(count(out, Items.WHEAT) == 3 && count(out, Items.MELON_SEEDS) == 2, "output wrong");
+			helper.assertTrue(count(out, Items.WHEAT_SEEDS) == 0 && count(out, Items.CARROT) == 0, "seed in output");
+			helper.assertTrue(lid[0], "lid never opened");
+			helper.assertTrue(!Interact.isOpen(golem), "lid still registered open");
+			helper.assertTrue(carryEmptyOf(golem), "carry not empty");
+		});
+	}
+
+	/** Full seed chest: seeds overflow into the output chest, nothing is lost. */
+	@GameTest(maxTicks = 1500)
+	public void seedsOverflowToOutput(GameTestHelper helper) {
+		world(helper);
+		ChestBlockEntity seeds = chest(helper, SEEDS), out = chest(helper, OUT);
+		for (int i = 0; i < seeds.getContainerSize(); i++) seeds.setItem(i, new ItemStack(Items.STONE, 64));
+		CopperGolem golem = farmer(helper, 1, 1, (g, d) -> d.items.set(FarmerProfession.CARRY_FROM, new ItemStack(Items.WHEAT_SEEDS, 5)));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.WHEAT_SEEDS) == 5, "seeds in output: " + count(out, Items.WHEAT_SEEDS));
+			helper.assertTrue(carryEmptyOf(golem), "carry not empty");
+		});
+	}
+
+	/** No seed chest assigned: seeds go to the output chest as before. */
+	@GameTest(maxTicks = 1500)
+	public void noSeedChestSeedsToOutput(GameTestHelper helper) {
+		world(helper);
+		ChestBlockEntity out = chest(helper, OUT);
+		CopperGolem golem = farmer(helper, 1, 1, (g, d) -> {
+			d.assignments.remove("seeds");
+			d.items.set(FarmerProfession.CARRY_FROM, new ItemStack(Items.WHEAT_SEEDS, 5));
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.WHEAT_SEEDS) == 5, "seeds in output: " + count(out, Items.WHEAT_SEEDS));
+			helper.assertTrue(carryEmptyOf(golem), "carry not empty");
+		});
+	}
+
+	/**
+	 * Axe farmer, 3x2 field: a melon block and a pumpkin block each next to their stem, a carved pumpkin, and a dirt
+	 * cell. Fruits are harvested (drops to output, axe loses 1 per block), stems and the carved pumpkin stay, the dirt
+	 * is not tilled, nothing is planted, the seed chest is untouched. Each harvest happens within 1 block reach.
+	 */
+	@GameTest(maxTicks = 2000)
+	public void axeHarvestsFruitLeavesStems(GameTestHelper helper) {
+		world(helper);
+		field(helper, 3, 2, Blocks.FARMLAND);
+		helper.setBlock(new BlockPos(2, 0, 1), Blocks.DIRT);
+		BlockPos melon = new BlockPos(1, 1, 0), pumpkin = new BlockPos(1, 1, 1);
+		helper.setBlock(new BlockPos(0, 1, 0), Blocks.MELON_STEM.defaultBlockState().setValue(StemBlock.AGE, 2));
+		helper.setBlock(new BlockPos(0, 1, 1), Blocks.PUMPKIN_STEM.defaultBlockState().setValue(StemBlock.AGE, 2));
+		helper.setBlock(melon, Blocks.MELON);
+		helper.setBlock(pumpkin, Blocks.PUMPKIN);
+		helper.setBlock(new BlockPos(2, 1, 0), Blocks.CARVED_PUMPKIN);
+		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_AXE));
+		chest(helper, TOOLS).setItem(1, new ItemStack(Items.IRON_HOE));
+		ChestBlockEntity seeds = chest(helper, SEEDS), out = chest(helper, OUT);
+		seeds.setItem(0, new ItemStack(Items.WHEAT_SEEDS, 20));
+		CopperGolem golem = farmer(helper, 3, 2, (g, d) -> {});
+		boolean[] had = { true, true };
+		BlockPos[] fruit = { melon, pumpkin };
+		helper.onEachTick(() -> {
+			for (int i = 0; i < 2; i++) {
+				boolean now = !helper.getBlockState(fruit[i]).isAir();
+				if (had[i] && !now) helper.assertTrue(Interact.inReach(golem, helper.absolutePos(fruit[i])), "harvested " + fruit[i] + " from " + golem.blockPosition());
+				had[i] = now;
+			}
+			helper.assertBlockPresent(Blocks.MELON_STEM, new BlockPos(0, 1, 0));
+			helper.assertBlockPresent(Blocks.PUMPKIN_STEM, new BlockPos(0, 1, 1));
+			helper.assertBlockPresent(Blocks.CARVED_PUMPKIN, new BlockPos(2, 1, 0));
+			helper.assertBlockPresent(Blocks.DIRT, new BlockPos(2, 0, 1));
+			helper.assertBlockNotPresent(Blocks.WHEAT, new BlockPos(2, 1, 1));
+		});
+		helper.succeedWhen(() -> {
+			helper.assertBlockNotPresent(Blocks.MELON, melon);
+			helper.assertBlockNotPresent(Blocks.PUMPKIN, pumpkin);
+			int slices = count(out, Items.MELON_SLICE);
+			helper.assertTrue(slices >= 3 && slices <= 7, "melon slices in output: " + slices);
+			helper.assertTrue(count(out, Items.PUMPKIN) == 1, "pumpkins in output: " + count(out, Items.PUMPKIN));
+			ItemStack tool = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
+			helper.assertTrue(tool.is(Items.IRON_AXE) && tool.getDamageValue() == 2, "tool slot: " + tool);
+			helper.assertTrue(count(seeds, Items.WHEAT_SEEDS) == 20, "seed chest touched");
+			helper.assertTrue(carryEmptyOf(golem), "carry not empty");
+		});
+	}
+
+	/** A hoe farmer ignores melon blocks (and still plants on the free cell). */
+	@GameTest(maxTicks = 1500)
+	public void hoeIgnoresMelons(GameTestHelper helper) {
+		world(helper);
+		field(helper, 2, 1, Blocks.FARMLAND);
+		helper.setBlock(new BlockPos(0, 1, 0), Blocks.MELON);
+		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_HOE));
+		chest(helper, SEEDS).setItem(0, new ItemStack(Items.WHEAT_SEEDS, 8));
+		farmer(helper, 2, 1, (g, d) -> {});
+		helper.onEachTick(() -> helper.assertBlockPresent(Blocks.MELON, new BlockPos(0, 1, 0)));
+		helper.succeedWhen(() -> helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(1, 1, 0)));
+	}
+
+	/** Worn hoe, an axe comes first in the chest: only the hoe replaces it; the axe stays; no tool is lost. */
+	@GameTest(maxTicks = 1500)
+	public void wornHoeReplacedOnlyByHoe(GameTestHelper helper) {
+		world(helper);
+		field(helper, 2, 1, Blocks.DIRT);
+		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_AXE));
+		chest(helper, TOOLS).setItem(1, new ItemStack(Items.IRON_HOE));
+		chest(helper, SEEDS).setItem(0, new ItemStack(Items.WHEAT_SEEDS, 8));
+		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_HOE)));
+		helper.onEachTick(() -> {
+			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
+			helper.assertTrue(!t.is(Items.IRON_AXE), "axe replaced the hoe");
+			helper.assertTrue(!t.isEmpty(), "tool slot emptied");
+		});
+		helper.succeedWhen(() -> {
+			helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(0, 1, 0));
+			helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(1, 1, 0));
+			helper.assertTrue(GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT).is(Items.IRON_HOE), "iron hoe not in the tool slot");
+			helper.assertTrue(count(chest(helper, TOOLS), Items.IRON_AXE) == 1, "axe left the chest");
+			helper.assertTrue(count(chest(helper, TOOLS), Items.WOODEN_HOE) == 1, "worn hoe not returned");
+		});
+	}
+
+	/** Worn axe, a hoe comes first in the chest: only the axe replaces it, then both melons are harvested. */
+	@GameTest(maxTicks = 1500)
+	public void wornAxeReplacedOnlyByAxe(GameTestHelper helper) {
+		world(helper);
+		field(helper, 2, 1, Blocks.FARMLAND);
+		helper.setBlock(new BlockPos(0, 1, 0), Blocks.MELON);
+		helper.setBlock(new BlockPos(1, 1, 0), Blocks.MELON);
+		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_HOE));
+		chest(helper, TOOLS).setItem(1, new ItemStack(Items.IRON_AXE));
+		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_AXE)));
+		helper.onEachTick(() -> {
+			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
+			helper.assertTrue(!t.is(Items.IRON_HOE), "hoe replaced the axe");
+			helper.assertTrue(!t.isEmpty(), "tool slot emptied");
+		});
+		helper.succeedWhen(() -> {
+			helper.assertBlockNotPresent(Blocks.MELON, new BlockPos(0, 1, 0));
+			helper.assertBlockNotPresent(Blocks.MELON, new BlockPos(1, 1, 0));
+			helper.assertTrue(GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT).is(Items.IRON_AXE), "iron axe not in the tool slot");
+			helper.assertTrue(count(chest(helper, TOOLS), Items.IRON_HOE) == 1, "hoe left the chest");
+			helper.assertTrue(count(chest(helper, TOOLS), Items.WOODEN_AXE) == 1, "worn axe not returned");
+		});
+	}
+
+	/** No same-type replacement: the worn hoe is not used up, the dirt is not tilled, the axe stays in the chest. */
+	@GameTest(maxTicks = 500)
+	public void noReplacementKeepsWornHoe(GameTestHelper helper) {
+		world(helper);
+		field(helper, 2, 1, Blocks.DIRT);
+		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_AXE));
+		chest(helper, SEEDS).setItem(0, new ItemStack(Items.WHEAT_SEEDS, 8));
+		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_HOE)));
+		helper.runAfterDelay(300, () -> {
+			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
+			helper.assertTrue(t.is(Items.WOODEN_HOE) && t.getDamageValue() == t.getMaxDamage() - 1, "tool slot: " + t);
+			helper.assertBlockPresent(Blocks.DIRT, new BlockPos(0, 0, 0));
+			helper.assertBlockPresent(Blocks.DIRT, new BlockPos(1, 0, 0));
+			helper.assertTrue(count(chest(helper, TOOLS), Items.IRON_AXE) == 1, "axe left the chest");
+			helper.succeed();
+		});
+	}
+
+	/** Same for the axe: a worn axe with only a hoe in the chest harvests nothing and is kept. */
+	@GameTest(maxTicks = 500)
+	public void noReplacementKeepsWornAxe(GameTestHelper helper) {
+		world(helper);
+		field(helper, 1, 1, Blocks.FARMLAND);
+		helper.setBlock(new BlockPos(0, 1, 0), Blocks.PUMPKIN);
+		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_HOE));
+		CopperGolem golem = farmer(helper, 1, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_AXE)));
+		helper.runAfterDelay(300, () -> {
+			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
+			helper.assertTrue(t.is(Items.WOODEN_AXE) && t.getDamageValue() == t.getMaxDamage() - 1, "tool slot: " + t);
+			helper.assertBlockPresent(Blocks.PUMPKIN, new BlockPos(0, 1, 0));
+			helper.assertTrue(count(chest(helper, TOOLS), Items.IRON_HOE) == 1, "hoe left the chest");
+			helper.succeed();
+		});
+	}
+
+	/** Tool slot filter: hoes and axes only. Empty slot takes the first hoe or axe in the chest (here the axe). */
+	@GameTest(maxTicks = 1500)
+	public void emptySlotTakesFirstToolAndFilter(GameTestHelper helper) {
+		world(helper);
+		Profession.SlotGroup tool = Professions.get(FarmerProfession.ID).slots().getFirst();
+		helper.assertTrue(tool.filter().test(new ItemStack(Items.IRON_AXE)) && tool.filter().test(new ItemStack(Items.IRON_HOE)), "hoe/axe must fit");
+		helper.assertTrue(!tool.filter().test(new ItemStack(Items.IRON_PICKAXE)) && !tool.filter().test(new ItemStack(Items.STICK)), "other items must not fit");
+		field(helper, 1, 1, Blocks.FARMLAND);
+		helper.setBlock(new BlockPos(0, 1, 0), Blocks.MELON);
+		chest(helper, TOOLS).setItem(0, new ItemStack(Items.STICK));
+		chest(helper, TOOLS).setItem(1, new ItemStack(Items.IRON_AXE));
+		chest(helper, TOOLS).setItem(2, new ItemStack(Items.IRON_HOE));
+		CopperGolem golem = farmer(helper, 1, 1, (g, d) -> {});
+		helper.succeedWhen(() -> {
+			helper.assertBlockNotPresent(Blocks.MELON, new BlockPos(0, 1, 0));
+			helper.assertTrue(GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT).is(Items.IRON_AXE), "axe not taken first");
+			helper.assertTrue(count(chest(helper, TOOLS), Items.IRON_HOE) == 1, "hoe taken");
 		});
 	}
 
