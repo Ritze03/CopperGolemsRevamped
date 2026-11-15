@@ -3,7 +3,7 @@ package com.coppergolemsrevamped.test;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.profession.Profession;
-import com.coppergolemsrevamped.profession.Profession.SlotGroup;
+import com.coppergolemsrevamped.menu.GolemMenu;
 import com.coppergolemsrevamped.profession.Professions;
 import com.coppergolemsrevamped.profession.chest_sorter.ChestSorterProfession;
 
@@ -15,13 +15,15 @@ import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.core.NonNullList;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.ai.behavior.TransportItemsBetweenContainers;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
-import net.minecraft.world.item.Item;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -42,26 +44,52 @@ public class ChestSorterTest {
 		}
 	}
 
-	private static CopperGolem sorter(GameTestHelper helper, int waxed) {
+	private static CopperGolem sorter(GameTestHelper helper) {
 		CopperGolem golem = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new BlockPos(2, 1, 2));
 		GolemService.changeProfession(helper.getLevel(), golem, ChestSorterProfession.ID);
-		GolemData data = GolemData.get(golem);
-		if (waxed > 0) data.items.set(0, new ItemStack(Items.COPPER_BLOCK.waxed().unaffected(), waxed));
-		GolemData.save(golem, data);
 		return golem;
 	}
 
 	@GameTest
-	public void visitedLimitScalesWithWaxedBlocks(GameTestHelper helper) {
+	public void visitedLimit(GameTestHelper helper) {
 		CopperGolem plain = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new BlockPos(2, 1, 2));
 		int l = ChestSorterProfession.visitedLimit(plain);
 		helper.assertTrue(l == 10, "no profession: " + l);
-		l = ChestSorterProfession.visitedLimit(sorter(helper, 0));
-		helper.assertTrue(l == 10, "sorter 0 blocks: " + l);
-		l = ChestSorterProfession.visitedLimit(sorter(helper, 5));
-		helper.assertTrue(l == 15, "sorter 5 blocks: " + l);
-		l = ChestSorterProfession.visitedLimit(sorter(helper, 64));
-		helper.assertTrue(l == 74, "sorter 64 blocks: " + l);
+		l = ChestSorterProfession.visitedLimit(sorter(helper));
+		helper.assertTrue(l == 64, "sorter: " + l);
+		Profession p = Professions.get(ChestSorterProfession.ID);
+		helper.assertTrue(p != null && p.slots().isEmpty() && p.runsVanillaBrain(), "sorter must have no slots, vanilla brain");
+		helper.succeed();
+	}
+
+	/** Old saves held waxed copper blocks in items[0]: they drop at the golem and the list is cleared. */
+	@GameTest
+	public void legacyItemsAreDropped(GameTestHelper helper) {
+		CopperGolem golem = sorter(helper);
+		GolemData data = GolemData.get(golem);
+		data.items = NonNullList.of(ItemStack.EMPTY, new ItemStack(Items.COPPER_BLOCK.waxed().unaffected(), 12));
+		GolemData.save(golem, data);
+		ChestSorterProfession.visitedLimit(golem);
+		helper.assertTrue(GolemData.get(golem).items.isEmpty(), "items not cleared: " + GolemData.get(golem).items);
+		int dropped = 0;
+		for (ItemEntity e : helper.getLevel().getEntitiesOfClass(ItemEntity.class, golem.getBoundingBox().inflate(3))) {
+			if (e.getItem().is(Items.COPPER_BLOCK.waxed().unaffected())) dropped += e.getItem().getCount();
+		}
+		helper.assertTrue(dropped == 12, "dropped " + dropped);
+		helper.succeed();
+	}
+
+	/** A profession with zero slot groups (None, Chest Sorter) opens a menu: control row only. */
+	@GameTest
+	public void menuWithoutSlotGroups(GameTestHelper helper) {
+		CopperGolem golem = sorter(helper);
+		@SuppressWarnings("removal")
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), golem);
+		int sorterSlots = menu.slots.size();
+		CopperGolem none = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 3));
+		int noneSlots = new GolemMenu(2, player.getInventory(), none).slots.size();
+		helper.assertTrue(sorterSlots == noneSlots && sorterSlots == 36 + 9, "slots sorter " + sorterSlots + ", none " + noneSlots);
 		helper.succeed();
 	}
 
@@ -70,16 +98,16 @@ public class ChestSorterTest {
 	public void mixinAppliesLimit(GameTestHelper helper) {
 		Level level = helper.getLevel();
 		Probe probe = new Probe();
-		CopperGolem golem = sorter(helper, 3);
-		seed(golem, level, 12);
+		CopperGolem golem = sorter(helper);
+		seed(golem, level, 63);
 		probe.visit(golem, level, helper.absolutePos(new BlockPos(0, 1, 12)));
 		helper.assertTrue(!golem.getBrain().hasMemoryValue(MemoryModuleType.TRANSPORT_ITEMS_COOLDOWN_TICKS),
-			"sorter(3) entered cooldown on the 13th chest, limit " + ChestSorterProfession.visitedLimit(golem));
+			"sorter entered cooldown on the 64th chest");
 		int size = golem.getBrain().getMemory(MemoryModuleType.VISITED_BLOCK_POSITIONS).orElseThrow().size();
-		helper.assertTrue(size == 13, "visited size: " + size);
+		helper.assertTrue(size == 64, "visited size: " + size);
 		probe.visit(golem, level, helper.absolutePos(new BlockPos(0, 1, 13)));
 		helper.assertTrue(golem.getBrain().hasMemoryValue(MemoryModuleType.TRANSPORT_ITEMS_COOLDOWN_TICKS),
-			"sorter(3) did not enter cooldown on the 14th chest");
+			"sorter did not enter cooldown on the 65th chest");
 
 		CopperGolem plain = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 3));
 		seed(plain, level, 10);
@@ -94,28 +122,6 @@ public class ChestSorterTest {
 		Set<GlobalPos> set = new HashSet<>();
 		for (int i = 0; i < n; i++) set.add(GlobalPos.of(level.dimension(), new BlockPos(1000, 1, i)));
 		golem.getBrain().setMemory(MemoryModuleType.VISITED_BLOCK_POSITIONS, set);
-	}
-
-	@GameTest
-	public void waxedSlotFilter(GameTestHelper helper) {
-		Profession p = Professions.get(ChestSorterProfession.ID);
-		helper.assertTrue(p != null, "chest_sorter not registered");
-		helper.assertTrue(p.slots().size() == 1, "slot groups: " + p.slots().size());
-		SlotGroup g = p.slots().get(0);
-		helper.assertTrue(g.key().equals("waxed"), "key: " + g.key());
-		helper.assertTrue(g.count() == 1, "count: " + g.count());
-		helper.assertTrue(g.maxStack() == 64, "maxStack: " + g.maxStack());
-		helper.assertTrue(p.runsVanillaBrain(), "must run the vanilla brain");
-		Item[] yes = {
-			Items.COPPER_BLOCK.waxed().unaffected(), Items.COPPER_BLOCK.waxed().exposed(),
-			Items.COPPER_BLOCK.waxed().weathered(), Items.COPPER_BLOCK.waxed().oxidized()};
-		for (Item i : yes) helper.assertTrue(g.filter().test(new ItemStack(i)), "must accept " + i);
-		Item[] no = {
-			Items.COPPER_BLOCK.weathering().unaffected(), Items.COPPER_BLOCK.weathering().oxidized(),
-			Items.RAW_COPPER_BLOCK, Items.COPPER_INGOT, Items.COBBLESTONE};
-		for (Item i : no) helper.assertTrue(!g.filter().test(new ItemStack(i)), "must reject " + i);
-		helper.assertTrue(!g.filter().test(ItemStack.EMPTY), "must reject empty");
-		helper.succeed();
 	}
 
 	private static void floor(GameTestHelper helper) {

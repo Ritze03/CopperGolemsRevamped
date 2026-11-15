@@ -21,7 +21,7 @@ public final class ProfessionHelp {
 			"The 9 slots are what it carries right now."),
 		"chest_sorter", List.of(
 			"Sorts items between chests like a vanilla golem, no assignments needed.",
-			"Put waxed copper blocks in the slot: each lets it visit one more chest (10 + blocks)."),
+			"It visits up to 64 chests before it gives up and wanders."),
 		"cleaner", List.of(
 			"Picks up dropped items inside the area and brings them to the output chest.",
 			"The 9 slots are what it carries."),

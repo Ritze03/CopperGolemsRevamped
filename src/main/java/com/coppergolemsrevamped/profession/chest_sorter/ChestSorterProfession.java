@@ -2,29 +2,25 @@ package com.coppergolemsrevamped.profession.chest_sorter;
 
 import com.coppergolemsrevamped.CopperGolemsRevamped;
 import com.coppergolemsrevamped.core.GolemData;
+import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.profession.Profession;
-import com.coppergolemsrevamped.profession.Profession.SlotGroup;
 import com.coppergolemsrevamped.profession.Professions;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
+import net.minecraft.core.NonNullList;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.PathfinderMob;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
-/** Vanilla sorting behaviour; each waxed copper block in the GUI slot raises the visited-chest limit by one. */
+/** Vanilla sorting behaviour; a Chest Sorter visits up to 64 chests before it gives up (vanilla: 10). */
 public final class ChestSorterProfession {
 	public static final Identifier ID = CopperGolemsRevamped.id("chest_sorter");
 	/** Vanilla's literal in {@code TransportItemsBetweenContainers#setVisitedBlockPos}. */
 	public static final int VANILLA_VISITED_LIMIT = 10;
-
-	private static Set<Item> waxedBlocks;
+	public static final int SORTER_VISITED_LIMIT = 64;
 
 	private ChestSorterProfession() {}
 
@@ -32,31 +28,33 @@ public final class ChestSorterProfession {
 		Professions.register(new Profession(
 			ID,
 			Component.literal("Chest Sorter"),
-			List.of(new SlotGroup("waxed", 1, 64, ChestSorterProfession::isWaxedCopperBlock)),
+			List.of(),
 			List.of(),
 			true,
 			(level, golem, data) -> {}));
 	}
 
-	/** The four waxed full copper blocks (any oxidation stage); cut/stairs/slabs do not count. */
-	public static boolean isWaxedCopperBlock(ItemStack stack) {
-		if (waxedBlocks == null) {
-			Set<Item> set = new HashSet<>();
-			Items.COPPER_BLOCK.waxed().forEach(set::add);
-			waxedBlocks = set;
-		}
-		return !stack.isEmpty() && waxedBlocks.contains(stack.getItem());
-	}
-
-	/** Chests a sorter may visit before it gives up: 10 plus the waxed blocks in its slot. */
+	/** Chests a body may visit before it gives up: 64 for a Chest Sorter golem, vanilla's 10 otherwise. */
 	public static int visitedLimit(PathfinderMob body) {
-		if (body instanceof CopperGolem golem) {
-			GolemData data = GolemData.get(golem);
-			if (ID.equals(data.profession) && !data.items.isEmpty()) {
-				ItemStack s = data.items.get(0);
-				if (isWaxedCopperBlock(s)) return VANILLA_VISITED_LIMIT + s.getCount();
-			}
+		if (body instanceof CopperGolem golem && ID.equals(GolemData.get(golem).profession)) {
+			if (golem.level() instanceof ServerLevel level) migrateLegacyItems(level, golem);
+			return SORTER_VISITED_LIMIT;
 		}
 		return VANILLA_VISITED_LIMIT;
+	}
+
+	/**
+	 * Old saves kept waxed copper blocks in a Chest Sorter's slot; the slot is gone, so drop them at the golem and
+	 * clear the list. No-op when the list is empty.
+	 * Why here: a vanilla-brain profession's {@code tick} is never called (see {@code GolemTicker}), and this runs
+	 * whenever the sorter works. Until then the items stay saved, and death or a profession change drops them too.
+	 */
+	public static void migrateLegacyItems(ServerLevel level, CopperGolem golem) {
+		GolemData data = GolemData.get(golem);
+		if (!ID.equals(data.profession) || data.items.isEmpty()) return;
+		GolemService.dropAll(level, golem);
+		data = GolemData.get(golem);
+		data.items = NonNullList.create();
+		GolemData.save(golem, data);
 	}
 }

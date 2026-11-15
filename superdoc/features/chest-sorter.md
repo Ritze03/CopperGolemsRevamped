@@ -1,8 +1,8 @@
 # Chest Sorter profession
 
-Vanilla sorting behaviour (`runsVanillaBrain = true`, no assigns, tick is a no-op) plus one GUI slot that
-holds up to 64 waxed copper blocks. Each block raises the number of chests the golem visits before it
-gives up and wanders: limit = **10 + N**, so 0 blocks = 10 (vanilla), 64 blocks = 74.
+Vanilla sorting behaviour (`runsVanillaBrain = true`, no assigns, tick is a no-op, **no slot groups**: the GUI
+is just the control row). The one change: the golem visits up to **64** chests before it gives up and wanders
+(vanilla: 10).
 
 ## Setup rule (what vanilla requires)
 
@@ -17,7 +17,7 @@ Chest Sorter adds nothing to the sorting itself, so a setup that does not match 
   (components ignored). A chest full of other things is skipped, and the golem tries the next one.
 - Both within 32 blocks horizontally and 8 vertically; not locked or blocked (block above a chest), a double
   chest counts as one.
-- After visiting 10 chests (plus waxed blocks in the slot) with no match, or when nothing is reachable, the golem
+- After visiting 64 chests (vanilla golems: 10) with no match, or when nothing is reachable, the golem
   wanders for 140 ticks before trying again. A fresh golem also waits 60-99 ticks before its first trip.
 - The golem must not be following the player, and (Chest Sorter or not) panicking stops the behaviour.
 
@@ -25,18 +25,17 @@ Why: vanilla sorting is the whole feature; the mod only raises the visited limit
 
 ## Entry points
 
-- `profession/chest_sorter/ChestSorterProfession:init` declares it (id `coppergolemsrevamped:chest_sorter`,
-  slot group `waxed` = 1 slot, max 64, `data.items` index 0).
-- `ChestSorterProfession:visitedLimit` returns the limit for a body (10 unless it is a Copper Golem with this
-  profession and a waxed block in slot 0).
-- `ChestSorterProfession:isWaxedCopperBlock` is the slot filter.
+- `profession/chest_sorter/ChestSorterProfession:init` declares it (id `coppergolemsrevamped:chest_sorter`, empty
+  slot list).
+- `ChestSorterProfession:visitedLimit` returns 64 for a Copper Golem with this profession, 10 for any other body.
+- `ChestSorterProfession:migrateLegacyItems` drops items an old save left in the list (see below).
 - `mixin/TransportItemsBetweenContainersMixin` applies the limit.
 
-## Which blocks count
+## Visited limit
 
-The four waxed full copper blocks, any oxidation stage: `Items.COPPER_BLOCK.waxed()` (`unaffected`, `exposed`,
-`weathered`, `oxidized`). Unwaxed blocks, cut copper, raw copper blocks and other items are rejected. No item
-tag covers exactly these, so the filter collects them from the collection record.
+Why: an earlier version let waxed copper blocks in a GUI slot raise the limit (10 + blocks). The user removed
+the whole upgrade mechanic and set a fixed 64. The limit stays per golem (not a global constant change), so
+other golems keep vanilla's 10.
 
 ## Mixin
 
@@ -46,19 +45,27 @@ returns `visitedLimit(body)`. `setVisitedBlockPos` has exactly one `10`: the `si
 `markVisitedBlockPosAsUnreachable` is a separate limit and is untouched.
 
 Why: vanilla's limit is the bare literal 10 (`MAX_VISITED_POSITIONS` is inlined and unused), so the 11th
-distinct chest triggers the 140-tick wander cooldown. The user asked for "+1 chest per waxed copper block".
-The limit must be per golem, so the literal cannot just be changed globally: the mixin consults the body.
+distinct chest triggers the 140-tick wander cooldown. The limit must be per golem, so the literal cannot just be changed globally: the mixin consults the body.
 Golems without the profession get 10 back, i.e. unchanged vanilla.
+
+## Old saves
+
+Saves from the waxed-block version hold waxed copper blocks in `GolemData.items` index 0. `migrateLegacyItems`
+drops them at the golem (`GolemService:dropAll`) and clears the list. Why called from `visitedLimit`:
+`GolemTicker` never calls `Profession.tick` for vanilla-brain professions and `core/` was out of scope, but
+`visitedLimit` runs whenever the sorter works. Until then the items stay in the save, and death or a profession
+change drops them as for any profession (no item is lost). `GolemMenu` copes with zero slot groups.
 
 ## Tests (`ChestSorterTest`)
 
-- `visitedLimitScalesWithWaxedBlocks`: no profession 10, sorter with 0/5/64 blocks 10/15/74.
-- `mixinAppliesLimit`: a test subclass exposes the protected `setVisitedBlockPos`; with 3 blocks and 12
-  seeded chests the 13th does not start the cooldown and the 14th does; a control golem seeded with 10
-  enters cooldown on the 11th. Fails if the mixin is not registered. Gotcha: a freshly spawned golem already
-  carries `TRANSPORT_ITEMS_COOLDOWN_TICKS`, so the test erases it first.
-- `waxedSlotFilter`: accepts the four waxed blocks, rejects unwaxed/raw/ingot/cobblestone/empty; `count == 1`,
-  `maxStack == 64`.
+- `visitedLimit`: no profession 10, sorter 64; the declaration has no slots and runs the vanilla brain.
+- `mixinAppliesLimit`: a test subclass exposes the protected `setVisitedBlockPos`; with 63 seeded chests the 64th
+  does not start the cooldown and the 65th does; a control golem seeded with 10 enters cooldown on the 11th.
+  Fails if the mixin is not registered. Gotcha: a freshly spawned golem already carries
+  `TRANSPORT_ITEMS_COOLDOWN_TICKS`, so the test erases it first.
+- `legacyItemsAreDropped`: blocks in items[0] become item entities at the golem and the list is cleared.
+- `menuWithoutSlotGroups`: `GolemMenu` for a sorter and for a golem with no profession both have the control row
+  plus the player inventory only.
 - `sortsFreshGolem`, `sortsWaxedOxidizedSourceIntoMatchingChest`, `sortsAfterBeingTransporter`: end-to-end.
   Copper chest with 10 cobblestone and a wooden chest (empty, or holding 1 cobblestone) 5 blocks apart; golem
   spawned normally, profession set via `GolemService:changeProfession` (the last one after a Transporter
