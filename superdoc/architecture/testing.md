@@ -15,13 +15,20 @@ not part of `check`.
   (`Entity#saveWithoutId` into `TagValueOutput`, then `Entity#load` of a fresh golem from `TagValueInput`).
   Proves `GolemData` is a persistent attachment, not just that its codec works.
 - `GolemDataTest:assignAreaHelpers`: pure `AssignMode:areaFits` / `AssignMode:inRange`.
+- `ChestSorterTest:visitedLimitScalesWithWaxedBlocks`, `mixinAppliesLimit`, `waxedSlotFilter`: Chest Sorter
+  limit scaling, the mixin applying it, and the waxed-slot filter (see [chest-sorter.md](../features/chest-sorter.md)).
+- `CleanerTest:cleansItemsInsideArea`, `areaLimit16`: Cleaner pickup/delivery and the 16x16 area limit
+  (see [cleaner.md](../features/cleaner.md)).
+
+Total: 8 `@GameTest` methods, so the log says `All 9 required tests passed` (see Gotchas).
 
 ## Client tests (headless sway only)
 
 `GolemGuiClientTest` (`fabric-client-gametest` entrypoint, `enableClientGameTests = true` in
 `build.gradle`) launches the real client, creates a singleplayer world, spawns a golem next to the
-player, opens `GolemMenuOpener:open` on the server thread and screenshots the chest menu three times:
-no profession, Transporter with items and an assignment, and the first control slot hovered (tooltip).
+player, opens `GolemMenuOpener:open` on the server thread and screenshots the chest menu five times:
+no profession, Transporter with items and an assignment, the Transporter first control slot hovered (tooltip),
+Chest Sorter (12 waxed copper blocks) and Cleaner (area and output assigned).
 Window 1280x720, GUI scale 3. Screenshots land in `build/run/clientGameTest/screenshots/`.
 Task: `runClientGameTest`. It is not wired into `check`/`build` (the `runGameTest` server task is).
 
@@ -42,6 +49,10 @@ env | grep -E 'DISPLAY|XDG_RUNTIME'   # verify: only the private ones
 JAVA_HOME=<jdk-25> ccorral -- ./gradlew runClientGameTest
 pkill -f "sway -c <scratch>/sway.conf"   # when done; leave nothing running
 ```
+
+Kill only your own sway, by matching your private config/runtime path (as above). Never a broad `pkill sway`:
+other projects run their own headless sways. `pkill -f` patterns can also match the invoking shell itself, so
+keep the pattern specific (or kill by the PID of the sway you started).
 
 Notes: the `wayland-N` number may differ (read it from `$RT`). With `DISPLAY` unset the client uses the
 Wayland driver (SDL, GL via software rendering) and renders fine under pixman. Harmless log noise:

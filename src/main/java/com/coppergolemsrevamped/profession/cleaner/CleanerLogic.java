@@ -4,8 +4,10 @@ import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.WeakHashMap;
 
 import org.jspecify.annotations.Nullable;
@@ -17,6 +19,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -31,10 +34,20 @@ public final class CleanerLogic {
 	static final int SCAN_TICKS = 20;
 	static final int AFTER_ACTION_TICKS = 5;
 	static final double SPEED = 1.0;
+	/** Chasing one item this long without getting closer = unreachable (10 s). */
+	static final int GIVE_UP_TICKS = 200;
+	/** How long a given-up item is ignored (1 min). */
+	static final int SKIP_TICKS = 1200;
+	static final double PROGRESS_EPS = 0.1;
 
 	private static final class State {
 		int cooldown;
 		int repath;
+		@Nullable UUID target;
+		double bestDist;
+		int stuck;
+		/** Given-up item entity -> game time until which the scan ignores it. */
+		final Map<UUID, Long> skip = new HashMap<>();
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
@@ -64,19 +77,35 @@ public final class CleanerLogic {
 			return;
 		}
 
+		long now = level.getGameTime();
+		s.skip.values().removeIf(until -> until <= now);
 		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !e.hasPickUpDelay() && fits(data.items, e.getItem()));
+			e -> e.isAlive() && !e.hasPickUpDelay() && fits(data.items, e.getItem()) && box.contains(e.position()) && !s.skip.containsKey(e.getUUID()));
 		if (!items.isEmpty()) {
 			ItemEntity target = items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
 			if (golem.distanceToSqr(target) > PICKUP_RANGE_SQR) {
+				if (!chase(s, target.getUUID(), golem.distanceToSqr(target))) {
+					skip(s, target.getUUID(), now);
+					golem.getNavigation().stop();
+					s.repath = 0;
+					return;
+				}
 				if (--s.repath <= 0 || golem.getNavigation().isDone()) {
-					golem.getNavigation().moveTo(target.getX(), target.getY(), target.getZ(), SPEED);
+					Path path = golem.getNavigation().createPath(target, 0);
+					if (path == null) {
+						skip(s, target.getUUID(), now);
+						golem.getNavigation().stop();
+						s.repath = 0;
+						return;
+					}
+					golem.getNavigation().moveTo(path, SPEED);
 					s.repath = REPATH_TICKS;
 				}
 				return;
 			}
 			golem.getNavigation().stop();
 			s.repath = 0;
+			s.target = null;
 			pickUp(target, data.items);
 			s.cooldown = AFTER_ACTION_TICKS;
 			GolemData.save(golem, data);
@@ -101,6 +130,40 @@ public final class CleanerLogic {
 		TransporterLogic.insertAll(data.items, chest);
 		s.cooldown = TransporterLogic.isEmpty(data.items) ? AFTER_ACTION_TICKS : RETRY_TICKS;
 		GolemData.save(golem, data);
+	}
+
+	/**
+	 * Progress tracker for the current chase; false = give up on {@code id}. Resets when the target changes or the
+	 * distance shrank by more than {@link #PROGRESS_EPS}; otherwise counts ticks without progress.
+	 * ponytail: a no-progress timeout stands in for a real reachability check.
+	 */
+	static boolean chase(State s, UUID id, double distSqr) {
+		if (!id.equals(s.target) || distSqr < s.bestDist - PROGRESS_EPS) {
+			s.target = id;
+			s.bestDist = distSqr;
+			s.stuck = 0;
+			return true;
+		}
+		return ++s.stuck < GIVE_UP_TICKS;
+	}
+
+	/** Ignore {@code id} in the scan for {@link #SKIP_TICKS} from {@code now} and forget the chase. */
+	static void skip(State s, UUID id, long now) {
+		s.skip.put(id, now + SKIP_TICKS);
+		s.target = null;
+		s.stuck = 0;
+	}
+
+	/** Test hook: give up on {@code id} now (as if unreachable). */
+	public static void skipItem(CopperGolem golem, UUID id, long now) {
+		skip(STATES.computeIfAbsent(golem, g -> new State()), id, now);
+	}
+
+	/** Test hook: is {@code id} currently ignored by this golem's scan. */
+	public static boolean isSkipped(CopperGolem golem, UUID id, long now) {
+		State s = STATES.get(golem);
+		Long until = s == null ? null : s.skip.get(id);
+		return until != null && until > now;
 	}
 
 	/** Some part of {@code stack} can go into carry (empty slot or same item with room). */
