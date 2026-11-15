@@ -254,3 +254,9 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
   the supply slot (if free) and used for the next planting; other kinds go to carry and the output chest.
 - Efficiency/Unbreaking are not specifically handled or tested (durability goes through the vanilla overload).
 - Bone meal is only used on the golem's own planted sapling(s), not on grass or other crops.
+
+## Mending
+
+A Mending axe is repaired with XP bottles from the **input chest** and never used below 10 durability: it is parked in the
+input chest (or swapped for a usable axe) and the golem chops by hand meanwhile. Only a Mending axe enables bare hands; a
+golem that never had an axe still does no work. See [mending.md](mending.md).

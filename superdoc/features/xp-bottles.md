@@ -61,3 +61,8 @@ cell before the Next compass (at most 4 cells for these professions, which `stat
 furnace maps empty, remainder < 7), `smelterXpSlotDeliversAndKeepsOldItems`, `smelterFullOutputKeepsTheXp`,
 `butcherKillsFillTheStoreAndMakeBottles`, `butcherTakesTheBreedingXp`, `butcherFullOutputKeepsTheXp`,
 `butcherDeliversBottles`, `professionChangeGivesTheBottles`, `xpSurvivesSaveLoad`.
+
+## Use as Mending repair
+
+Bottles in a tool profession's tool chest repair its Mending tools, 7 XP each (14 durability via the vanilla conversion). See
+[mending.md](mending.md).
