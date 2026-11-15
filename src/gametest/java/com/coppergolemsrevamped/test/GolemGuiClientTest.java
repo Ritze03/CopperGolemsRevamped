@@ -111,6 +111,27 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 			});
 			context.waitTicks(20);
 			context.takeScreenshot("golem-gui-crafter");
+
+			// (g) farmer: hoe, wheat seeds, a few wheat in carry, every assignment set
+			world.getServer().runOnServer(server -> {
+				ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
+				player.closeContainer();
+				GolemService.changeProfession(player.level(), golem, CopperGolemsRevamped.id("farmer"));
+				GolemData data = GolemData.get(golem);
+				data.items.set(0, new ItemStack(Items.IRON_HOE));
+				data.items.set(1, new ItemStack(Items.WHEAT_SEEDS, 24));
+				data.items.set(2, new ItemStack(Items.WHEAT, 7));
+				data.items.set(3, new ItemStack(Items.WHEAT_SEEDS, 3));
+				data.assignments.put("field_a", player.blockPosition().offset(-4, -1, -4));
+				data.assignments.put("field_b", player.blockPosition().offset(4, -1, 4));
+				data.assignments.put("tools", player.blockPosition().offset(3, 0, 0));
+				data.assignments.put("seeds", player.blockPosition().offset(3, 0, 1));
+				data.assignments.put("output", player.blockPosition().offset(3, 0, 2));
+				GolemData.save(golem, data);
+				GolemMenuOpener.open(player, golem);
+			});
+			context.waitTicks(20);
+			context.takeScreenshot("golem-gui-farmer");
 		}
 	}
 }
