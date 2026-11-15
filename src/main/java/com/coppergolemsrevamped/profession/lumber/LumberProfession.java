@@ -20,6 +20,12 @@ public final class LumberProfession {
 	public static final String TREE = "tree";
 	public static final String INPUT = "input";
 	public static final String OUTPUT = "output";
+	/**
+	 * Marker in {@code GolemData.assignments}: the value is the tree spot that is a 2x2 site. Why here: the assignments map is
+	 * persisted and cleared on a profession change, and a marker whose value differs from the current tree spot is void, so
+	 * reassigning the tree resets the size without a new GolemData field.
+	 */
+	public static final String SITE_2X2 = "tree_2x2";
 	/** Slot indices in {@code GolemData.items}: the axe, two supply slots (saplings / bone meal), then carry. */
 	public static final int AXE_SLOT = 0;
 	public static final int SUPPLY_FROM = 1;

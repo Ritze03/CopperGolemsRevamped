@@ -331,6 +331,121 @@ public class LumberTest {
 		});
 	}
 
+	/**
+	 * The whole cycle in order: T is empty, the chest holds an axe, saplings, bone meal. Phases (from the phase listener, so
+	 * no phase is missed) go PICKUP, DELIVER (fresh start), PLANT, BONEMEAL, FELL, PICKUP, DELIVER, PLANT; every step follows
+	 * the cycle (PICKUP always into DELIVER, DELIVER always into PLANT, FELL always into PICKUP). Foreign saplings (birch)
+	 * dropped after the felling start end up in the input chest (surplus), the logs in the output chest.
+	 */
+	@GameTest(maxTicks = 5000)
+	public void fullCycleOrder(GameTestHelper helper) {
+		world(helper);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		in.setItem(0, new ItemStack(Items.IRON_AXE));
+		in.setItem(1, new ItemStack(Items.OAK_SAPLING, 8));
+		in.setItem(2, new ItemStack(Items.BONE_MEAL, 64));
+		CopperGolem golem = lumber(helper);
+		List<LumberLogic.Phase> seq = new java.util.ArrayList<>();
+		boolean[] dropped = { false };
+		LumberLogic.phaseListener = (g, p) -> {
+			if (g == golem) seq.add(p);
+		};
+		BlockPos at = helper.absolutePos(T);
+		helper.onEachTick(() -> {
+			if (helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS)) helper.assertTrue(!golem.blockPosition().equals(at), "golem stands in the sapling");
+			if (!dropped[0] && seq.contains(LumberLogic.Phase.FELL)) {
+				dropped[0] = true;
+				helper.spawnItem(Items.BIRCH_SAPLING, new Vec3(4.5, 1.0, 5.5));
+				helper.spawnItem(Items.BIRCH_SAPLING, new Vec3(2.5, 1.0, 5.5));
+			}
+		});
+		List<LumberLogic.Phase> expect = List.of(LumberLogic.Phase.PICKUP, LumberLogic.Phase.DELIVER, LumberLogic.Phase.PLANT, LumberLogic.Phase.BONEMEAL,
+			LumberLogic.Phase.FELL, LumberLogic.Phase.PICKUP, LumberLogic.Phase.DELIVER, LumberLogic.Phase.PLANT);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(seq.size() >= expect.size(), "phases so far: " + seq);
+			helper.assertTrue(seq.subList(0, expect.size()).equals(expect), "phase order: " + seq);
+			for (int i = 0; i + 1 < seq.size(); i++) {
+				LumberLogic.Phase a = seq.get(i), b = seq.get(i + 1);
+				boolean ok = switch (a) {
+					case PICKUP -> b == LumberLogic.Phase.DELIVER;
+					case DELIVER -> b == LumberLogic.Phase.PLANT;
+					case FELL -> b == LumberLogic.Phase.PICKUP;
+					case PLANT -> b != LumberLogic.Phase.DELIVER && b != LumberLogic.Phase.PLANT;
+					case BONEMEAL -> b == LumberLogic.Phase.FELL || b == LumberLogic.Phase.PICKUP;
+				};
+				helper.assertTrue(ok, "bad step " + a + " -> " + b + " in " + seq);
+			}
+			helper.assertTrue(count(in, Items.BIRCH_SAPLING) == 2, "surplus birch saplings in input: " + count(in, Items.BIRCH_SAPLING));
+			helper.assertTrue(count(out, Items.BIRCH_SAPLING) == 0, "birch saplings in output: " + count(out, Items.BIRCH_SAPLING));
+			helper.assertTrue(count(out, Items.OAK_LOG) >= 3, "oak logs in output: " + count(out, Items.OAK_LOG));
+			helper.assertTrue(count(in, Items.OAK_LOG) == 0, "logs in input chest");
+			LumberLogic.phaseListener = null;
+		});
+	}
+
+	/**
+	 * A learned 2x2 site (spruce, which would also grow from one sapling) with only 3 saplings in hand plants nothing, not
+	 * even a single one; with a 4th it plants all four.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void twoByTwoSiteWaitsForFourSaplings(GameTestHelper helper) {
+		world(helper);
+		BlockPos[] cells = { T, T.east(), T.south(), T.east().south() };
+		for (BlockPos c : cells) helper.setBlock(c.below(), Blocks.DIRT);
+		CopperGolem golem = lumber(helper);
+		GolemData d = GolemData.get(golem);
+		d.assignments.put(LumberProfession.SITE_2X2, helper.absolutePos(T));
+		d.items.set(LumberProfession.SUPPLY_FROM, new ItemStack(Items.SPRUCE_SAPLING, 3));
+		GolemData.save(golem, d);
+		helper.runAfterDelay(400, () -> {
+			for (BlockPos c : cells) helper.assertBlockPresent(Blocks.AIR, c);
+			helper.assertTrue(supplies(golem, Items.SPRUCE_SAPLING) == 3, "saplings: " + supplies(golem, Items.SPRUCE_SAPLING));
+			GolemData g = GolemData.get(golem);
+			g.items.set(LumberProfession.SUPPLY_FROM, new ItemStack(Items.SPRUCE_SAPLING, 4));
+			GolemData.save(golem, g);
+		});
+		helper.succeedWhen(() -> {
+			for (BlockPos c : cells) helper.assertBlockPresent(Blocks.SPRUCE_SAPLING, c);
+		});
+	}
+
+	/**
+	 * Never in the sapling: while a sapling stands on T and bone meal grows it (64 bone meal, then the felling), the golem's
+	 * feet block is never T's column and its health never drops.
+	 */
+	@GameTest(maxTicks = 4000)
+	public void neverStandsInTheSapling(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		in.setItem(0, new ItemStack(Items.IRON_AXE));
+		in.setItem(1, new ItemStack(Items.BONE_MEAL, 64));
+		CopperGolem golem = lumber(helper);
+		BlockPos at = helper.absolutePos(T);
+		float health = golem.getHealth();
+		helper.onEachTick(() -> {
+			if (helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS)) {
+				helper.assertTrue(golem.getBlockX() != at.getX() || golem.getBlockZ() != at.getZ(), "golem stands in the sapling at " + golem.blockPosition());
+			}
+			helper.assertTrue(golem.getHealth() >= health, "golem took damage: " + golem.getHealth());
+		});
+		helper.succeedWhen(() -> helper.assertTrue(count(out, Items.OAK_LOG) >= 3, "oak logs in output: " + count(out, Items.OAK_LOG)));
+	}
+
+	/** A golem that starts inside the sapling steps out and waits at least 2 blocks from it (no bone meal: natural growth). */
+	@GameTest(maxTicks = 600)
+	public void stepsOutOfTheSapling(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		CopperGolem golem = lumber(helper, T);
+		BlockPos at = helper.absolutePos(T);
+		helper.runAfterDelay(300, () -> {
+			int d = Math.max(Math.abs(golem.getBlockX() - at.getX()), Math.abs(golem.getBlockZ() - at.getZ()));
+			helper.assertTrue(d >= 2, "golem waits " + d + " blocks from the sapling at " + golem.blockPosition());
+			helper.succeed();
+		});
+	}
+
 	/** The break rule: only logs of the detected tree within the horizontal reach, any height. */
 	@GameTest
 	public void breakAllowedRules(GameTestHelper helper) {

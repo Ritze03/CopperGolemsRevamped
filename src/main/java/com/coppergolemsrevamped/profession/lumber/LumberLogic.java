@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
@@ -42,10 +43,11 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Lumber work loop. One assigned tree spot T (the clicked block: sapling or bottom trunk). The golem detects the whole
- * tree (every connected log of the same kind, 2x2 trunks and branches included), walks to a ground spot next to the
- * trunk ({@link Interact#approach}) and fells it from the ground: it never climbs and never moves into the trunk. Then it
- * collects the drops, replants (1 or 2x2 saplings) and bone-meals the sapling when it has bone meal. Every break goes
+ * Lumber work cycle, an explicit phase machine ({@link Phase}): PLANT, BONEMEAL, FELL, PICKUP, DELIVER, then PLANT again.
+ * One assigned tree spot T (the clicked block: sapling or bottom trunk). The golem detects the whole tree (every
+ * connected log of the same kind, 2x2 trunks and branches included), walks to a ground spot next to the trunk
+ * ({@link Interact#approach}) and fells it from the ground: it never climbs and never moves into the trunk. It never
+ * stands in the footprint of a growing tree ({@link #standOutside}). Every break goes
  * through {@link #breakBlock}. See superdoc/features/lumber.md.
  */
 public final class LumberLogic {
@@ -83,7 +85,27 @@ public final class LumberLogic {
 	static final int ITEM_ABOVE = 4;
 	static final double PICKUP_RANGE_SQR = 1.5 * 1.5;
 
+	/** Ticks without a drop in the pickup box that end PICKUP (leaves decay slowly, see lumber.md). */
+	static final int PICKUP_QUIET = 150;
+	/** PICKUP ends after this long even if drops keep appearing (1 min). */
+	static final int PICKUP_MAX = 1200;
+	/** Ticks without progress towards a stand spot before that spot is dropped (3 s). */
+	static final int SPOT_STUCK_TICKS = 60;
+	/** Chebyshev distance (blocks) from the grow footprint to plant and bone-meal from, and to wait at. */
+	static final int WORK_MIN = 1, WORK_MAX = 2, WAIT_MIN = 2, WAIT_MAX = 3;
+
 	public enum Result { BROKEN, FULL, DENIED }
+
+	/** The work cycle: PLANT, BONEMEAL, FELL, PICKUP, DELIVER, then PLANT again. See lumber.md. */
+	public enum Phase { PLANT, BONEMEAL, FELL, PICKUP, DELIVER }
+
+	/** Test hook: called on every phase change (transient state, a reload restarts at PICKUP or FELL). */
+	public static @Nullable BiConsumer<CopperGolem, Phase> phaseListener;
+
+	public static @Nullable Phase phaseOf(CopperGolem golem) {
+		State st = STATES.get(golem);
+		return st == null ? null : st.phase;
+	}
 
 	private static final class State {
 		/** The tree spot this state was built for; a different spot (reassigned tree) starts a fresh state. */
@@ -113,6 +135,17 @@ public final class LumberLogic {
 		/** Item chase tracking. */
 		@Nullable ItemEntity chasing;
 		int chaseRepath;
+		/** Current phase of the cycle; null until the first tick decides it. */
+		@Nullable Phase phase;
+		/** DELIVER: the input chest (surplus saplings / bone meal) and the output chest were each visited once. */
+		boolean inputTried, outputTried;
+		/** PICKUP: when it began and when a drop was last seen in the box. */
+		long pickupStart, lastSeen;
+		/** Stand spot outside the grow footprint being walked to (see standOutside). */
+		@Nullable BlockPos spot;
+		int spotKey, spotStuck, spotRepath;
+		double spotBest;
+		final Set<BlockPos> spotBad = new HashSet<>();
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
@@ -227,6 +260,11 @@ public final class LumberLogic {
 			s.tree = t;
 			STATES.put(golem, s);
 		}
+		BlockPos mark = data.assignments.get(LumberProfession.SITE_2X2);
+		if (mark != null && !mark.equals(t)) { // the tree spot was reassigned: the learned size is void
+			data.assignments.remove(LumberProfession.SITE_2X2);
+			GolemData.save(golem, data);
+		}
 		long now = level.getGameTime();
 		s.skip.values().removeIf(until -> until <= now);
 		boolean treeSkipped = s.skip.containsKey(t);
@@ -242,58 +280,136 @@ public final class LumberLogic {
 				s.footprint = bottomSquare(logs, t);
 				s.unreach.clear();
 				s.anchored = false;
+				if (s.footprint.size() == 4) markSite2x2(data, t); // saved by the next GolemData.save
 			}
 			s.known = new HashSet<>(logs);
 			s.logs = logs;
 		}
 		boolean felling = !logs.isEmpty();
-		boolean growing = !felling && !treeSkipped && isGrowing(level, t, s);
 		BlockPos inPos = data.assignments.get(LumberProfession.INPUT);
 		Container in = inPos == null || s.skip.containsKey(inPos) ? null : TransporterLogic.containerAt(level, inPos);
-		boolean wantSap = felling || (!treeSkipped && (!growing || partial(level, s)));
 
-		// 1. input chest: axe, saplings, bone meal
-		if (in != null && wantsFetch(data, in, felling, wantSap, growing)) {
-			if (!reach(s, level, golem, inPos, inPos, now)) return;
-			golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
-			boolean took = false;
-			if (felling) took |= fetchAxe(in, data);
-			if (wantSap) took |= fetchSupply(in, data, LumberLogic::isSapling, 64);
-			if (growing) took |= fetchSupply(in, data, LumberLogic::isBone, BONE_TARGET);
-			if (took) Interact.openChest(level, golem, inPos, Interact.Action.TAKE);
-			s.anchored = false;
-			s.walk.reset();
-			done(s, golem, data, took ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
-			return;
+		if (s.phase == null) { // fresh state: a standing tree is felled, else clean up around it first
+			if (felling) {
+				setPhase(s, golem, Phase.FELL, now);
+			} else {
+				setPhase(s, golem, Phase.PICKUP, now);
+				s.lastSeen = now - PICKUP_QUIET; // nothing to wait for if nothing lies there
+			}
 		}
-
-		// 2. fell
-		if (felling) {
-			if (axeSlot(data) < 0) { // no axe, no work
+		Phase ph = s.phase;
+		if (felling && (ph == Phase.PLANT || ph == Phase.BONEMEAL)) { // a tree is there (grown, or from the start)
+			setPhase(s, golem, Phase.FELL, now);
+		} else if (treeSkipped && (ph == Phase.PLANT || ph == Phase.BONEMEAL || ph == Phase.FELL)) {
+			if (carryEmpty(data)) { // given up on the tree: only the carry is still worth a trip
 				idle(s, golem);
 				return;
 			}
-			if (s.mustDeliver) {
-				deliver(s, level, golem, data, outPos, out, now);
-				return;
+			setPhase(s, golem, Phase.DELIVER, now);
+		}
+		switch (s.phase) {
+			case PLANT -> tickPlant(s, level, golem, data, t, in, inPos, now);
+			case BONEMEAL -> tickBoneMeal(s, level, golem, data, t, in, inPos, now);
+			case FELL -> tickFell(s, level, golem, data, t, logs, in, inPos, outPos, out, now);
+			case PICKUP -> tickPickup(s, level, golem, data, t, now);
+			case DELIVER -> {
+				if (deliverStep(s, level, golem, data, inPos, in, outPos, out, now)) {
+					s.anchored = false;
+					setPhase(s, golem, Phase.PLANT, now);
+				}
 			}
-			fell(s, level, golem, data, t, logs, now);
-			return;
 		}
-		s.breakPos = null;
-		s.anchored = false;
+	}
 
-		// 3. replant
-		if (!treeSkipped && plant(s, level, golem, data, t, now)) return;
-		// 4. drops on the ground
-		if (collect(s, level, golem, data, t, now)) return;
-		// 5. bone meal on the planted sapling(s)
-		if (growing && boneMeal(s, level, golem, data, t, now)) return;
-		// 6. deliver
-		if (!carryEmpty(data) && !s.skip.containsKey(outPos)) {
-			deliver(s, level, golem, data, outPos, out, now);
+	private static void setPhase(State s, CopperGolem golem, Phase p, long now) {
+		if (s.phase == p) return;
+		s.phase = p;
+		s.inputTried = false;
+		s.outputTried = false;
+		s.chasing = null;
+		s.spot = null;
+		s.spotBad.clear();
+		if (p == Phase.PICKUP) {
+			s.pickupStart = now;
+			s.lastSeen = now;
+		}
+		BiConsumer<CopperGolem, Phase> l = phaseListener;
+		if (l != null) l.accept(golem, p);
+	}
+
+	/** PLANT: nothing to do when a sapling stands or a tree is there; else fetch saplings, plant, or look for drops first. */
+	private static void tickPlant(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable Container in, @Nullable BlockPos inPos, long now) {
+		if (isGrowing(level, t, s) && !partial(level, s)) {
+			setPhase(s, golem, Phase.BONEMEAL, now);
 			return;
 		}
+		if (in != null && wantsFetch(data, in, false, true, false)) {
+			fetchVisit(s, level, golem, data, in, inPos, now, false, true, false);
+			return;
+		}
+		if (plant(s, level, golem, data, t, now)) return;
+		// cannot plant (no saplings, a 2x2 site waiting for 4, blocked): drops (saplings from leaves) may help, then deliver
+		setPhase(s, golem, Phase.PICKUP, now);
+	}
+
+	/** BONEMEAL: bone meal on the sapling(s) until the tree grows (FELL is entered by the tick), else wait for natural growth. */
+	private static void tickBoneMeal(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable Container in, @Nullable BlockPos inPos, long now) {
+		if (!isGrowing(level, t, s)) { // the sapling is gone: back through pickup and delivery to planting
+			setPhase(s, golem, Phase.PICKUP, now);
+			return;
+		}
+		if (in != null && wantsFetch(data, in, false, false, true)) {
+			fetchVisit(s, level, golem, data, in, inPos, now, false, false, true);
+			return;
+		}
+		if (boneMeal(s, level, golem, data, t, now)) return;
+		if (!standOutside(s, level, golem, t, footprintCells(level, t, s), WAIT_MIN, WAIT_MAX, now)) return;
+		idle(s, golem);
+	}
+
+	/** FELL: axe fetch, then the felling steps; a full carry delivers mid-tree. */
+	private static void tickFell(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, Set<BlockPos> logs, @Nullable Container in,
+		@Nullable BlockPos inPos, BlockPos outPos, Container out, long now) {
+		if (logs.isEmpty()) {
+			s.breakPos = null;
+			s.anchored = false;
+			s.mustDeliver = false;
+			setPhase(s, golem, Phase.PICKUP, now);
+			return;
+		}
+		if (in != null && wantsFetch(data, in, true, false, false)) {
+			fetchVisit(s, level, golem, data, in, inPos, now, true, false, false);
+			return;
+		}
+		if (axeSlot(data) < 0) { // no axe, no work
+			idle(s, golem);
+			return;
+		}
+		if (s.mustDeliver) {
+			if (deliverStep(s, level, golem, data, inPos, in, outPos, out, now)) {
+				s.mustDeliver = false;
+				s.anchored = false;
+			}
+			return;
+		}
+		fell(s, level, golem, data, t, logs, now);
+	}
+
+	/**
+	 * PICKUP: collect the drops around the tree. Ends when no drop was seen for {@link #PICKUP_QUIET} ticks or after
+	 * {@link #PICKUP_MAX} ticks; in between the golem waits.
+	 */
+	private static void tickPickup(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, long now) {
+		if (now - s.pickupStart >= PICKUP_MAX) {
+			setPhase(s, golem, Phase.DELIVER, now);
+			return;
+		}
+		if (collect(s, level, golem, data, t, now)) return;
+		if (now - s.lastSeen >= PICKUP_QUIET) {
+			setPhase(s, golem, Phase.DELIVER, now);
+			return;
+		}
+		if (isGrowing(level, t, s) && !standOutside(s, level, golem, t, footprintCells(level, t, s), WAIT_MIN, WAIT_MAX, now)) return;
 		idle(s, golem);
 	}
 
@@ -308,21 +424,110 @@ public final class LumberLogic {
 		GolemData.save(golem, data);
 	}
 
-	private static void deliver(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos outPos, Container out, long now) {
-		if (s.skip.containsKey(outPos)) {
-			idle(s, golem);
-			return;
-		}
-		if (!reach(s, level, golem, outPos, outPos, now)) return;
-		golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
-		NonNullList<ItemStack> carry = carryView(data);
-		boolean moved = TransporterLogic.insertAll(carry, out);
-		writeCarry(data, carry);
-		if (moved) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
-		s.mustDeliver = false;
+	/** Walk to the input chest and fetch what the phase needs (axe, saplings, bone meal). */
+	private static void fetchVisit(State s, ServerLevel level, CopperGolem golem, GolemData data, Container in, BlockPos inPos, long now,
+		boolean axe, boolean saplings, boolean bone) {
+		if (!reach(s, level, golem, inPos, inPos, now)) return;
+		golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
+		boolean took = false;
+		if (axe) took |= fetchAxe(in, data);
+		if (saplings) took |= fetchSupply(in, data, LumberLogic::isSapling, 64);
+		if (bone) took |= fetchSupply(in, data, LumberLogic::isBone, BONE_TARGET);
+		if (took) Interact.openChest(level, golem, inPos, Interact.Action.TAKE);
 		s.anchored = false;
 		s.walk.reset();
-		done(s, golem, data, carryEmpty(data) ? (moved ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS) : RETRY_TICKS);
+		done(s, golem, data, took ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+	}
+
+	// ---- delivery -------------------------------------------------------------------------------------------------
+
+	/** Saplings and bone meal: they top up the supply slots, the surplus belongs to the input chest. */
+	static boolean isSurplusKind(ItemStack s) {
+		return isSapling(s) || isBone(s);
+	}
+
+	/** Moves carried saplings / bone meal into the supply slots where they fit (same item, or a free slot for a new kind). */
+	static void topUpSupplies(GolemData data) {
+		for (int c = LumberProfession.CARRY_FROM; c < LumberProfession.CARRY_FROM + LumberProfession.CARRY_SLOTS; c++) {
+			ItemStack d = data.items.get(c);
+			if (d.isEmpty() || !isSurplusKind(d)) continue;
+			for (int k = LumberProfession.SUPPLY_FROM; k < LumberProfession.SUPPLY_FROM + LumberProfession.SUPPLY_SLOTS && !d.isEmpty(); k++) {
+				ItemStack sup = data.items.get(k);
+				if (sup.isEmpty() || !ItemStack.isSameItemSameComponents(sup, d)) continue;
+				int n = Math.min(d.getCount(), Math.min(64, sup.getMaxStackSize()) - sup.getCount());
+				sup.grow(n);
+				d.shrink(n);
+			}
+			Predicate<ItemStack> kind = isSapling(d) ? LumberLogic::isSapling : LumberLogic::isBone;
+			if (!d.isEmpty() && supplySlot(data, kind) < 0) {
+				int free = emptySupplySlot(data);
+				if (free >= 0) {
+					int n = Math.min(d.getCount(), Math.min(64, d.getMaxStackSize()));
+					data.items.set(free, d.copyWithCount(n));
+					d.shrink(n);
+				}
+			}
+			if (d.isEmpty()) data.items.set(c, ItemStack.EMPTY);
+		}
+	}
+
+	private static boolean hasSurplus(GolemData data) {
+		for (int i = 0; i < LumberProfession.CARRY_SLOTS; i++) if (isSurplusKind(data.items.get(LumberProfession.CARRY_FROM + i))) return true;
+		return false;
+	}
+
+	/** Inserts only the carry stacks matching {@code only} into {@code chest}; true when something moved. */
+	private static boolean insertMatching(GolemData data, Container chest, Predicate<ItemStack> only) {
+		NonNullList<ItemStack> view = NonNullList.withSize(LumberProfession.CARRY_SLOTS, ItemStack.EMPTY);
+		boolean[] mask = new boolean[view.size()];
+		for (int i = 0; i < view.size(); i++) {
+			ItemStack st = data.items.get(LumberProfession.CARRY_FROM + i);
+			mask[i] = only.test(st);
+			if (mask[i]) view.set(i, st);
+		}
+		boolean moved = TransporterLogic.insertAll(view, chest);
+		for (int i = 0; i < view.size(); i++) if (mask[i]) data.items.set(LumberProfession.CARRY_FROM + i, view.get(i));
+		return moved;
+	}
+
+	/**
+	 * One tick of delivering the carry. Saplings and bone meal first top up the supply slots; the surplus goes to the
+	 * input chest (one visit), everything else and whatever the input chest could not take goes to the output chest (one
+	 * visit). Leftovers (chest full) stay in the carry and are retried next cycle. True when the delivery is over.
+	 * Chest visits are limited to one per chest per delivery so a full chest cannot trap the golem.
+	 */
+	private static boolean deliverStep(State s, ServerLevel level, CopperGolem golem, GolemData data, @Nullable BlockPos inPos, @Nullable Container in,
+		BlockPos outPos, Container out, long now) {
+		topUpSupplies(data);
+		if (in != null && inPos != null && !s.inputTried && hasSurplus(data)) {
+			if (!reach(s, level, golem, inPos, inPos, now)) return false;
+			golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
+			boolean moved = insertMatching(data, in, LumberLogic::isSurplusKind);
+			s.inputTried = true;
+			if (moved) Interact.openChest(level, golem, inPos, Interact.Action.INSERT);
+			s.anchored = false;
+			s.walk.reset();
+			done(s, golem, data, moved ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+			return false;
+		}
+		if (!carryEmpty(data) && !s.outputTried && !s.skip.containsKey(outPos)) {
+			if (!reach(s, level, golem, outPos, outPos, now)) return false;
+			golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
+			NonNullList<ItemStack> carry = carryView(data);
+			boolean moved = TransporterLogic.insertAll(carry, out);
+			writeCarry(data, carry);
+			s.outputTried = true;
+			if (moved) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
+			s.anchored = false;
+			s.walk.reset();
+			done(s, golem, data, moved ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+			return false;
+		}
+		s.inputTried = false;
+		s.outputTried = false;
+		if (!carryEmpty(data)) s.cooldown = RETRY_TICKS; // something did not fit: wait before the next try
+		GolemData.save(golem, data);
+		return true;
 	}
 
 	// ---- felling --------------------------------------------------------------------------------------------------
@@ -469,6 +674,91 @@ public final class LumberLogic {
 		return until != null && until > now;
 	}
 
+	// ---- standing outside the grow footprint ----------------------------------------------------------------------
+
+	/** Largest horizontal (Chebyshev) distance from a cell of {@code f} to {@code p}'s column: 0 = inside the footprint. */
+	static int footDist(BlockPos p, List<BlockPos> f) {
+		int best = Integer.MAX_VALUE;
+		for (BlockPos c : f) best = Math.min(best, Math.max(Math.abs(p.getX() - c.getX()), Math.abs(p.getZ() - c.getZ())));
+		return best;
+	}
+
+	/** Is the golem's feet block inside the sapling / trunk volume (a footprint column, around T's height)? */
+	static boolean inVolume(BlockPos feet, BlockPos t, List<BlockPos> f) {
+		return footDist(feet, f) == 0 && feet.getY() >= t.getY() - 1 && feet.getY() <= t.getY() + 2;
+	}
+
+	private static @Nullable BlockPos pickSpot(ServerLevel level, CopperGolem golem, BlockPos t, List<BlockPos> f, int minD, int maxD, Set<BlockPos> bad) {
+		record Cand(BlockPos p, int d, double dist) {}
+		List<Cand> cands = new ArrayList<>();
+		int r = maxD + 1;
+		for (int dx = -r; dx <= r; dx++) for (int dz = -r; dz <= r; dz++) for (int dy : new int[] { 0, 1, -1, -2 }) {
+			BlockPos p = new BlockPos(t.getX() + dx, t.getY() + dy, t.getZ() + dz);
+			int d = footDist(p, f);
+			if (d < minD || d > maxD || bad.contains(p) || !Interact.canStand(level, golem, p)) continue;
+			cands.add(new Cand(p, d, golem.distanceToSqr(Vec3.atBottomCenterOf(p))));
+		}
+		cands.sort(Comparator.<Cand>comparingInt(Cand::d).thenComparingDouble(Cand::dist));
+		for (int i = 0; i < Math.min(6, cands.size()); i++) {
+			Path path = golem.getNavigation().createPath(cands.get(i).p, 0);
+			if (path != null && path.canReach()) return cands.get(i).p;
+		}
+		return null;
+	}
+
+	/**
+	 * Walk to a ground cell {@code minD}..{@code maxD} blocks (horizontal, Chebyshev) from the footprint {@code f}: never in
+	 * it, so a growing tree cannot grow around the golem. True when it stands on such a cell. Out of reach of a spot it
+	 * widens the range; with no spot at all it accepts its place unless it is inside the footprint (then it gives up the tree
+	 * after {@link #GIVE_UP_TICKS}).
+	 */
+	private static boolean standOutside(State s, ServerLevel level, CopperGolem golem, BlockPos t, List<BlockPos> f, int minD, int maxD, long now) {
+		BlockPos feet = golem.blockPosition();
+		int fd = footDist(feet, f);
+		if (fd >= minD && fd <= maxD && Math.abs(feet.getY() - t.getY()) <= 2 && golem.onGround()) {
+			golem.getNavigation().stop();
+			s.spot = null;
+			s.spotStuck = 0;
+			s.spotBad.clear();
+			return true;
+		}
+		int key = minD * 100 + maxD;
+		if (s.spot == null || s.spotKey != key) {
+			s.spot = pickSpot(level, golem, t, f, minD, maxD, s.spotBad);
+			if (s.spot == null && !inVolume(feet, t, f)) return true; // no such cell: stay out of the footprint where we are
+			if (s.spot == null) s.spot = pickSpot(level, golem, t, f, 1, maxD + 3, s.spotBad);
+			s.spotKey = key;
+			s.spotRepath = 0;
+			if (s.spot != null) {
+				s.spotBest = golem.distanceToSqr(Vec3.atBottomCenterOf(s.spot));
+				s.spotStuck = 0;
+			}
+		}
+		if (s.spot == null) { // inside the footprint and nowhere to step: bounded wait
+			if (++s.spotStuck >= GIVE_UP_TICKS) {
+				s.skip.put(t, now + SKIP_TICKS);
+				s.spotStuck = 0;
+			}
+			return false;
+		}
+		double d = golem.distanceToSqr(Vec3.atBottomCenterOf(s.spot));
+		if (d < s.spotBest - PROGRESS_EPS) {
+			s.spotBest = d;
+			s.spotStuck = 0;
+		} else if (++s.spotStuck >= SPOT_STUCK_TICKS) {
+			s.spotBad.add(s.spot);
+			s.spot = null;
+			s.spotStuck = 0;
+			return false;
+		}
+		if (--s.spotRepath <= 0 || golem.getNavigation().isDone()) {
+			Path path = golem.getNavigation().createPath(s.spot, 0);
+			if (path != null) golem.getNavigation().moveTo(path, SPEED);
+			s.spotRepath = REPATH_TICKS;
+		}
+		return false;
+	}
+
 	// ---- planting -------------------------------------------------------------------------------------------------
 
 	private static boolean isSaplingBlock(Level level, BlockPos p) {
@@ -506,11 +796,12 @@ public final class LumberLogic {
 	 * The cells to plant {@code sap} on: one at T, or four (a 2x2 square) for saplings that need it (dark oak, pale oak)
 	 * or when a spruce/jungle 2x2 trunk was just felled and enough saplings are at hand. Empty = cannot plant now.
 	 */
-	static List<BlockPos> plantCells(Level level, BlockPos t, State s, ItemStack sap) {
+	static List<BlockPos> plantCells(Level level, BlockPos t, State s, ItemStack sap, boolean site2x2) {
 		BlockState sapState = ((BlockItem) sap.getItem()).getBlock().defaultBlockState();
+		if (site2x2 && !canBe2x2(sap)) return List.of(); // a 2x2 site only takes saplings that can grow 2x2, never a single one
 		int missingFootprint = 0;
 		if (s.footprint.size() == 4) for (BlockPos p : s.footprint) if (!level.getBlockState(p).is(sapState.getBlock())) missingFootprint++;
-		boolean four = needs2x2(sap) || (canBe2x2(sap) && s.footprint.size() == 4 && sap.getCount() >= missingFootprint);
+		boolean four = site2x2 || needs2x2(sap) || (canBe2x2(sap) && s.footprint.size() == 4 && sap.getCount() >= missingFootprint);
 		if (!four) return cellOk(level, t, sapState) ? List.of(t) : List.of();
 		List<List<BlockPos>> candidates = new ArrayList<>();
 		if (s.footprint.size() == 4) candidates.add(s.footprint);
@@ -523,17 +814,40 @@ public final class LumberLogic {
 		return List.of();
 	}
 
-	/** One replant step: walk next to T, plant one sapling per call. True when this tick was used. */
+	/** The tree spot was learned to be a 2x2 site (persisted, see {@link LumberProfession#SITE_2X2}). */
+	static boolean site2x2(GolemData data, BlockPos t) {
+		return t.equals(data.assignments.get(LumberProfession.SITE_2X2));
+	}
+
+	/** Marks the tree spot as a 2x2 site; the caller saves. */
+	private static void markSite2x2(GolemData data, BlockPos t) {
+		data.assignments.put(LumberProfession.SITE_2X2, t.immutable());
+	}
+
+	/** The cells a growing tree will occupy: the remembered 2x2 footprint, a 2x2 square of saplings containing T, else T. */
+	private static List<BlockPos> footprintCells(Level level, BlockPos t, State s) {
+		if (s.footprint.size() == 4) return s.footprint;
+		for (int a = -1; a <= 0; a++) for (int b = -1; b <= 0; b++) {
+			List<BlockPos> sq = square(t.getX() + a, t.getY(), t.getZ() + b);
+			boolean all = true;
+			for (BlockPos p : sq) if (!isSaplingBlock(level, p)) all = false;
+			if (all) return sq;
+		}
+		return List.of(t);
+	}
+
+	/** One replant step: stand next to the footprint (never in it), plant one sapling per call. True when this tick was used. */
 	private static boolean plant(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, long now) {
 		int slot = supplySlot(data, LumberLogic::isSapling);
 		if (slot < 0) return false;
 		ItemStack sap = data.items.get(slot);
-		List<BlockPos> cells = plantCells(level, t, s, sap);
+		List<BlockPos> cells = plantCells(level, t, s, sap, site2x2(data, t));
 		List<BlockPos> missing = new ArrayList<>();
 		BlockState sapState = ((BlockItem) sap.getItem()).getBlock().defaultBlockState();
 		for (BlockPos p : cells) if (!level.getBlockState(p).is(sapState.getBlock())) missing.add(p);
 		if (missing.isEmpty() || sap.getCount() < missing.size()) return false;
-		if (!reach(s, level, golem, t, t, now)) return true;
+		if (!standOutside(s, level, golem, t, cells, WORK_MIN, WORK_MAX, now)) return true;
+		if (cells.size() == 4) markSite2x2(data, t);
 		BlockPos cell = missing.getFirst();
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(cell));
 		level.setBlock(cell, sapState, 3);
@@ -550,11 +864,11 @@ public final class LumberLogic {
 	private static boolean boneMeal(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, long now) {
 		int slot = supplySlot(data, LumberLogic::isBone);
 		if (slot < 0) return false;
+		List<BlockPos> fp = footprintCells(level, t, s);
 		BlockPos target = null;
-		if (isSaplingBlock(level, t)) target = t;
-		else for (BlockPos p : s.footprint) if (isSaplingBlock(level, p)) target = p;
+		for (BlockPos p : fp) if (isSaplingBlock(level, p)) target = p;
 		if (target == null) return false;
-		if (!reach(s, level, golem, t, t, now)) return true;
+		if (!standOutside(s, level, golem, t, fp, WORK_MIN, WORK_MAX, now)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
 		ItemStack bone = data.items.get(slot);
 		if (BoneMealItem.growCrop(bone, level, target)) level.levelEvent(1505, target, 15);
@@ -575,6 +889,7 @@ public final class LumberLogic {
 			s.chasing = null;
 			return false;
 		}
+		s.lastSeen = now; // a drop is there: PICKUP does not end yet
 		ItemEntity target = items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
 		if (golem.distanceToSqr(target) <= PICKUP_RANGE_SQR) {
 			golem.getNavigation().stop();
