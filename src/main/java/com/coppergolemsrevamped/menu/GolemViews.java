@@ -346,7 +346,7 @@ final class GolemViews {
 			(p, b) -> m.toggleFreeze()));
 		if (LumberProfession.ID.equals(m.currentId())) {
 			boolean strip = data.stripLogs;
-			set(cells, 4, 4, icon(GolemIcon.plain(Items.STRIPPED_OAK_LOG, Component.literal("Strip logs: " + (strip ? "on" : "off")),
+			set(cells, 4, 4, icon(GolemIcon.plain(strip ? Items.STRIPPED_OAK_LOG : Items.OAK_LOG,Component.literal("Strip logs: " + (strip ? "on" : "off")),
 				lore("Strips each log with the axe before breaking it", "The carry then holds stripped logs"), strip),
 				(p, b) -> m.toggleStripLogs()));
 		}

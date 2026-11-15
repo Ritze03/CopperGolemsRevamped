@@ -568,6 +568,44 @@ public class LumberTest {
 		});
 	}
 
+	/** The strip is a visible step: while felling, some tick shows a stripped log standing in the tree before it is broken. */
+	@GameTest(maxTicks = 2000)
+	public void stripLogsIsVisibleStep(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 5, 2);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		give(in, Items.IRON_AXE, Items.OAK_SAPLING, 8);
+		CopperGolem golem = stripper(helper, true);
+		int[] seenTicks = { 0 };
+		helper.onEachTick(() -> {
+			for (int k = 0; k < 5; k++) if (helper.getBlockState(T.above(k)).is(Blocks.STRIPPED_OAK_LOG)) {
+				seenTicks[0]++;
+				break;
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.STRIPPED_OAK_LOG) == 5, "stripped logs in output: " + count(out, Items.STRIPPED_OAK_LOG));
+			helper.assertTrue(axeDamage(golem) == 10, "axe damage: " + axeDamage(golem));
+			helper.assertTrue(seenTicks[0] >= 5 * LumberLogic.STRIP_TICKS, "stripped log standing for only " + seenTicks[0] + " ticks");
+		});
+	}
+
+	/** Plain and stripped logs mixed in one trunk (what an interruption between strip and break leaves) are one tree and fully felled. */
+	@GameTest(maxTicks = 2000)
+	public void fellsMixedPlainAndStrippedTree(GameTestHelper helper) {
+		world(helper);
+		for (int k = 0; k < 5; k++) helper.setBlock(T.above(k), k % 2 == 0 ? Blocks.OAK_LOG : Blocks.STRIPPED_OAK_LOG);
+		helper.setBlock(T.above(5), LEAVES);
+		helper.assertTrue(LumberLogic.detectTree(helper.getLevel(), helper.absolutePos(T), List.of()).size() == 5, "mixed trunk is one tree");
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		give(in, Items.IRON_AXE, Items.OAK_SAPLING, 8);
+		CopperGolem golem = stripper(helper, true);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.STRIPPED_OAK_LOG) == 5 && count(out, Items.OAK_LOG) == 0, "logs in output: " + count(out, Items.STRIPPED_OAK_LOG) + "/" + count(out, Items.OAK_LOG));
+			helper.assertTrue(axeDamage(golem) == 8, "axe damage (3 plain x2 + 2 stripped x1): " + axeDamage(golem));
+		});
+	}
+
 	/** Strip off (the default, also for a fresh golem): plain logs and 1 durability per log, as before. */
 	@GameTest(maxTicks = 2000)
 	public void stripLogsOffByDefault(GameTestHelper helper) {

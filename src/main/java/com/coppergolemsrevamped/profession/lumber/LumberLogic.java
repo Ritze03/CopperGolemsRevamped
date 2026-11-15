@@ -64,8 +64,8 @@ public final class LumberLogic {
 	static final int SCAN_TICKS = 20;
 	/** A log takes at least this many swings (each {@link ToolSwing#PERIOD} ticks), however fast the axe is. */
 	static final int MIN_SWINGS = 2;
-	/** Strip logs: extra ticks per log for the strip before the break (about half a swing; see lumber.md "Strip logs"). */
-	static final int STRIP_TICKS = 6;
+	/** Strip logs: ticks the stripped log stays visible before its break starts (see lumber.md "Strip logs"). */
+	public static final int STRIP_TICKS = 8;
 	static final int AFTER_ACTION_TICKS = 5;
 	static final int REPATH_TICKS = 20;
 	static final double SPEED = 1.0;
@@ -130,6 +130,9 @@ public final class LumberLogic {
 		double bestDist;
 		int stuck;
 		@Nullable BlockPos breakPos;
+		/** Strip logs: the log that was just stripped and the ticks left until its break starts. */
+		@Nullable BlockPos stripPos;
+		int stripLeft;
 		int breakLeft;
 		/** Length of the current break in ticks (whole {@link ToolSwing} swings). */
 		int breakTotal;
@@ -220,9 +223,9 @@ public final class LumberLogic {
 		if (level.getBlockState(t).is(BlockTags.LOGS)) seeds.add(t);
 		for (BlockPos k : known) if (!k.equals(t) && level.getBlockState(k).is(BlockTags.LOGS)) seeds.add(k);
 		if (seeds.isEmpty()) return found;
-		Block wood = level.getBlockState(seeds.getFirst()).getBlock();
+		Block wood = woodKind(level, seeds.getFirst());
 		for (BlockPos sd : seeds) {
-			if (level.getBlockState(sd).getBlock() == wood && found.add(sd)) queue.add(sd);
+			if (woodKind(level, sd) == wood && found.add(sd)) queue.add(sd);
 		}
 		BlockPos.MutableBlockPos m = new BlockPos.MutableBlockPos();
 		while (!queue.isEmpty() && found.size() < TREE_MAX_LOGS) {
@@ -232,13 +235,29 @@ public final class LumberLogic {
 				m.set(p.getX() + dx, p.getY() + dy, p.getZ() + dz);
 				if (m.getY() < t.getY() || m.getY() > t.getY() + TREE_HEIGHT) continue;
 				if (Math.abs(m.getX() - t.getX()) > TREE_RADIUS || Math.abs(m.getZ() - t.getZ()) > TREE_RADIUS) continue;
-				if (level.getBlockState(m).getBlock() != wood) continue;
+				if (!level.getBlockState(m).is(BlockTags.LOGS) || woodKind(level, m) != wood) continue;
 				BlockPos q = m.immutable();
 				if (found.add(q)) queue.add(q);
 				if (found.size() >= TREE_MAX_LOGS) return found;
 			}
 		}
 		return found;
+	}
+
+	/**
+	 * The wood kind of the log at {@code pos}: its stripped block (vanilla's axe mapping), or the block itself when it has none
+	 * (already stripped). A plain log and its stripped form therefore are the same kind, so a log stripped before its break
+	 * stays part of its tree (see lumber.md "Strip logs").
+	 */
+	static Block woodKind(Level level, BlockPos pos) {
+		BlockState st = level.getBlockState(pos);
+		Holder<BlockTransformer> h = Items.IRON_AXE.getDefaultInstance().get(DataComponents.BLOCK_TRANSFORMER);
+		if (h == null) return st.getBlock();
+		for (BlockTransformer.BlockTransformData t : h.value().transforms()) {
+			BlockState r = t.blockStateProvider().value().getOptionalState(level, level.getRandom(), pos);
+			if (r != null && r.is(BlockTags.LOGS) && r.getBlock() != st.getBlock()) return r.getBlock();
+		}
+		return st.getBlock();
 	}
 
 	/** The 2x2 square of {@code logs} at T's level that contains T (its 4 cells), or just T. */
@@ -636,7 +655,12 @@ public final class LumberLogic {
 	}
 
 	private static void fell(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, Set<BlockPos> logs, boolean bare, long now) {
-		BlockPos target = s.breakPos != null && logs.contains(s.breakPos) ? s.breakPos : null;
+		if (s.stripPos != null && !logs.contains(s.stripPos)) {
+			s.stripPos = null;
+			s.stripLeft = 0;
+		}
+		BlockPos cur = s.breakPos != null ? s.breakPos : s.stripPos; // a stripped log is felled next, even after a delivery trip
+		BlockPos target = cur != null && logs.contains(cur) ? cur : null;
 		if (target == null) {
 			s.breakPos = null;
 			target = pickNext(s, golem, logs);
@@ -664,7 +688,28 @@ public final class LumberLogic {
 			}
 		}
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
+		if (!target.equals(s.breakPos) && !target.equals(s.stripPos)) {
+			int sa = axeSlot(data);
+			ItemStack stool = sa < 0 ? ItemStack.EMPTY : data.items.get(sa);
+			BlockState ts = strippedState(level, target, data, stool);
+			if (ts != null) { // strip first and leave the stripped log standing for STRIP_TICKS (see lumber.md "Strip logs")
+				if (!fitsAll(data, Block.getDrops(ts, level, target, null, null, stool))) { // checked before the strip: no unfellable stripped log
+					s.mustDeliver = true;
+					return;
+				}
+				strip(level, target, ts, stool);
+				GolemData.save(golem, data);
+				s.stripPos = target;
+				s.stripLeft = STRIP_TICKS;
+			}
+		}
+		if (s.stripLeft > 0 && target.equals(s.stripPos)) {
+			s.stripLeft--;
+			ToolSwing.tick(level, golem, target, STRIP_TICKS - s.stripLeft - 1, STRIP_TICKS, false); // arms up, no crack, no hit sound
+			return;
+		}
 		if (!target.equals(s.breakPos)) {
+			s.stripPos = null;
 			s.breakPos = target;
 			BlockState st = level.getBlockState(target);
 			// whole swings, at least MIN_SWINGS: a fast axe still visibly chops (see lumber.md "Chopping animation")
@@ -672,7 +717,6 @@ public final class LumberLogic {
 			if (axe < 0 && !bare) return; // axe gone since the last check; the next tick idles or fetches
 			ItemStack tool = axe < 0 ? ItemStack.EMPTY : data.items.get(axe); // bare hands: destroy speed 1
 			int base = breakTicks(st.getDestroySpeed(level, target), tool.getDestroySpeed(st));
-			if (strippedState(level, target, data, axe < 0 ? ItemStack.EMPTY : tool) != null) base += STRIP_TICKS;
 			s.breakTotal = ToolSwing.swingTicks(base, MIN_SWINGS);
 			s.breakLeft = s.breakTotal;
 		}
@@ -724,10 +768,8 @@ public final class LumberLogic {
 		int slot = axeSlot(data);
 		if (!st.is(BlockTags.LOGS) || (slot < 0 && !bare)) return Result.DENIED;
 		ItemStack tool = slot < 0 ? ItemStack.EMPTY : data.items.get(slot);
-		BlockState stripped = strippedState(level, pos, data, tool);
-		List<ItemStack> drops = Block.getDrops(stripped != null ? stripped : st, level, pos, null, null, tool);
-		if (!fitsAll(data, drops)) return Result.FULL; // checked before the strip: a refused break leaves the log whole
-		if (stripped != null) strip(level, pos, stripped, tool);
+		List<ItemStack> drops = Block.getDrops(st, level, pos, null, null, tool);
+		if (!fitsAll(data, drops)) return Result.FULL; // a refused break leaves the log whole
 		level.destroyBlock(pos, false, golem);
 		storeAll(data, drops);
 		// breaking empties the stack (vanilla behaviour); the item is gone, never duplicated

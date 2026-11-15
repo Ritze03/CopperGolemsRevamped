@@ -100,7 +100,7 @@ ticks (0.8 s) per log over the pure vanilla formula (whole swings). Test: `Lumbe
 
 ## Strip logs (setting)
 
-Lumber-only toggle on the Settings tab (4,4), "Strip logs: on/off", icon `stripped_oak_log`, default **off**, persisted as
+Lumber-only toggle on the Settings tab (4,4), "Strip logs: on/off", icon `oak_log` off / `stripped_oak_log` on, default **off**, persisted as
 `GolemData:stripLogs` (codec field `strip_logs`, old saves load off). With it on the golem strips each log with its axe before
 breaking it, so the carry and the output chest get stripped logs. User request. See [gui.md](gui.md) for the toggle.
 
@@ -108,12 +108,19 @@ breaking it, so the carry and the output chest get stripped logs. User request. 
   26.3 has no `AxeItem.STRIPPABLES` any more) for the new state, so every wood vanilla strips works (logs, wood, stems, hyphae) with the
   axis kept, and nothing is hardcoded. Only a result that is in `#logs` and a different block counts (the axe transformer also scrapes
   and unwaxes copper; those never apply to a log). No stripped form (a stripped log) means a normal break.
-- Where: inside `LumberLogic:breakBlock`, in one step: drops are computed from the stripped state and must fit (else `Result.FULL`
-  and the log is untouched), then `setBlock` stripped + strip sound (the transformer's sound), then the break. Why atomic, not a state
-  between two ticks: `detectTree` follows one block kind, so a log stripped some ticks before its break would drop out of the tree set
-  (and after a reload or a delivery trip it would be forgotten); one step means the tree never contains a half-stripped log.
-  A trunk that is already stripped is simply felled (same kind, `#logs` holds all stripped logs; `fellsAlreadyStrippedTree`).
-- Timing: the break gets `STRIP_TICKS` (6) extra before the whole-swing rounding, still one continuous FELL phase and one hold.
+- Where: `LumberLogic:fell`, as a visible step before the break. For each new target log with a strip available (`strippedState` not
+  null) the drops of the stripped state must fit the carry (else `mustDeliver`, the log is untouched: no stripped log is ever left
+  unfellable), then `LumberLogic:strip` sets the stripped state (axis kept), plays the strip sound and spends 1 durability. The
+  stripped log then stands for `STRIP_TICKS` (8) ticks while the golem holds its arms up (one `ToolSwing.tick` pulse, no crack, no
+  hit sound), then the normal break (`breakBlock`, which no longer strips) runs with the normal break time. A stripped log has no
+  stripped form, so it is never stripped twice (`fellsAlreadyStrippedTree`).
+  Why visible, not atomic (the earlier design): the user wanted the strip to be seen so the behaviour is self-explaining. 8 ticks is
+  long enough to read the changed texture, short enough not to slow a tree noticeably.
+- Same tree: `LumberLogic:woodKind` maps a log to its stripped block (vanilla's axe mapping, via the default axe's
+  `BLOCK_TRANSFORMER`), a stripped log maps to itself. `detectTree` compares kinds, so a plain log and its stripped form are one
+  tree. Why: a log stripped but not yet broken (delivery trip, reload, interruption) stays in the tree set and is felled
+  (`fellsMixedPlainAndStrippedTree`). `State:stripPos` keeps the just-stripped log as the next target across a delivery trip.
+- Timing: strip tick, then `STRIP_TICKS`, then the break (whole swings, still one hold).
 - Durability: strip 1 plus break 1 = 2 per log, both through `GolemMending.damage`. Strips only when the axe is usable
   (`canUse`), is not on its last point (`nextDamageWillBreak`: then the log is just broken) and, for Mending, has more than 2 left.
   Bare hands (a resting Mending axe, no axe) never strip. A Mending axe is therefore never broken by a strip.
@@ -266,7 +273,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
   diamond axe, the old one lands in the chest).
 - `walledInTrunkIsFelledFromTwoBlocks`: all T neighbours stone: the 2-block fallback still fells it.
 - `unreachableTreeIsSkipped`: tree inside a closed stone ring: skipped after the give-up time, nothing breaks.
-- Strip logs: `stripLogsGivesStrippedLogs` (5 stripped logs, damage 10), `stripLogsOffByDefault` (plain logs, damage 5), `stripLogsNeverBreaksMendingAxe`,
+- Strip logs: `stripLogsGivesStrippedLogs` (5 stripped logs, damage 10), `stripLogsIsVisibleStep` (a stripped log stands in the tree for at least 8 ticks per log), `fellsMixedPlainAndStrippedTree`, `stripLogsOffByDefault` (plain logs, damage 5), `stripLogsNeverBreaksMendingAxe`,
   `strippedStateFollowsVanilla` (mapping, axis, wood/stems/hyphae, no strip for stripped log / bare / off / last point), `fellsAlreadyStrippedTree`,
   `stripLogsSurvivesSaveLoad`; the toggle: `MenuTest:settingsStripLogsToggleIsLumberOnly`.
 - Unit tests: `breakAllowedRules`, `detectTreeRules` (same kind, diagonal, not below T, unconnected, not-a-log spot),

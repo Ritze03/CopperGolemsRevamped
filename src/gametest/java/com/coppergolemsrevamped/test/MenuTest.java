@@ -404,9 +404,9 @@ public class MenuTest {
 		CopperGolem g = golem(helper, LUMBER);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-		helper.assertTrue(at(menu, 4, 4).is(Items.STRIPPED_OAK_LOG) && !glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: off"), "off " + at(menu, 4, 4));
+		helper.assertTrue(at(menu, 4, 4).is(Items.OAK_LOG) && !glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: off"), "off " + at(menu, 4, 4));
 		click(menu, player, 4, 4);
-		helper.assertTrue(GolemData.get(g).stripLogs && glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: on"), "on " + name(at(menu, 4, 4)));
+		helper.assertTrue(GolemData.get(g).stripLogs && at(menu, 4, 4).is(Items.STRIPPED_OAK_LOG) && glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: on"), "on " + name(at(menu, 4, 4)));
 		click(menu, player, 4, 4);
 		helper.assertTrue(!GolemData.get(g).stripLogs, "off again");
 		helper.succeed();
