@@ -55,6 +55,12 @@ only: after a restart the first golem tick re-adds the ticket, nothing needs sav
 
 ## Tests
 
-`src/gametest/.../ChunkLoadTest`: ticket present at the golem's chunk (level <= 30), moves across a chunk
-border, released on None and on discard, kept while a second golem still shares it, and a
+`src/gametest/.../ChunkLoadTest`: ticket present at the golem's chunk (level <= 30), moves to another chunk, released on None and on discard, kept while a second golem still shares it, and a
 `TicketStorage.CODEC` round trip of our ticket type (the restart case; a real restart cannot be a GameTest).
+
+Why `ticketMovesWithGolem` teleports the golem 40 blocks up (no gravity) into the next chunk: GameTest
+structures are packed side by side, so the next chunk lies inside another test's bounds, and that test's
+`GameTestInfo#succeed` discards every entity in its bounds. The golem was discarded before its first
+tick, so `keep` never ran ("no ticket at ..." in about 1 of 4 runs, depending on which neighbour finished
+on the same tick). It was a test race, not a production bug. Tests that move entities must keep them out
+of other tests' bounds. (A far chunk held by a test-own ticket was tried: it never became entity-ticking.)

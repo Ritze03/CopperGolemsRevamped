@@ -56,25 +56,35 @@ public class ChunkLoadTest {
 		helper.succeed();
 	}
 
-	@GameTest
+	/**
+	 * Why the golem is teleported 40 blocks up (with no gravity): GameTest structures sit packed side by side, so the
+	 * next chunk is inside another test's bounds, and that test's {@code succeed()} discards every entity in its
+	 * bounds, including a golem teleported in (flaky "no ticket at ..." with a golem that was discarded before its
+	 * first tick). Above the structures nothing reaches it.
+	 */
+	@GameTest(maxTicks = 200)
 	public void ticketMovesWithGolem(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
 		CopperGolem golem = working(helper);
 		ChunkPos from = golem.chunkPosition();
 		ChunkPos to = new ChunkPos(from.x() + 1, from.z());
-		helper.assertTrue(ticketAt(helper.getLevel(), from), "no ticket at start");
-		BlockPos target = new BlockPos(to.getMiddleBlockX(), (int) golem.getY() + 2, to.getMiddleBlockZ());
+		helper.assertTrue(ticketAt(level, from), "no ticket at start");
+		BlockPos target = new BlockPos(to.getMiddleBlockX(), (int) golem.getY() + 40, to.getMiddleBlockZ());
 		boolean[] moved = {false};
 		helper.succeedWhen(() -> {
 			if (!moved[0]) {
 				// our own ticket (radius 3) loads and ticks the next chunk; a golem teleported into a chunk that is
 				// not entity-ticking yet would not tick either
-				helper.assertTrue(helper.getLevel().isPositionEntityTicking(target), "waiting for the next chunk to tick");
+				helper.assertTrue(level.isPositionEntityTicking(target), "waiting for the next chunk to tick");
+				golem.setNoGravity(true);
 				golem.teleportTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5);
 				moved[0] = true;
 			}
+			helper.assertTrue(!golem.isRemoved(), "golem removed: " + golem.getRemovalReason());
 			helper.assertTrue(golem.chunkPosition().equals(to), "golem chunk: " + golem.chunkPosition());
-			helper.assertTrue(ticketAt(helper.getLevel(), to), "no ticket at " + to);
-			assertConsistent(helper, from);
+			helper.assertTrue(ticketAt(level, to), "no ticket at " + to + ", golem ticks: " + golem.tickCount);
+			assertConsistent(helper, from); // the old spot is released unless another test's golem still holds it
+			golem.discard();
 		});
 	}
 
