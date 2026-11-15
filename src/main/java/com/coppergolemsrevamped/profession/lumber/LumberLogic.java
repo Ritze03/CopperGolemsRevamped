@@ -364,7 +364,7 @@ public final class LumberLogic {
 		s.chasing = null;
 		s.spot = null;
 		s.spotBad.clear();
-		if (p == Phase.PICKUP) {
+		if (p == Phase.PICKUP || p == Phase.BONEMEAL) {
 			s.pickupStart = now;
 			s.lastSeen = now;
 		}
@@ -387,7 +387,7 @@ public final class LumberLogic {
 		setPhase(s, golem, Phase.PICKUP, now);
 	}
 
-	/** BONEMEAL: bone meal on the sapling(s) until the tree grows (FELL is entered by the tick), else wait for natural growth. */
+	/** BONEMEAL: collect drops, then bone meal on the sapling(s) until the tree grows (FELL is entered by the tick); else wait for natural growth. */
 	private static void tickBoneMeal(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable Container in, @Nullable BlockPos inPos, long now) {
 		if (!isGrowing(level, t, s)) { // the sapling is gone: back through pickup and delivery to planting
 			setPhase(s, golem, Phase.PICKUP, now);
@@ -397,9 +397,13 @@ public final class LumberLogic {
 			fetchVisit(s, level, golem, data, in, inPos, now, false, false, true);
 			return;
 		}
-		if (boneMeal(s, level, golem, data, t, now)) return;
 		List<BlockPos> fp = footprintCells(level, t, s);
-		if (collect(s, level, golem, data, t, fp, now)) return; // waiting for growth: stragglers from decaying leaves
+		// 1. every reachable drop first: with bone meal the tree is up in seconds and decaying leaves would otherwise drop their saplings unseen
+		if (collect(s, level, golem, data, t, fp, supplySlot(data, LumberLogic::isBone) >= 0 ? WORK_MIN : WAIT_MIN, now)) return;
+		// 2. low sapling stock: do not out-run the leaves, wait for natural-speed drops (until a spare sapling is there or they stop)
+		boolean starving = saplingStock(data, in) <= (fp.size() == 4 ? 4 : 1)
+			&& now - s.lastSeen < PICKUP_QUIET && now - s.pickupStart < PICKUP_MAX;
+		if (!starving && boneMeal(s, level, golem, data, t, now)) return;
 		if (mendVisit(s, level, golem, data, in, inPos, now)) return; // the idle time repairs Mending axes, however little they miss
 		if (!standOutside(s, level, golem, t, fp, WAIT_MIN, WAIT_MAX, now)) return;
 		idle(s, golem);
@@ -446,7 +450,7 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.DELIVER, now);
 			return;
 		}
-		if (collect(s, level, golem, data, t, isGrowing(level, t, s) ? footprintCells(level, t, s) : null, now)) return;
+		if (collect(s, level, golem, data, t, isGrowing(level, t, s) ? footprintCells(level, t, s) : null, WAIT_MIN, now)) return;
 		if (now - s.lastSeen >= PICKUP_QUIET) {
 			setPhase(s, golem, Phase.DELIVER, now);
 			return;
@@ -1054,13 +1058,16 @@ public final class LumberLogic {
 
 	// ---- ground drops ---------------------------------------------------------------------------------------------
 
-	/** Walk to a drop lying around T and pick it up (the Cleaner's chase and give-up pattern). True when this tick was used. */
-	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable List<BlockPos> growing, long now) {
+	/**
+	 * Walk to a drop lying around T and pick it up (the Cleaner's chase and give-up pattern). True when this tick was used.
+	 * While a sapling stands, drops closer than {@code margin} to the footprint are left alone.
+	 */
+	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable List<BlockPos> growing, int margin, long now) {
 		AABB box = new AABB(t.getX() - ITEM_RADIUS, t.getY() - ITEM_BELOW, t.getZ() - ITEM_RADIUS,
 			t.getX() + ITEM_RADIUS + 1, t.getY() + ITEM_ABOVE, t.getZ() + ITEM_RADIUS + 1);
 		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !e.hasPickUpDelay() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem())
-				&& (growing == null || footDist(e.blockPosition(), growing) >= WAIT_MIN));
+			e -> e.isAlive() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem())
+				&& (growing == null || footDist(e.blockPosition(), growing) >= margin));
 		if (items.isEmpty()) {
 			s.chasing = null;
 			return false;
@@ -1164,6 +1171,17 @@ public final class LumberLogic {
 		// topUp: a fetch the transfer budget cut short goes on up to its full target, not just above the low mark
 		if (wantSap && countOf(data, LumberLogic::isSapling) < (topUp ? 64 : SAPLING_LOW) && supplySource(in, data, LumberLogic::isSapling) >= 0) return true;
 		return growing && countOf(data, LumberLogic::isBone) < (topUp ? BONE_TARGET : BONE_LOW) && supplySource(in, data, LumberLogic::isBone) >= 0;
+	}
+
+	/** Saplings the next planting can draw on: supply slots, carry (not yet delivered) and the input chest. */
+	private static int saplingStock(GolemData data, @Nullable Container in) {
+		int n = 0;
+		for (int i = LumberProfession.SUPPLY_FROM; i < LumberProfession.SUPPLY_FROM + LumberProfession.SUPPLY_SLOTS; i++)
+			if (isSapling(data.items.get(i))) n += data.items.get(i).getCount();
+		for (int i = 0; i < LumberProfession.CARRY_SLOTS; i++)
+			if (isSapling(data.items.get(LumberProfession.CARRY_FROM + i))) n += data.items.get(LumberProfession.CARRY_FROM + i).getCount();
+		if (in != null) for (int i = 0; i < in.getContainerSize(); i++) if (isSapling(in.getItem(i))) n += in.getItem(i).getCount();
+		return n;
 	}
 
 	static int supplySlot(GolemData data, Predicate<ItemStack> is) {

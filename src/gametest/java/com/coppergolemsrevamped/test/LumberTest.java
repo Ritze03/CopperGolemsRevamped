@@ -419,6 +419,129 @@ public class LumberTest {
 		});
 	}
 
+	/** Saplings anywhere the golem owns them: supply slots, carry, input chest. */
+	private static int saplingTotal(CopperGolem golem, Container in) {
+		int n = count(in, Items.OAK_SAPLING) + supplies(golem, Items.OAK_SAPLING);
+		GolemData d = GolemData.get(golem);
+		for (int i = 0; i < LumberProfession.CARRY_SLOTS; i++) {
+			ItemStack st = d.items.get(LumberProfession.CARRY_FROM + i);
+			if (st.is(Items.OAK_SAPLING)) n += st.getCount();
+		}
+		return n;
+	}
+
+	private static int boneTotal(CopperGolem golem, Container in) {
+		return count(in, Items.BONE_MEAL) + supplies(golem, Items.BONE_MEAL);
+	}
+
+	/**
+	 * Bug "lumber golems keep losing all their saplings": with bone meal the wait is near zero, so drops lying around were
+	 * never collected. Sapling standing, 64 bone meal, plenty of saplings. When the golem enters BONEMEAL a sapling and two
+	 * sticks are dropped far from the footprint: not one bone meal may be used before all three are in the golem.
+	 */
+	@GameTest(maxTicks = 3000)
+	public void dropsAreCollectedBeforeBoneMeal(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		ChestBlockEntity in = chest(helper, IN);
+		in.setItem(0, new ItemStack(Items.IRON_AXE));
+		in.setItem(1, new ItemStack(Items.BONE_MEAL, 64));
+		in.setItem(2, new ItemStack(Items.OAK_SAPLING, 20));
+		CopperGolem golem = lumber(helper);
+		boolean[] spawned = { false };
+		boolean[] collected = { false };
+		helper.onEachTick(() -> {
+			if (!spawned[0]) {
+				if (LumberLogic.phaseOf(golem) == LumberLogic.Phase.BONEMEAL && boneTotal(golem, in) == 64) {
+					helper.spawnItem(Items.OAK_SAPLING, new Vec3(6.5, 1.0, 6.5));
+					helper.spawnItem(Items.STICK, new Vec3(6.5, 1.0, 1.5));
+					helper.spawnItem(Items.STICK, new Vec3(1.5, 1.0, 6.5));
+					spawned[0] = true;
+				}
+				return;
+			}
+			int left = helper.getLevel().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, helper.getBounds().inflate(2)).size();
+			if (left == 0) collected[0] = true;
+			if (!collected[0]) helper.assertTrue(boneTotal(golem, in) == 64, "bone meal used while " + left + " drops lie in the box");
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(collected[0], "drops not collected yet");
+			helper.assertTrue(boneTotal(golem, in) < 64, "bone meal never used afterwards");
+		});
+	}
+
+	/**
+	 * Low stock (golem and input chest hold no sapling, one is needed for the next planting): the golem does not bone-meal
+	 * while drops keep arriving. (Drops land where the golem stands: one on the far side of the sapling is skipped by the
+	 * path rule, see lumber.md.) A sapling drop lands every 60 ticks after the golem enters BONEMEAL; the first bone meal may
+	 * only be used once the stock covers the next planting with a spare (2 saplings), never at stock 0 or 1.
+	 */
+	@GameTest(maxTicks = 3000)
+	public void lowSaplingStockWaitsForDropsBeforeBoneMeal(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		ChestBlockEntity in = chest(helper, IN);
+		in.setItem(0, new ItemStack(Items.IRON_AXE));
+		in.setItem(1, new ItemStack(Items.BONE_MEAL, 64));
+		CopperGolem golem = lumber(helper);
+		int[] start = { -1 };
+		int[] stockWhenUsed = { -1 };
+		helper.onEachTick(() -> {
+			int now = (int) helper.getTick();
+			if (start[0] < 0) {
+				if (LumberLogic.phaseOf(golem) == LumberLogic.Phase.BONEMEAL) start[0] = now;
+				return;
+			}
+			int dt = now - start[0];
+			if (dt >= 5 && dt % 60 == 5 && dt <= 125) helper.spawnItem(Items.OAK_SAPLING, helper.relativeVec(golem.position()));
+			if (stockWhenUsed[0] < 0 && boneTotal(golem, in) < 64) stockWhenUsed[0] = saplingTotal(golem, in);
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(stockWhenUsed[0] >= 0, "no bone meal used yet");
+			helper.assertTrue(stockWhenUsed[0] >= 2, "bone meal used at sapling stock " + stockWhenUsed[0]);
+		});
+	}
+
+	/**
+	 * Several bone meal cycles: each time a tree has been felled a sapling drop is spawned (what the decaying leaves
+	 * would give). The golem must have it back before the next tree is grown, so the sapling stock (golem + carry + input
+	 * chest) never falls below its start value of 3 at any tree, and no spawned drop is left on the ground.
+	 */
+	@GameTest(maxTicks = 9000)
+	public void boneMealCyclesKeepTheSaplingStock(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		ChestBlockEntity in = chest(helper, IN);
+		in.setItem(0, new ItemStack(Items.IRON_AXE));
+		in.setItem(1, new ItemStack(Items.BONE_MEAL, 64));
+		in.setItem(2, new ItemStack(Items.OAK_SAPLING, 3));
+		CopperGolem golem = lumber(helper);
+		net.minecraft.world.entity.item.ItemEntity[] drop = { null };
+		int[] trees = { 0 };
+		boolean[] pendingFell = { false };
+		LumberLogic.Phase[] last = { null };
+		// polled, not phaseListener: that hook is static and the tests run side by side
+		helper.onEachTick(() -> {
+			LumberLogic.Phase p = LumberLogic.phaseOf(golem);
+			if (p != last[0]) {
+				last[0] = p;
+				if (p == LumberLogic.Phase.FELL) {
+					trees[0]++;
+					pendingFell[0] = true;
+					helper.assertTrue(drop[0] == null || drop[0].isRemoved(), "tree " + trees[0] + " grew while the last drop still lay there: drop " + (drop[0] == null ? "none" : drop[0].blockPosition().subtract(helper.absolutePos(BlockPos.ZERO)).toString()) + " golem " + golem.blockPosition().subtract(helper.absolutePos(BlockPos.ZERO)));
+					helper.assertTrue(saplingTotal(golem, in) >= 3, "tree " + trees[0] + ": sapling stock " + saplingTotal(golem, in));
+				}
+				if (p == LumberLogic.Phase.DELIVER && pendingFell[0] && trees[0] <= 4) {
+					pendingFell[0] = false;
+					drop[0] = helper.spawnItem(Items.OAK_SAPLING, helper.relativeVec(golem.position()));
+				}
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(trees[0] >= 5, "trees felled: " + trees[0]);
+		});
+	}
+
 	/**
 	 * A learned 2x2 site (spruce, which would also grow from one sapling) with only 3 saplings in hand plants nothing, not
 	 * even a single one; with a 4th it plants all four.

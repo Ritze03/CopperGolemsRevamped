@@ -148,6 +148,27 @@ is possible (no collision) and the trunk growing around the golem would suffocat
 retried after the skip or the next cycle. After a pickup the golem walks back to its waiting spot (`standOutside`), so the growth logic is unchanged.
 Test: `LumberTest:collectsDropsWhileWaitingForGrowth`.
 
+### Bone meal must not out-run the leaves (sapling loss, 2026-11)
+
+User report from a live server: "Lumber golems keep losing all of their saplings." Their theory, confirmed by the code and
+by tests that failed before the fix: with bone meal the tree is up in a few applications, and `LumberLogic:tickBoneMeal` used to
+apply bone meal first and collect only when it did not (`done` cooldown between applications returns from the tick, so the
+"collect between applications" never ran). Saplings from decaying leaves therefore lay on the ground until they despawned
+after 5 minutes, while every tree cost 1 sapling (4 for 2x2): the stock drained and the input chest ran dry. A second leak: items
+within `WAIT_MIN` of the footprint were never collected while a sapling stood (they stay there for the whole next growth).
+Rules now, in order, every tick of BONEMEAL:
+1. **Collect first**: every collectable drop in the box (same rules: never enter the footprint, skip paths crossing the sapling)
+   before any bone meal. The pickup-delay filter is gone (leaf drops carry a 10-tick delay and bone meal would otherwise run in it).
+   With bone meal in hand the margin to the footprint is `WORK_MIN` (1, the golem stands that close to apply it anyway), without
+   bone meal it stays `WAIT_MIN` (natural growth can come any tick).
+2. **Low stock waits**: when saplings in supply slots + carry + input chest are at most what the next planting needs (1, or 4
+   for a 2x2 footprint), no bone meal is applied until a spare sapling is in hand, no drop was seen for `PICKUP_QUIET` (150
+   ticks, counted from entering BONEMEAL or the last drop) or `PICKUP_MAX` passed. The golem waits (Mending, standing outside).
+   Why: it keeps "no idle wait after felling" (full stock: no wait at all) but, when the next planting is at risk, it grows
+   the tree at the leaves' own pace so their drops can arrive. Threshold "at or below the need" so one spare always remains.
+Tests: `LumberTest:dropsAreCollectedBeforeBoneMeal`, `lowSaplingStockWaitsForDropsBeforeBoneMeal`, `boneMealCyclesKeepTheSaplingStock`.
+DELIVER's sapling routing was checked and is fine (supply slots first, surplus to the input chest, nothing deleted).
+
 Mending while waiting: after collecting, if the input chest holds XP bottles and any Mending axe (held or in the chest) is
 damaged, the golem walks to the chest and repairs it to full (`LumberLogic:mendVisit`), even for a few missing points
 (the felling-time rule only visits when a whole bottle's worth is missing), then goes back to waiting. Why: user request,
@@ -236,8 +257,7 @@ optional). `LumberLogic:tick` detects the tree and runs the current `LumberLogic
 
 1. **PLANT**: a sapling or tree already there skips it (sapling -> BONEMEAL, tree -> FELL). Else fetch saplings from the
    input chest (`wantsFetch`, below 16 in hand), then plant (1x1 or 2x2). Nothing plantable -> PICKUP.
-2. **BONEMEAL**: fetch bone meal (below 4 in hand, up to 16), apply one per 10 ticks. Otherwise (no bone meal, or between
-   applications) collect drops, then wait for natural growth (outside the footprint). The sapling disappearing -> PICKUP. A tree appearing -> FELL (checked every tick).
+2. **BONEMEAL**: fetch bone meal (below 4 in hand, up to 16), collect drops first, then (unless sapling stock is low, see above) apply one per 10 ticks. Otherwise (no bone meal, or low stock) wait for natural growth (outside the footprint). The sapling disappearing -> PICKUP. A tree appearing -> FELL (checked every tick).
 3. **FELL**: fetch / swap the axe at the input chest (worn axe swap), fell the whole tree. A full carry delivers mid-tree
    (`State.mustDeliver`, nothing lost, D9) and the felling continues. Tree gone -> DELIVER at once.
 4. **PICKUP** (cleanup only, see above): collect drops, end rule above, then DELIVER.
@@ -265,6 +285,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
 - `fullCycleOrder`: phases recorded by the listener: PICKUP, DELIVER, PLANT, BONEMEAL, FELL, DELIVER, PLANT, BONEMEAL, with
   FELL always followed by DELIVER (no wait) and DELIVER by PLANT; surplus birch saplings (put in the carry) end in the input chest, logs in the output.
 - `repairsMendingAxeWhileWaitingForGrowth`: axe with 5 damage, 5 bottles in the input chest, sapling and no bone meal: axe whole, one bottle used.
+- Sapling loss: `dropsAreCollectedBeforeBoneMeal`, `lowSaplingStockWaitsForDropsBeforeBoneMeal`, `boneMealCyclesKeepTheSaplingStock` (see "Bone meal must not out-run the leaves").
 - `collectsDropsWhileWaitingForGrowth`: sapling, no bone meal; drops spawned once in BONEMEAL (2 sticks, 2 apples, a sapling, plus a stick next to T that is left alone) end in the carry while it is still a sapling; never in the sapling volume.
 - `twoByTwoSiteWaitsForFourSaplings`: marked 2x2 site, 3 spruce saplings plant nothing, a 4th plants all four.
 - `neverStandsInTheSapling` (bone meal run: never in T's column while a sapling stands, health unchanged) and

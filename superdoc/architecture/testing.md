@@ -51,9 +51,9 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `wornAxeReplacedOnlyByAxe`, `noReplacementKeepsWornHoe`, `noReplacementKeepsWornAxe`, `emptySlotTakesFirstToolAndFilter`,
   `fieldLimit9`, `seedDefinition`, `hoeWorkSwingsAndReturnsToIdle`, `swingCounts` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
   through the global hook `FarmerLogic:testDropRoll` (filtered to its own crop position, since tests run in parallel).
-- `LumberTest` (32): `stripLogsGivesStrippedLogs`, `stripLogsIsVisibleStep`, `fellsMixedPlainAndStrippedTree`, `stripLogsOffByDefault`, `stripLogsNeverBreaksMendingAxe`, `strippedStateFollowsVanilla`, `fellsAlreadyStrippedTree`, `stripLogsSurvivesSaveLoad` (strip setting, see lumber.md), `brokenAxeEmptiesSlotAndRefetches` (axe at 1 durability breaks, slot empty, no exception, new axe fetched), `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`,
+- `LumberTest` (35): `stripLogsGivesStrippedLogs`, `stripLogsIsVisibleStep`, `fellsMixedPlainAndStrippedTree`, `stripLogsOffByDefault`, `stripLogsNeverBreaksMendingAxe`, `strippedStateFollowsVanilla`, `fellsAlreadyStrippedTree`, `stripLogsSurvivesSaveLoad` (strip setting, see lumber.md), `brokenAxeEmptiesSlotAndRefetches` (axe at 1 durability breaks, slot empty, no exception, new axe fetched), `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`,
   `bonemealGrowsTheSaplingThenFellsIt`, `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped`,
-  `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `fullCycleOrder`, `twoByTwoSiteWaitsForFourSaplings`,
+  `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `fullCycleOrder`, `dropsAreCollectedBeforeBoneMeal`, `lowSaplingStockWaitsForDropsBeforeBoneMeal`, `boneMealCyclesKeepTheSaplingStock`, `twoByTwoSiteWaitsForFourSaplings`,
   `neverStandsInTheSapling`, `stepsOutOfTheSapling`, `breakAllowedRules`, `detectTreeRules`,
   `breakTimeFollowsAxeSpeed`, `chopsHoldTheInteractionStateAndReturnsToIdle`, `toolSwingRulesAndCleanup`, `toolSwingHoldAndCleanup`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
 - `ButcherTest` (20, incl. `cooldownAnimalsAreCulledFirst`, `crowdDoesNotMoveTheButcher`, `pushIsOneSidedOnlyAgainstAnimals`): `cullsSurplusKeepsEightAdultsAndCalves` (12 cows + 3 calves), `namedAndLeashedAreNeverTouched`, `protectionRules`, `countingRules`,
@@ -73,7 +73,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
 Total: 215 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 216 required tests passed` (see Gotchas). Update the numbers here when
+`GolemGuiClientTest` has none), so the log says `All 219 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An
