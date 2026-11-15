@@ -19,6 +19,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/crafter.md](features/crafter.md): Crafter profession, 3x3 template, fetch from input, craft at a table, deliver to output.
 - [features/farmer.md](features/farmer.md): Farmer profession, farms a field (max 9x9): till with a hoe, plant the first seed, harvest, deliver.
 - [features/lumber.md](features/lumber.md): Lumber profession, fells one assigned tree (only the block in front / straight above), axe wear, replants.
+- [features/chunk-loading.md](features/chunk-loading.md): profession golems keep a 3x3 chunk area loaded and ticking (persistent ticket), limits.
 
 ## Rules and meta
 

@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped;
 
 import com.coppergolemsrevamped.assign.AssignMode;
+import com.coppergolemsrevamped.chunk.GolemChunkLoader;
 import com.coppergolemsrevamped.core.ModAttachments;
 import com.coppergolemsrevamped.profession.chest_sorter.ChestSorterProfession;
 import com.coppergolemsrevamped.profession.cleaner.CleanerProfession;
@@ -23,6 +24,7 @@ public class CopperGolemsRevamped implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		ModAttachments.init();
+		GolemChunkLoader.init();
 		TransporterProfession.init();
 		ChestSorterProfession.init();
 		CleanerProfession.init();

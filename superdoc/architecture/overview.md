@@ -9,7 +9,7 @@ Copper Golems Revamped is a Fabric mod for Minecraft 26.3 (Mojang names, unobfus
 `coppergolemsrevamped`) that makes Copper Golems useful. Right-clicking a golem with an empty hand opens a
 server-side GUI (works on vanilla clients) where the player picks a profession, assigns its targets (chests, blocks, areas) and toggles follow
 mode. All six professions are implemented: Chest Sorter, Lumber, Crafter, Transporter, Farmer, Cleaner.
-A golem with no profession keeps vanilla behaviour.
+A golem with no profession stands still. A golem with a profession keeps its chunks loaded, see [chunk-loading.md](../features/chunk-loading.md).
 
 ## Data flow
 
@@ -17,13 +17,17 @@ A golem with no profession keeps vanilla behaviour.
    opens `menu/GolemMenu`, a vanilla chest-type menu: the GUI is server-side only, vanilla clients need no mod.
    See [gui.md](../features/gui.md).
 2. Clicks on control cells are handled in `menu/GolemMenu:clicked`: profession cell ->
-   `core/GolemService:changeProfession` (then the menu reopens), follow cell -> flips the follow fields of
-   `GolemData`, assign cell -> `assign/AssignMode:arm` (see [assign-mode.md](../features/assign-mode.md)).
+   `core/GolemService:changeProfession` (takes the player: stored items go to the player; then the menu reopens),
+   follow cell -> flips the follow fields of `GolemData`, assign cell -> `assign/AssignMode:arm` (see
+   [assign-mode.md](../features/assign-mode.md)), Help cell (cell 7) -> `menu/GolemMenu:sendHelp` (chat text from
+   `profession/ProfessionHelp`).
 3. All per-golem state is one persistent attachment, `core/GolemData` (`core/ModAttachments:GOLEM_DATA`):
    profession, assignments, carried items, follow state.
 4. Every server tick the vanilla brain tick is wrapped (`mixin/CopperGolemMixin:cgr$gateBrain`) and routed to
-   `core/GolemTicker:tick`: follow mode (`ai/FollowMode:tick`), else the profession tick
-   (`profession/Profession#tick`, e.g. `profession/transporter/TransporterLogic:tick`), else the vanilla brain.
+   `core/GolemTicker:tick`: first the chunk ticket is kept or released (`chunk/GolemChunkLoader`), then
+   `ai/WalkTo:tick` (a pending walk-to wins), then follow mode (`ai/FollowMode:tick`); a golem with no profession stands
+   still; otherwise the vanilla brain runs only for professions with `runsVanillaBrain` (Chest Sorter), every other
+   profession runs its own tick (`profession/Profession#tick`, e.g. `profession/transporter/TransporterLogic:tick`).
    See [transporter.md](../features/transporter.md).
 5. Death and statue conversion drop stored items via `core/GolemService:dropAll` (mixin hooks).
 
@@ -33,18 +37,19 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 
 | Path | Role |
 | --- | --- |
-| `CopperGolemsRevamped` | Mod entrypoint; initialises attachments, professions, assign mode |
-| `core/` | `GolemData` attachment, `ModAttachments`, `GolemService` (profession change, drops), `GolemTicker` (brain gate) |
-| `mixin/` | `CopperGolemMixin`: interact, brain gate, death and statue drops; `TransportItemsBetweenContainersMixin`: Chest Sorter visited-chest limit |
-| `profession/` | `Profession` declaration record, `Professions` registry |
+| `CopperGolemsRevamped` | Mod entrypoint; initialises attachments, chunk loader, professions, assign mode |
+| `core/` | `GolemData` attachment, `ModAttachments`, `GolemService` (profession change, spawn chest prefill, auto profession name, item hand-over to the player, drops), `GolemTicker` (brain gate) |
+| `chunk/` | `GolemChunkLoader`: persistent chunk ticket per profession golem, see [chunk-loading.md](../features/chunk-loading.md) |
+| `mixin/` | `CopperGolemMixin`: interact, brain gate, death and statue drops; `GolemSpawnMixin`: records the spawn copper chest (build pattern); `TransportItemsBetweenContainersMixin`: Chest Sorter visited-chest limit |
+| `profession/` | `Profession` declaration record, `Professions` registry, `ProfessionHelp` (help texts) |
 | `profession/transporter/` | Transporter declaration and work loop |
 | `profession/chest_sorter/` | Chest Sorter declaration and visited-chest limit, see [chest-sorter.md](../features/chest-sorter.md) |
 | `profession/cleaner/` | Cleaner declaration and area pickup loop, see [cleaner.md](../features/cleaner.md) |
 | `profession/crafter/` | Crafter declaration and fetch/craft/deliver loop, see [crafter.md](../features/crafter.md) |
 | `profession/farmer/` | Farmer declaration and till/plant/harvest/deliver loop, see [farmer.md](../features/farmer.md) |
 | `profession/lumber/` | Lumber declaration and fell/replant/deliver loop, see [lumber.md](../features/lumber.md) |
-| `ai/` | `FollowMode`; `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md) |
-| `assign/` | `AssignMode`: armed next-click target assignment |
+| `ai/` | `FollowMode`; `WalkTo` (walk to an assigned block or area outline); `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md) |
+| `assign/` | `AssignMode`: armed next-click target assignment, area capping (`clampCorner`), walk-to trigger |
 | `menu/` | `GolemMenu` (chest-type layout built from the profession declaration, click handling), `GolemIcon` (icon stacks), containers over `GolemData`, `GolemMenuOpener` |
 | `src/main/resources/assets/` | Icon models and `minecraft/items/*` overrides; also zipped as the optional resource pack |
 | `src/gametest/` | GameTests, see [testing.md](testing.md) |
@@ -59,7 +64,12 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change the GUI layout or slots: `menu/GolemMenu` constructor.
 - Add a GUI control or icon: `menu/GolemMenu:buildControls`, `menu/GolemIcon`, see [gui.md](../features/gui.md).
 - Change how targets are assigned or validated: `assign/AssignMode:click`, `assign/AssignMode:matches`.
-- Change when the vanilla brain runs: `core/GolemTicker:tick`.
+- Change when the vanilla brain runs (and the None case, where the golem stands still): `core/GolemTicker:tick`.
+- Change the help texts: `profession/ProfessionHelp`.
+- Change the walk-to behaviour: `ai/WalkTo`.
+- Change the area size cap: `assign/AssignMode:clampCorner`.
+- Change how the spawn chest is recorded: `mixin/GolemSpawnMixin`.
+- Change chunk loading (ticket radius, refresh, release rules): `chunk/GolemChunkLoader:keep`, `GolemChunkLoader:release`, see [chunk-loading.md](../features/chunk-loading.md).
 - Change where golems stand to interact, or the chest-lid animation: `ai/Interact:approach`, `Interact:standPos`, `Interact:openChest`, see [interaction.md](interaction.md).
 - Change the Transporter's item moving: `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`.
 - Change the Cleaner area or pickup rules: `profession/cleaner/CleanerLogic:box`, `CleanerLogic:tick`.

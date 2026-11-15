@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.core;
 
 import com.coppergolemsrevamped.ai.WalkTo;
+import com.coppergolemsrevamped.chunk.GolemChunkLoader;
 import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Profession.Kind;
@@ -41,6 +42,8 @@ public final class GolemService {
 		prefillSpawnChest(level, data, p);
 		updateName(golem, data, p);
 		WalkTo.cancel(golem);
+		if (p != null) GolemChunkLoader.keep(level, golem);
+		else GolemChunkLoader.release(level, golem);
 		GolemData.save(golem, data);
 	}
 
