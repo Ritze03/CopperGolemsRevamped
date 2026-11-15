@@ -57,9 +57,11 @@ public final class LumberLogic {
 	/** Path goals count as reached within about a block: closer than this to the stand spot, the golem steps onto it. */
 	static final double STAND_SNAP = 1.5;
 
-	enum Result { BROKEN, FULL, DENIED }
+	public enum Result { BROKEN, FULL, DENIED }
 
 	private static final class State {
+		/** The tree spot this state was built for; a different spot (reassigned tree) starts a fresh state. */
+		@Nullable BlockPos tree;
 		int cooldown;
 		int repath;
 		@Nullable BlockPos target;
@@ -148,6 +150,11 @@ public final class LumberLogic {
 			s.cooldown = RETRY_TICKS;
 			return;
 		}
+		if (!t.equals(s.tree)) { // tree reassigned (or first tick): drop stale progress, skips and delivery flag
+			s = new State();
+			s.tree = t;
+			STATES.put(golem, s);
+		}
 		long now = level.getGameTime();
 		s.skip.values().removeIf(until -> until <= now);
 		boolean treeSkipped = s.skip.containsKey(t);
@@ -161,9 +168,16 @@ public final class LumberLogic {
 
 		// leave the shaft whenever we are not continuing to fell
 		if (!felling && inShaft(golem, t)) {
-			exitShaft(level, golem, t);
 			s.breakPos = null;
-			return;
+			if (exitShaft(level, golem, t)) return;
+			// no free neighbour to step out to: ignore the tree for a while and never retry every tick
+			s.skip.put(t, now + SKIP_TICKS);
+			if (feet(golem).getY() > t.getY()) { // hanging in the cleared column: lower it to T's level, no fall
+				if (level.getBlockState(t).getCollisionShape(level, t).isEmpty()) snapTo(golem, t);
+				s.cooldown = RETRY_TICKS;
+				return;
+			}
+			// standing on T's level (not in a shaft): carry on as idle/deliver below
 		}
 
 		// 1. input chest: axe, shears, saplings
@@ -283,7 +297,8 @@ public final class LumberLogic {
 				snapTo(golem, next); // step into / climb up the gap
 			}
 			case FULL -> s.mustDeliver = true;
-			case DENIED -> s.cooldown = RETRY_TICKS;
+			// no cooldown: the golem must be held or climb out next tick, never left hanging unheld in the shaft
+			case DENIED -> s.breakPos = null;
 		}
 	}
 
@@ -300,7 +315,7 @@ public final class LumberLogic {
 	 * The ONLY place that breaks a block. Refuses unless {@link #breakAllowed} and the block is a log/leaves; refuses
 	 * (FULL) when the drops would not fit, so nothing is ever dropped on the ground or lost.
 	 */
-	static Result breakBlock(ServerLevel level, CopperGolem golem, GolemData data, Direction facing, BlockPos pos) {
+	public static Result breakBlock(ServerLevel level, CopperGolem golem, GolemData data, Direction facing, BlockPos pos) {
 		if (!breakAllowed(feet(golem), facing, pos)) return Result.DENIED;
 		BlockState st = level.getBlockState(pos);
 		if (!isTreeBlock(st) || axeSlot(data) < 0) return Result.DENIED;
@@ -356,9 +371,12 @@ public final class LumberLogic {
 		return best;
 	}
 
-	private static void exitShaft(ServerLevel level, CopperGolem golem, BlockPos t) {
+	/** Steps the golem out onto a neighbour of T; false when there is no stand spot. */
+	private static boolean exitShaft(ServerLevel level, CopperGolem golem, BlockPos t) {
 		BlockPos n = standPos(level, t, golem);
-		if (n != null) snapTo(golem, n);
+		if (n == null) return false;
+		snapTo(golem, n);
+		return true;
 	}
 
 	private static void snapTo(CopperGolem golem, BlockPos feet) {
@@ -397,7 +415,16 @@ public final class LumberLogic {
 	private static boolean walk(State s, CopperGolem golem, BlockPos key, double tx, double ty, double tz, boolean arrived, long now) {
 		if (arrived) return true;
 		// airborne on the first ticks after spawning: paths are null, wait instead of counting no-progress ticks
-		if (!golem.onGround()) return false;
+		// (bounded: a golem that never lands, e.g. floating in water, gives up like any stuck walk)
+		if (!golem.onGround()) {
+			if (++s.stuck >= GIVE_UP_TICKS) {
+				s.skip.put(key, now + SKIP_TICKS);
+				s.target = null;
+				s.stuck = 0;
+				s.repath = 0;
+			}
+			return false;
+		}
 		double dist = golem.distanceToSqr(tx, ty, tz);
 		if (!key.equals(s.target) || dist < s.bestDist - PROGRESS_EPS) {
 			s.target = key;
@@ -459,7 +486,7 @@ public final class LumberLogic {
 		if (cur < 0 && !hasEmptyToolSlot(data)) return -1;
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (is.test(st) && (cur < 0 || !st.nextDamageWillBreak())) return i;
+			if (is.test(st) && st.getCount() == 1 && (cur < 0 || !st.nextDamageWillBreak())) return i;
 		}
 		return -1;
 	}
@@ -483,11 +510,9 @@ public final class LumberLogic {
 					break;
 				}
 			}
-		} else if (chest.getItem(i).isEmpty()) {
-			chest.setItem(i, data.items.get(cur));
+		} else {
+			chest.setItem(i, data.items.get(cur)); // fetchableTool only offers single-item slots, so slot i is empty now
 			data.items.set(cur, fresh);
-		} else { // stacked tools (cannot happen in vanilla): put it back, nothing changes
-			chest.getItem(i).grow(fresh.getCount());
 		}
 		chest.setChanged();
 	}
