@@ -8,6 +8,7 @@ import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Professions;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -46,8 +47,6 @@ public class GolemMenu extends AbstractContainerMenu {
 	private static final int HELD_CELL = 8;
 	/** Cells reserved for assign buttons (2..7). */
 	private static final int MAX_ASSIGNS = HELD_CELL - FIRST_ASSIGN_CELL;
-	/** First profession slot cell (row 1). */
-	private static final int ITEMS_START = COLS;
 
 	private static final List<MenuType<?>> TYPES = List.of(MenuType.GENERIC_9x1, MenuType.GENERIC_9x2,
 		MenuType.GENERIC_9x3, MenuType.GENERIC_9x4, MenuType.GENERIC_9x5, MenuType.GENERIC_9x6);
@@ -61,8 +60,13 @@ public class GolemMenu extends AbstractContainerMenu {
 	private final CopperGolem golem;
 	private final @Nullable Profession profession;
 	private final @Nullable Identifier openedProfession;
+	/** Shown profession slots: a prefix of the declared slot order (rows beyond the 6-row limit are cut). */
 	private final int itemCount;
 	private final int rows;
+	/** Per cell: index into {@link GolemData#items}, -1 for control / filler / held cells. */
+	private final int[] itemOfCell;
+	/** Menu slot indices of the profession slots in quick-move order (last declared group first). */
+	private final List<Integer> quickMoveCells = new ArrayList<>();
 	/** Icon stacks of the control and filler cells (indexed by cell; the held and profession cells stay empty). */
 	private final SimpleContainer icons;
 	/** Per cell: the click action, null for filler / held / profession cells. */
@@ -81,33 +85,51 @@ public class GolemMenu extends AbstractContainerMenu {
 		// raw stored id (not the resolved Profession): an unregistered id resolves to null but must still match in stillValid
 		this.openedProfession = GolemData.get(golem).profession;
 		this.rows = rowsFor(profession);
-		this.itemCount = profession == null ? 0 : Math.min(profession.inventorySize(), (rows - 1) * COLS);
+		this.itemOfCell = new int[rows * COLS];
+		Arrays.fill(itemOfCell, -1);
 		this.icons = new SimpleContainer(rows * COLS);
 		this.controls = new Control[rows * COLS];
 		this.iconCell = new boolean[rows * COLS];
 
-		Container items = new GolemItemsContainer(golem, itemCount);
-		Container held = new GolemHeldContainer(golem);
 		List<Profession.SlotGroup> groups = profession == null ? List.of() : profession.slots();
 
 		buildControls();
-		// per-slot filter / max stack from the declaration, in slot order
+		// per-slot filter / max stack from the declaration, in slot order; each group starts on a new row, width cells per row
 		List<Predicate<ItemStack>> filters = new ArrayList<>();
 		List<Integer> maxStacks = new ArrayList<>();
+		List<List<Integer>> groupCells = new ArrayList<>();
+		int nextRow = 1;
+		int shown = 0;
+		boolean cut = false;
 		for (Profession.SlotGroup g : groups) {
+			List<Integer> cells = new ArrayList<>();
 			for (int i = 0; i < g.count(); i++) {
+				int cell = (nextRow + i / g.width()) * COLS + i % g.width();
+				if (cut || cell >= rows * COLS) {
+					cut = true; // keep the shown slots a prefix of the declared order
+					continue;
+				}
+				itemOfCell[cell] = filters.size();
 				filters.add(g.filter());
 				maxStacks.add(g.maxStack());
+				cells.add(cell);
+				shown++;
 			}
+			groupCells.add(cells);
+			nextRow += g.rows();
 		}
+		this.itemCount = shown;
+		for (int gi = groupCells.size() - 1; gi >= 0; gi--) quickMoveCells.addAll(groupCells.get(gi));
 
+		Container items = new GolemItemsContainer(golem, itemCount);
+		Container held = new GolemHeldContainer(golem);
 		for (int cell = 0; cell < rows * COLS; cell++) {
 			int x = 8 + (cell % COLS) * 18;
 			int y = 18 + (cell / COLS) * 18;
 			if (cell == HELD_CELL) {
 				addSlot(new HeldSlot(held, x, y));
-			} else if (cell >= ITEMS_START && cell < ITEMS_START + itemCount) {
-				int k = cell - ITEMS_START;
+			} else if (itemOfCell[cell] >= 0) {
+				int k = itemOfCell[cell];
 				addSlot(new GroupSlot(items, k, x, y, maxStacks.get(k), filters.get(k)));
 			} else {
 				iconCell[cell] = true;
@@ -118,10 +140,9 @@ public class GolemMenu extends AbstractContainerMenu {
 		addStandardInventorySlots(inv, 8, 18 + rows * 18 + 13);
 	}
 
-	/** Rows = 1 control row + ceil(profession slots / 9), at most 6. */
+	/** Rows = 1 control row + the rows of every slot group (each group on new rows), at most 6. */
 	private static int rowsFor(@Nullable Profession p) {
-		int n = p == null ? 0 : p.inventorySize();
-		return Math.min(MAX_ROWS, 1 + (n + COLS - 1) / COLS);
+		return Math.min(MAX_ROWS, 1 + (p == null ? 0 : p.slotRows()));
 	}
 
 	private void buildControls() {
@@ -256,14 +277,43 @@ public class GolemMenu extends AbstractContainerMenu {
 			// golem (held or profession slot) -> player inventory, hotbar end first like vanilla
 			if (!moveItemStackTo(stack, playerStart(), slots.size(), true)) return ItemStack.EMPTY;
 		} else {
-			// player -> profession slots only; never the held / control / filler cells (the merge pass skips mayPlace)
-			if (itemCount == 0 || !moveItemStackTo(stack, ITEMS_START, ITEMS_START + itemCount, false)) return ItemStack.EMPTY;
+			// player -> profession slots only; never the held / control / filler cells
+			if (!moveIntoProfession(stack)) return ItemStack.EMPTY;
 		}
 		if (stack.isEmpty()) slot.setByPlayer(ItemStack.EMPTY);
 		else slot.setChanged();
 		if (stack.getCount() == copy.getCount()) return ItemStack.EMPTY;
 		slot.onTake(player, stack);
 		return copy;
+	}
+
+	/**
+	 * Like {@code moveItemStackTo} over the profession slots only (they are not contiguous in cell space): first merge
+	 * into matching non-empty slots, then fill empty ones, both respecting {@code mayPlace} and the slot max.
+	 * Groups are tried last-declared first, so shift-click fills working storage before a recipe template.
+	 */
+	private boolean moveIntoProfession(ItemStack stack) {
+		boolean moved = false;
+		for (int pass = 0; pass < 2 && !stack.isEmpty(); pass++) {
+			for (int cell : quickMoveCells) {
+				if (stack.isEmpty()) break;
+				Slot slot = slots.get(cell);
+				ItemStack cur = slot.getItem();
+				if (pass == 0 ? cur.isEmpty() || !ItemStack.isSameItemSameComponents(cur, stack) : !cur.isEmpty()) continue;
+				if (!slot.mayPlace(stack)) continue;
+				int room = Math.min(slot.getMaxStackSize(), stack.getMaxStackSize()) - cur.getCount();
+				int n = Math.min(room, stack.getCount());
+				if (n <= 0) continue;
+				if (cur.isEmpty()) slot.setByPlayer(stack.split(n));
+				else {
+					cur.grow(n);
+					stack.shrink(n);
+					slot.setChanged();
+				}
+				moved = true;
+			}
+		}
+		return moved;
 	}
 
 	@Override

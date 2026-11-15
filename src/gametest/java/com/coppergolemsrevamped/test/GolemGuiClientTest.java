@@ -93,6 +93,24 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 			});
 			context.waitTicks(20);
 			context.takeScreenshot("golem-gui-cleaner");
+
+			// (f) crafter: sticks template (slots 0 and 3 = a vertical pair in the 3x3), planks in the buffer
+			world.getServer().runOnServer(server -> {
+				ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
+				player.closeContainer();
+				GolemService.changeProfession(player.level(), golem, CopperGolemsRevamped.id("crafter"));
+				GolemData data = GolemData.get(golem);
+				data.items.set(0, new ItemStack(Items.OAK_PLANKS));
+				data.items.set(3, new ItemStack(Items.OAK_PLANKS));
+				data.items.set(9, new ItemStack(Items.OAK_PLANKS, 6));
+				data.items.set(10, new ItemStack(Items.STICK, 8));
+				data.assignments.put("input", player.blockPosition().offset(3, 0, 0));
+				data.assignments.put("table", player.blockPosition().offset(3, 0, 2));
+				GolemData.save(golem, data);
+				GolemMenuOpener.open(player, golem);
+			});
+			context.waitTicks(20);
+			context.takeScreenshot("golem-gui-crafter");
 		}
 	}
 }

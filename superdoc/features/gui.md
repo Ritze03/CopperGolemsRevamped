@@ -25,7 +25,7 @@ shears use. Any item in either hand stays vanilla (decision D4).
 (`MenuType.GENERIC_9x1..9x6`, chosen from the row count), so the client builds its normal chest screen. No
 profession-specific code: a new profession shows up with zero GUI changes (decision D6).
 
-`rows = min(6, 1 + ceil(profession slots / 9))` (profession None: 1 row). There are exactly `rows*9` top slots
+`rows = min(6, 1 + sum over slot groups of ceil(count / width))` (`Profession:slotRows`; profession None: 1 row). There are exactly `rows*9` top slots
 (cell = row*9 + column, row-major) followed by the 27 + 9 player slots (`addStandardInventorySlots`); the
 client desyncs if the count is not `rows*9 + 36`.
 
@@ -35,14 +35,19 @@ client desyncs if the count is not `rows*9 + 36`.
 | 1 | Follow toggle |
 | 2..7 | One assign button per `AssignSpec` of the profession, in order (max 6) |
 | 8 | Held-item slot (the golem's carried item, take-out only; shows the `held_empty` placeholder when the hand is empty) |
-| 9.. | The profession's slots in declaration order (`SlotGroup`s back to back, 9 per row) |
+| 9.. | The profession's slots in declaration order; every `SlotGroup` starts on a new row at column 0 and wraps after its `width` cells (default 9) |
 | rest | Filler (plain vanilla gray stained glass pane, tooltip hidden) |
 
 Example, Transporter (one group of 9, two assigns): 2 rows, cells 0 profession, 1 follow, 2 and 3 assign
 buttons (A, B), 4..7 filler, 8 held, 9..17 carry slots; top slots 0..17, player inventory 18..53.
 Profession None: 1 row, cells 0 and 1 controls, 2..7 filler, 8 held; top slots 0..8, player inventory 9..44.
-Groups are not aligned to rows and carry no labels (a chest menu has no room for headings). At most 45 profession
-slots are shown (5 rows); the container is sized to that.
+Example, Crafter (`template` 9 slots width 3, `buffer` 9 slots width 9, three assigns): 5 rows; rows 1..3 hold the
+template as a 3x3 square in columns 0..2 (columns 3..8 filler), row 4 the buffer. Slot `i` of a width-3 group sits at
+row `i / 3`, column `i % 3` of the square, the same order the Crafter reads it as a crafting grid.
+Why: the user asked for a real 3x3 "crafting template" in the GUI; packing groups back to back would have drawn it
+as a 9-wide strip. Groups carry no labels (a chest menu has no room for headings). Rows beyond the 6-row limit are
+cut: the shown slots are always a prefix of the declared order and the container is sized to them (`itemCount`).
+Cell -> data index is `GolemMenu.itemOfCell`; profession slots are not contiguous in cell space.
 
 Held slot (`GolemMenu.HeldSlot`): `getItem` returns a cached `held_empty` placeholder ("Held item" / "The golem is
 holding nothing") while the real main hand is empty, so the cell does not look like an empty slot. The placeholder
@@ -87,8 +92,11 @@ it. With a real item held, all inputs are vanilla and take-out only (`mayPlace` 
 keeps one slot object whose sync (`broadcastChanges` reads `getItem`) shows the placeholder or the real item.
 
 `quickMoveStack`: control / filler -> nothing; held or profession slot -> player inventory (hotbar end first);
-player slot -> profession slots only (`moveItemStackTo` over the profession cell range only, because its merge
-pass skips `mayPlace` and would otherwise fill the held / control cells).
+player slot -> profession slots only via `GolemMenu:moveIntoProfession`, which walks the profession cells itself
+(merge pass into matching stacks, then empty slots, both honouring `mayPlace` and the slot max). It replaces
+`moveItemStackTo`, whose cell range must be contiguous and would hit control / filler / held cells now that profession
+slots are scattered across rows. Groups are tried last-declared first. Why: shift-click should fill working storage
+(Crafter buffer) before a recipe template (maxStack 1), which the user does not want filled by accident.
 
 ## Containers
 
