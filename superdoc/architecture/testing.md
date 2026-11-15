@@ -8,34 +8,50 @@ not part of `check`.
 
 ## Tests
 
-- `TransporterTest:transporterMovesEverything`: 12 stacks (two item types) in chest A, golem spawned
-  with `helper.spawn` (AI runs), transporter profession + `input`/`output` assignments; succeeds when A is
-  empty and B holds exact counts. `maxTicks = 2400` (a run needs ~1200 ticks, so 2x headroom).
-- `GolemDataTest:golemDataSurvivesSaveLoad`: full entity round trip
-  (`Entity#saveWithoutId` into `TagValueOutput`, then `Entity#load` of a fresh golem from `TagValueInput`).
-  Proves `GolemData` is a persistent attachment, not just that its codec works.
-- `GolemDataTest:assignAreaHelpers`: pure `AssignMode:areaFits` / `AssignMode:inRange`.
-- `ChestSorterTest:visitedLimitScalesWithWaxedBlocks`, `mixinAppliesLimit`, `waxedSlotFilter`: Chest Sorter
-  limit scaling, the mixin applying it, and the waxed-slot filter (see [chest-sorter.md](../features/chest-sorter.md)).
-- `CleanerTest:cleansItemsInsideArea`, `areaLimit16`, `partialPickupConservesItems`, `borderItemIgnored`,
-  `skipRuleExpires`, `deliversWhenOnlySkippedItemsRemain`, `unreachableItemDoesNotBlock`,
-  `pickupWorksFromSpawnTick`: Cleaner pickup/delivery, area limit, item conservation, border and give-up rules, and
-  configuring on the spawn tick (see [cleaner.md](../features/cleaner.md)).
-- `CrafterTest:craftsSticksFromTemplate`, `noCraftWithoutTable`, `templateDropsOnProfessionChange`,
-  `bufferDropsOnProfessionChange`, `noCraftWhenTableReplaced`, `deliversBufferWhenTemplateCleared`,
-  `templateSlotHoldsOne`: Crafter loop, drops and menu slot rules (see [crafter.md](../features/crafter.md)).
-- `LumberTest:fellsOakDeliversAndReplants`, `onlyBreaksFrontOrAbove`, `fullCarryDeliversMidTreeAndContinues`,
-  `noAxeNoWork`, `guardDeniesWrongPosition`, `deniedInShaftDoesNotDrop`, `noStandSpotDoesNotLock`,
-  `breakTimeFollowsAxeSpeed`, `lumberDeclaration`: Lumber felling, break rule/guard, delivery, shaft safety, see
-  [lumber.md](../features/lumber.md).
-- `FarmerTest:harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
-  `harvestWithNearlyFullCarryLosesNothing`, `stemSeedsIgnored`, `fieldLimit9`, `seedDefinition`: Farmer loop, item
-  conservation, seed definition and field limit (see [farmer.md](../features/farmer.md)). The nearly-full-carry test
-  forces the drop roll through the global hook `FarmerLogic:testDropRoll` (filtered to its own crop position, since
-  tests run in parallel).
+Per class, with the `@GameTest` method count. Detail of what each test checks is on the feature page.
 
-Total: `@GameTest` methods counted with `grep -rc '@GameTest' src/gametest` (TransporterTest 1, GolemDataTest 2,
-ChestSorterTest 3, CleanerTest 8, CrafterTest 7, FarmerTest 7, LumberTest 9 = 37), so the log says `All 38 required tests passed` (see Gotchas).
+- `TransporterTest` (8): `transporterMovesEverything` (12 stacks, two item types, A to B with exact counts,
+  `maxTicks = 2400`, a run needs ~1200 ticks), plus the shared `ai/Interact` tests `standPosPicksNearestOneBlockSpot`,
+  `reachRules`, `openChestClosesAfterTimer`, `killedGolemDoesNotLeakOpener`, `walkingAwayClosesChest`,
+  `transporterStandsCloseAndOpensLids`, `walledOffChestUsesTwoBlockFallback` (see [interaction.md](interaction.md)).
+- `GolemDataTest` (2): `golemDataSurvivesSaveLoad` (full entity round trip: `Entity#saveWithoutId` into
+  `TagValueOutput`, then `Entity#load` of a fresh golem from `TagValueInput`; proves `GolemData` is a persistent
+  attachment, not just that its codec works), `assignAreaHelpers` (pure `AssignMode:areaFits` / `AssignMode:inRange`).
+- `CoreFeedbackTest` (12): spawn chest (`spawnChestFromBuildPattern`, `spawnChestPrefillRules`), profession switch hands
+  items to the player (`switchMovesItemsToPlayer`, `switchDropsRestAtPlayerWhenFull`), None stands still
+  (`noneProfessionStandsStill`), auto profession name (`professionShownAsName`, `playerNameTagIsKept`), `WalkTo`
+  (`walkToStopsNextToBlock`, `areaAssignWalksOutline`, `unreachableWaypointIsSkipped`), area clamp
+  (`areaCornerIsCappedNotRejected`), `everyProfessionHasHelp`. See [gui.md](../features/gui.md),
+  [assign-mode.md](../features/assign-mode.md).
+- `ChestSorterTest` (6): `visitedLimitScalesWithWaxedBlocks`, `mixinAppliesLimit`, `waxedSlotFilter`,
+  `sortsFreshGolem`, `sortsWaxedOxidizedSourceIntoMatchingChest`, `sortsAfterBeingTransporter`
+  ([chest-sorter.md](../features/chest-sorter.md)).
+- `CleanerTest` (9): `cleansItemsInsideArea`, `areaLimit16`, `partialPickupConservesItems`, `borderItemIgnored`,
+  `skipRuleExpires`, `deliversWhenOnlySkippedItemsRemain`, `unreachableItemDoesNotBlock`, `pickupWorksFromSpawnTick`,
+  `opensOutputChestWhenDelivering` ([cleaner.md](../features/cleaner.md)).
+- `CrafterTest` (11): `craftsSticksUntilOutputFull`, `craftsRepeaterWithPerCellSlots`, `fullOutputChestKeepsProductAndResumes`,
+  `noCraftWithoutTable`, `noCraftWhenTableReplaced`, `deliversEverythingWhenTemplateCleared`, `staleInputItemsAreDelivered`,
+  `lidsOpenAndReachIsOneBlock`, `guiLayoutIsCraftingTableLike`, `shiftClickFillsInputNotTemplate`,
+  `itemsDropOnProfessionChange` ([crafter.md](../features/crafter.md)).
+- `FarmerTest` (17): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
+  `harvestWithNearlyFullCarryLosesNothing`, `stemSeedsIgnored`, `seedsGoToSeedChestRestToOutput`, `seedsOverflowToOutput`,
+  `noSeedChestSeedsToOutput`, `axeHarvestsFruitLeavesStems`, `hoeIgnoresMelons`, `wornHoeReplacedOnlyByHoe`,
+  `wornAxeReplacedOnlyByAxe`, `noReplacementKeepsWornHoe`, `noReplacementKeepsWornAxe`, `emptySlotTakesFirstToolAndFilter`,
+  `fieldLimit9`, `seedDefinition` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
+  through the global hook `FarmerLogic:testDropRoll` (filtered to its own crop position, since tests run in parallel).
+- `LumberTest` (14): `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`,
+  `bonemealGrowsTheSaplingThenFellsIt`, `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped`,
+  `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `breakAllowedRules`, `detectTreeRules`,
+  `breakTimeFollowsAxeSpeed`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
+- `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
+  `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
+
+Total: 85 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 86 required tests passed` (see Gotchas). Update the numbers here when
+you add or remove a test.
+
+**Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An
+unregistered class is not an error: it silently runs 0 tests and the pass count just stays lower.
 
 ## Client tests (headless sway only)
 

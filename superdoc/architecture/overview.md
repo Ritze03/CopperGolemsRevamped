@@ -73,8 +73,8 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change where golems stand to interact, or the chest-lid animation: `ai/Interact:approach`, `Interact:standPos`, `Interact:openChest`, see [interaction.md](interaction.md).
 - Change the Transporter's item moving: `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`.
 - Change the Cleaner area or pickup rules: `profession/cleaner/CleanerLogic:box`, `CleanerLogic:tick`.
-- Change the Farmer field, seed or hoe rules: `profession/farmer/FarmerLogic:cells`, `FarmerLogic:isSeed`, `FarmerLogic:tick`, see [farmer.md](../features/farmer.md).
-- Change the Lumber break rule, break time or tree scan: `profession/lumber/LumberLogic:breakAllowed`, `LumberLogic:breakBlock`, `LumberLogic:breakTicks`, `LumberLogic:nextBlock`, see [lumber.md](../features/lumber.md).
+- Change the Farmer field, seed or tool (hoe/axe) rules: `profession/farmer/FarmerLogic:cells`, `FarmerLogic:isSeed`, `FarmerLogic:modeOf`, `FarmerLogic:findTool`, `FarmerLogic:tick`, see [farmer.md](../features/farmer.md).
+- Change Lumber tree detection, the break rule or the felling step: `profession/lumber/LumberLogic:detectTree`, `LumberLogic:breakAllowed`, `LumberLogic:breakBlock`, `LumberLogic:breakTicks`, see [lumber.md](../features/lumber.md).
 - Change the Crafter recipe matching or loop: `profession/crafter/CrafterLogic:plan`, `CrafterLogic:decide`, see [crafter.md](../features/crafter.md).
 - Change the Chest Sorter chest limit: `profession/chest_sorter/ChestSorterProfession:visitedLimit`, mixin `mixin/TransportItemsBetweenContainersMixin`.
 - Change death/statue drops: `core/GolemService:dropAll`, hooks in `mixin/CopperGolemMixin`.

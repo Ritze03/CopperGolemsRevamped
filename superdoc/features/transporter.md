@@ -27,8 +27,7 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
 6. `GolemData.save` after each take/insert.
 
 Reach is `Interact:inReach` (1 block, plus diagonal-up and below), fallback `Interact:nearReach` (2 blocks).
-`TransporterLogic:inReach` (horizontal <= 2.0 to the chest centre, `chestY - golemBlockY` in [-2, +1]) is kept
-unchanged for Crafter, Farmer and Lumber until they move to `Interact`.
+The old 2-block `TransporterLogic:inReach` was deleted once every profession used `Interact`.
 
 Why wait 20 ticks after a successful move: the lid is open for `Interact.OPEN_TICKS`, and the golem should stand
 there while it is (otherwise it walks off and the lid closes early on distance).
@@ -49,7 +48,7 @@ Transporter (`GolemTicker` skips it). `PathNavigation` is ticked in `Mob#serverA
   stack size), then fills empty slots; shrinks the source.
 - `insertAll(NonNullList<ItemStack> carry, Container dst): boolean` same into a container
   (`canPlaceItem`, container max stack size respected); remainder stays in `carry`.
-- `containerAt(Level, BlockPos): @Nullable Container`, `inReach(CopperGolem, BlockPos)` (legacy 2-block), `isEmpty(list)`.
+- `containerAt(Level, BlockPos): @Nullable Container`, `isEmpty(list)`.
 
 Why a hand-written merge loop instead of `HopperBlockEntity.addItem(from, to, stack, dir)`: that
 method has hopper side effects (cooldown, `from`-sided logic) and needs a source container; the

@@ -23,10 +23,6 @@ import net.minecraft.world.phys.Vec3;
 public final class TransporterLogic {
 	private TransporterLogic() {}
 
-	static final double REACH_HORIZONTAL = 2.0;
-	/** Chest Y minus golem Y must be within [-2, +1] (vanilla reach: chest 2 below to 1 above). */
-	static final int REACH_DOWN = 2;
-	static final int REACH_UP = 1;
 	static final int RETRY_TICKS = 40;
 	static final double SPEED = 1.0;
 
@@ -68,15 +64,6 @@ public final class TransporterLogic {
 			if (isEmpty(data.items)) s.walk.reset();
 		}
 		GolemData.save(golem, data);
-	}
-
-	/** Legacy 2-block reach, still used by Crafter, Farmer and Lumber until they move to {@code ai/Interact}. */
-	public static boolean inReach(CopperGolem golem, BlockPos chest) {
-		double dx = golem.getX() - (chest.getX() + 0.5);
-		double dz = golem.getZ() - (chest.getZ() + 0.5);
-		if (dx * dx + dz * dz > REACH_HORIZONTAL * REACH_HORIZONTAL) return false;
-		int dy = chest.getY() - golem.blockPosition().getY();
-		return dy >= -REACH_DOWN && dy <= REACH_UP;
 	}
 
 	/** The container at pos (both halves for a double chest), or null when it is not a container. */

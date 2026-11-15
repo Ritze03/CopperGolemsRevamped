@@ -185,7 +185,7 @@ item, so the pack is optional (decision D18).
 | `assign_chest`, `assign_input`, `assign_output` | `chest` | chest (its override copies vanilla's special seasonal model) |
 | `assign_block` | `target` | target block |
 | `assign_area` | `map` | empty map |
-| `assign_tools` | `iron_pickaxe` | iron pickaxe (chest with a pickaxe badge; Farmer tool chest) |
+| `assign_tools` | `iron_pickaxe` | iron pickaxe (chest with a pickaxe badge; Farmer tool chest, holds hoes and axes) |
 | `assign_seeds` | `wheat_seeds` | wheat seeds (chest with a sprout badge; Farmer seed chest) |
 | `assign_tree` | `oak_sapling` | oak sapling (a tree with the pin; Lumber tree) |
 | `help` | `book` | book (copper-bound book with a "?") |

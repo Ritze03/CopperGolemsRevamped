@@ -2,13 +2,15 @@
 
 Shared by every profession: where a golem stands to touch a block, and the visible chest lid. A profession
 only calls two methods, `Interact.approach` while walking and `Interact.openChest` when it moves items.
-Adopted so far: Transporter (both chests) and Cleaner (output chest). Crafter, Farmer, Lumber still use the old
-`profession/transporter/TransporterLogic:inReach` (2-block rule) and have no lid yet; see "Adopting".
+Adopted by every profession that moves items or walks to a block: Transporter, Cleaner, Crafter, Farmer and Lumber
+(chests and, for the non-chest targets, `approach` only); see "Adopting". The old 2-block `TransporterLogic:inReach`
+is gone; the 2-block rule survives only as the `nearReach` fallback.
 
 ## Reach rule
 
-User rule: golems get within 1 block of what they interact with, 2 blocks only if that is impossible (Lumber is
-exempt). Target P, golem feet block F, offset = F - P. A stand position is one of:
+User rule: golems get within 1 block of what they interact with, 2 blocks only if that is impossible. Lumber reaches up the
+trunk from the ground, so the break check for a tree log is its own horizontal rule (`LumberLogic:breakAllowed`,
+`LumberLogic:REACH_H`); the walking still goes through `approach`. Target P, golem feet block F, offset = F - P. A stand position is one of:
 
 | Stand spot (offset) | Meaning |
 | --- | --- |
@@ -90,14 +92,20 @@ open and close the chest every retry.
 ## Adopting it in a profession
 
 1. Add `final Interact.Approach walk = new Interact.Approach();` to the profession's `State`.
-2. Replace `if (!TransporterLogic.inReach(...)) { moveTo...; return; }` with
+2. Replace a hand-written `if (!inReach(...)) { moveTo...; return; }` with
    `if (!Interact.approach(level, golem, pos, s.walk, SPEED)) return;`, then `setLookAt` as before.
 3. After a take/insert that moved items: `Interact.openChest(level, golem, chestPos, Interact.Action.TAKE|INSERT)`,
    cooldown `Interact.OPEN_TICKS`, and `s.walk.reset()`.
-4. For non-chest targets (crops, crafting table) use `approach` only. Lumber, which walks to a stand spot of its own
-   choosing, keeps its own rule.
+4. For non-chest targets (crops, crafting table, the tree to plant at) use `approach` only. Lumber additionally
+   checks `LumberLogic:breakAllowed` before breaking a log (see [../features/lumber.md](../features/lumber.md)).
+
+Callers: `TransporterLogic:tick`, `CleanerLogic:tick`, `CrafterLogic:tick`/`CrafterLogic:walkTo`, `FarmerLogic:tick`,
+`LumberLogic:tick`/`LumberLogic:breakBlock`.
 
 Tests: `TransporterTest` (`standPosPicksNearestOneBlockSpot`, `reachRules`, `openChestClosesAfterTimer`,
 `killedGolemDoesNotLeakOpener`, `walkingAwayClosesChest`, `transporterStandsCloseAndOpensLids`,
-`walledOffChestUsesTwoBlockFallback`) and `CleanerTest:opensOutputChestWhenDelivering`. The tests live in
-`TransporterTest` because a new test class must be listed in `src/gametest/resources/fabric.mod.json`.
+`walledOffChestUsesTwoBlockFallback`), `CleanerTest:opensOutputChestWhenDelivering`,
+`CrafterTest:lidsOpenAndReachIsOneBlock`, `FarmerTest:seedsGoToSeedChestRestToOutput` (lid opened and closed),
+`FarmerTest:axeHarvestsFruitLeavesStems` (1-block reach at each harvest), `LumberTest:walledInTrunkIsFelledFromTwoBlocks`
+(2-block fallback). The `Interact` unit tests live in `TransporterTest` because a new test class must be listed in
+`src/gametest/resources/fabric.mod.json`.

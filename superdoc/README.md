@@ -6,8 +6,8 @@ Agent-facing documentation for the project. Start at the overview.
 
 - [architecture/overview.md](architecture/overview.md): start-here hub: big picture, data flow, module map, where to look for X.
 - [architecture/vanilla-copper-golem.md](architecture/vanilla-copper-golem.md): vanilla 26.3 copper golem and Fabric API reference (signatures, mixin targets).
-- [architecture/interaction.md](architecture/interaction.md): `ai/Interact`, shared 1-block reach/stand position and visible chest lids for all professions.
-- [architecture/testing.md](architecture/testing.md): GameTests, how to run them, and the test-count gotcha.
+- [architecture/interaction.md](architecture/interaction.md): `ai/Interact`, shared 1-block reach/stand position and visible chest lids, used by all professions.
+- [architecture/testing.md](architecture/testing.md): GameTests per class, how to run them, registering new test classes, the test-count gotcha.
 
 ## Features
 
@@ -17,8 +17,8 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/chest-sorter.md](features/chest-sorter.md): Chest Sorter profession, waxed copper blocks raise the visited-chest limit.
 - [features/cleaner.md](features/cleaner.md): Cleaner profession, picks up item entities in an area (max 16x16) into an output chest.
 - [features/crafter.md](features/crafter.md): Crafter profession, 3x3 template, fetch from input, craft at a table, deliver to output.
-- [features/farmer.md](features/farmer.md): Farmer profession, farms a field (max 9x9): till with a hoe, plant the first seed, harvest, deliver.
-- [features/lumber.md](features/lumber.md): Lumber profession, fells one assigned tree (only the block in front / straight above), axe wear, replants.
+- [features/farmer.md](features/farmer.md): Farmer profession, farms a field (max 9x9): a hoe tills, plants and harvests, an axe harvests melons and pumpkins; seeds go to the seed chest.
+- [features/lumber.md](features/lumber.md): Lumber profession, fells a whole assigned tree from the ground (flood fill, 2x2 and branches), collects drops, replants, bone meal, axe wear.
 - [features/chunk-loading.md](features/chunk-loading.md): profession golems keep a 3x3 chunk area loaded and ticking (persistent ticket), limits.
 
 ## Rules and meta
