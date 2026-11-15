@@ -169,7 +169,7 @@ public final class FarmerLogic {
 			BlockPos pos = data.assignments.get(FarmerProfession.TOOLS);
 			Container chest = pos == null || s.skip.containsKey(pos) ? null : TransporterLogic.containerAt(level, pos);
 			if (chest != null) {
-				boolean repair = GolemMending.canRepair(level, tool, chest, FarmerLogic::isTool);
+				boolean repair = GolemMending.canRepair(level, data, tool, chest, FarmerLogic::isTool);
 				boolean swap = (mode == Mode.NONE || worn) && findTool(chest, tool) >= 0;
 				boolean park = mode != Mode.NONE && GolemMending.mustPark(tool) && GolemMending.canPark(chest, tool);
 				if (repair || swap || park) {
@@ -277,11 +277,11 @@ public final class FarmerLogic {
 		// 5. idle (no field work, nothing to deliver): top up damaged Mending tools from the tools chest, whatever they miss
 		BlockPos toolsPos = data.assignments.get(FarmerProfession.TOOLS);
 		Container toolsChest = toolsPos == null || s.skip.containsKey(toolsPos) ? null : TransporterLogic.containerAt(level, toolsPos);
-		if (toolsChest != null && GolemMending.canRepair(level, tool, toolsChest, FarmerLogic::isTool, true)) {
+		if (toolsChest != null && GolemMending.canRepair(level, data, tool, toolsChest, FarmerLogic::isTool, true)) {
 			if (walkTo(level, s, golem, toolsPos, now)) {
-				int used = GolemMending.repair(level, tool, toolsChest, FarmerLogic::isTool, TransferBudget.remaining(level, golem), true);
+				int used = GolemMending.repair(level, data, tool, toolsChest, FarmerLogic::isTool, TransferBudget.remaining(level, golem), true);
 				TransferBudget.spend(level, golem, used);
-				boolean more = TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, tool, toolsChest, FarmerLogic::isTool, true);
+				boolean more = TransferBudget.exhausted(level, golem) && GolemMending.canRepair(level, data, tool, toolsChest, FarmerLogic::isTool, true);
 				if (used > 0 || more) Interact.openChest(level, golem, toolsPos, Interact.Action.TAKE);
 				done(s, golem, data, more ? TransferBudget.waitTicks(level) : used > 0 ? Interact.OPEN_TICKS : SCAN_TICKS);
 			}
@@ -462,7 +462,7 @@ public final class FarmerLogic {
 	 * resting Mending tool when nothing replaces it (the golem then works without a tool: it harvests but does not till).
 	 */
 	private static void toolVisit(ServerLevel level, CopperGolem golem, GolemData data, State s, Container chest, BlockPos pos) {
-		int used = GolemMending.repair(level, data.items.get(FarmerProfession.TOOL_SLOT), chest, FarmerLogic::isTool, TransferBudget.remaining(level, golem));
+		int used = GolemMending.repair(level, data, data.items.get(FarmerProfession.TOOL_SLOT), chest, FarmerLogic::isTool, TransferBudget.remaining(level, golem));
 		TransferBudget.spend(level, golem, used);
 		ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
 		boolean worn = tool.nextDamageWillBreak() || !GolemMending.canUse(tool);
@@ -480,7 +480,7 @@ public final class FarmerLogic {
 		}
 		ItemStack now = data.items.get(FarmerProfession.TOOL_SLOT);
 		// budget used up while work remains: stay, keep the lid open, go on next window (not "nothing to do")
-		boolean more = TransferBudget.exhausted(level, golem) && (GolemMending.canRepair(level, now, chest, FarmerLogic::isTool)
+		boolean more = TransferBudget.exhausted(level, golem) && (GolemMending.canRepair(level, data, now, chest, FarmerLogic::isTool)
 			|| GolemMending.mustPark(now) && GolemMending.canPark(chest, now)
 			|| (now.isEmpty() || now.nextDamageWillBreak() || GolemMending.mustPark(now)) && findTool(chest, now) >= 0);
 		if (acted || more) Interact.openChest(level, golem, pos, Interact.Action.TAKE);

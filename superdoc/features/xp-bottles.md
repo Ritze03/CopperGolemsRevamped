@@ -64,5 +64,7 @@ furnace maps empty, remainder < 7), `smelterXpSlotDeliversAndKeepsOldItems`, `sm
 
 ## Use as Mending repair
 
-Bottles in a tool profession's tool chest repair its Mending tools, 7 XP each (14 durability via the vanilla conversion). See
-[mending.md](mending.md).
+Bottles in a tool profession's tool chest repair its Mending tools, 7 XP each (14 durability via the vanilla conversion). The
+repair spends `GolemData.xp` first and opens a bottle (+7 to the store) only when that is short, so no XP is wasted (user:
+"no XP is ever wasted"); the leftover stays in the store. Butcher kill/breeding XP can be used this way before it is bottled.
+See [mending.md](mending.md).

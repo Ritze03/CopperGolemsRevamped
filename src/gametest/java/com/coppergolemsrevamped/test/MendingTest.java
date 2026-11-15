@@ -256,6 +256,33 @@ public class MendingTest {
 		});
 	}
 
+	/**
+	 * No XP is wasted: a sword missing 5 points costs 3 XP (ceil of 5 / 2), the other 4 XP of the bottle stay in the golem's
+	 * store. A second repair of 4 missing points is paid from the store alone: no bottle. XP from bottles = spent + stored.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void mendingWastesNoXp(GameTestHelper helper) {
+		ButcherTest.Pen p = herd(helper, 0, mending(helper, Items.IRON_SWORD, 250 - 5));
+		p.tools.setItem(0, new ItemStack(Items.EXPERIENCE_BOTTLE, 2));
+		int[] phase = {0};
+		helper.succeedWhen(() -> {
+			GolemData d = GolemData.get(p.golem);
+			ItemStack s = d.items.get(ButcherProfession.TOOL_SLOT);
+			if (phase[0] == 0) {
+				helper.assertTrue(s.is(Items.IRON_SWORD) && s.getDamageValue() == 0, "sword damage: " + s.getDamageValue());
+				helper.assertTrue(ButcherTest.count(p.tools, Items.EXPERIENCE_BOTTLE) == 1, "bottles left: " + ButcherTest.count(p.tools, Items.EXPERIENCE_BOTTLE));
+				helper.assertTrue(d.xp == 4, "stored XP after 5 points: " + d.xp + " (7 - 3)");
+				s.setDamageValue(4);
+				GolemData.save(p.golem, d);
+				phase[0] = 1;
+			}
+			helper.assertTrue(s.getDamageValue() == 0, "second repair pending, damage " + s.getDamageValue());
+			helper.assertTrue(ButcherTest.count(p.tools, Items.EXPERIENCE_BOTTLE) == 1, "the second repair took a bottle: " + ButcherTest.count(p.tools, Items.EXPERIENCE_BOTTLE));
+			int bottleXp = (2 - ButcherTest.count(p.tools, Items.EXPERIENCE_BOTTLE)) * 7, spent = 3 + 2;
+			helper.assertTrue(d.xp == 2 && bottleXp == spent + d.xp, "XP stored " + d.xp + ", bottled " + bottleXp + ", spent " + spent);
+		});
+	}
+
 	// ---- Farmer ----------------------------------------------------------------------------------------------------
 
 	/** Mending hoe at the threshold, no other tool: it goes back, the dirt is not tilled, the ripe wheat is still harvested by hand. */

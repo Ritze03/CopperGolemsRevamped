@@ -62,8 +62,14 @@ public final class GolemMending {
 		return EnchantmentHelper.modifyDurabilityToRepairFromXp(level, tool, GolemXp.XP_PER_BOTTLE);
 	}
 
+	/** XP that restores {@code durability} points on {@code tool}, rounded up (vanilla ratio: {@code perBottle} per 7 XP). */
+	private static int xpFor(ServerLevel level, ItemStack tool, int durability) {
+		int per = perBottle(level, tool);
+		return per <= 0 ? Integer.MAX_VALUE : (int) (((long) durability * GolemXp.XP_PER_BOTTLE + per - 1) / per);
+	}
+
 	/**
-	 * Worth a bottle: a damaged Mending tool that is resting (not usable) or lacks at least one bottle's worth of durability.
+	 * Worth a repair: a damaged Mending tool that is resting (not usable) or lacks at least one bottle's worth of durability.
 	 * Why: without this the golem would walk back to the chest after every single hit to burn a bottle on 1 point.
 	 */
 	private static boolean wantsRepair(ServerLevel level, ItemStack s, Predicate<ItemStack> isTool, boolean topUp) {
@@ -78,42 +84,53 @@ public final class GolemMending {
 		return n;
 	}
 
-	/** Is there a bottle in {@code chest} and a damaged Mending tool (held or in the chest) worth using it on. */
-	public static boolean canRepair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool) {
-		return canRepair(level, held, chest, isTool, false);
+	/** Is there XP (stored or a bottle in {@code chest}) and a damaged Mending tool (held or in the chest) worth using it on. */
+	public static boolean canRepair(ServerLevel level, GolemData data, ItemStack held, Container chest, Predicate<ItemStack> isTool) {
+		return canRepair(level, data, held, chest, isTool, false);
 	}
 
 	/**
 	 * {@code topUp}: idle-time variant, any damaged Mending tool counts however little it misses (no one-bottle rule).
 	 * Why: user request, repair while waiting instead of idling; an idle golem has nothing better to do.
 	 */
-	public static boolean canRepair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool, boolean topUp) {
-		if (bottlesIn(chest) <= 0) return false;
+	public static boolean canRepair(ServerLevel level, GolemData data, ItemStack held, Container chest, Predicate<ItemStack> isTool, boolean topUp) {
+		if (data.xp <= 0 && bottlesIn(chest) <= 0) return false;
 		if (wantsRepair(level, held, isTool, topUp)) return true;
 		for (int i = 0; i < chest.getContainerSize(); i++) if (wantsRepair(level, chest.getItem(i), isTool, topUp)) return true;
 		return false;
 	}
 
 	/**
-	 * Repairs the held tool first, then the Mending tools lying in the chest, one bottle (7 XP) at a time until all are
-	 * whole, the bottles are gone or {@code limit} bottles were used. Bottles are only taken from {@code chest}. Returns the
-	 * bottles consumed (the caller spends them from the transfer budget).
+	 * Repairs the held tool first, then the Mending tools lying in the chest, paying in XP so none is wasted: the golem's
+	 * stored XP ({@code data.xp}) is spent first, and only when it is not enough a bottle from {@code chest} is opened (+7 to
+	 * the store); what is left stays stored. Stops when all are whole, the XP and bottles are gone or {@code limit} bottles
+	 * were used. Returns the bottles consumed (the caller spends them from the transfer budget; stored XP is free). The
+	 * caller saves {@code data}.
 	 */
-	public static int repair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool, int limit) {
-		return repair(level, held, chest, isTool, limit, false);
+	public static int repair(ServerLevel level, GolemData data, ItemStack held, Container chest, Predicate<ItemStack> isTool, int limit) {
+		return repair(level, data, held, chest, isTool, limit, false);
 	}
 
 	/** As above; with {@code topUp} every damaged Mending tool is repaired to full, ignoring the one-bottle rule (idle time). */
-	public static int repair(ServerLevel level, ItemStack held, Container chest, Predicate<ItemStack> isTool, int limit, boolean topUp) {
+	public static int repair(ServerLevel level, GolemData data, ItemStack held, Container chest, Predicate<ItemStack> isTool, int limit, boolean topUp) {
 		int used = 0;
-		for (int i = -1; i < chest.getContainerSize() && used < limit; i++) {
+		for (int i = -1; i < chest.getContainerSize(); i++) {
 			ItemStack t = i < 0 ? held : chest.getItem(i);
-			// once a tool is worth repairing it is repaired to full (the last bottle may overshoot)
-			boolean go = wantsRepair(level, t, isTool, topUp);
-			while (go && used < limit && t.isDamaged() && takeBottle(chest)) {
-				t.setDamageValue(Math.max(0, t.getDamageValue() - perBottle(level, t)));
-				used++;
+			// once a tool is worth repairing it is repaired to full, as far as the XP reaches
+			if (!wantsRepair(level, t, isTool, topUp)) continue;
+			while (t.isDamaged()) {
+				int need = xpFor(level, t, t.getDamageValue());
+				if (data.xp < need && data.xp < GolemXp.XP_PER_BOTTLE) {
+					// store alone is not enough: open one more bottle (a partial repair from the store is fine when none is left)
+					if (used < limit && takeBottle(chest)) { GolemXp.add(data, GolemXp.XP_PER_BOTTLE); used++; continue; }
+					if (data.xp <= 0) break;
+				}
+				int spend = Math.min(need, data.xp);
+				if (spend <= 0) break;
+				t.setDamageValue(Math.max(0, t.getDamageValue() - EnchantmentHelper.modifyDurabilityToRepairFromXp(level, t, spend)));
+				data.xp -= spend;
 			}
+			if (used >= limit && data.xp <= 0) break;
 		}
 		if (used > 0) chest.setChanged();
 		return used;
