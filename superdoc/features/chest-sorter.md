@@ -48,6 +48,8 @@ Why: vanilla's limit is the bare literal 10 (`MAX_VISITED_POSITIONS` is inlined 
 distinct chest triggers the 140-tick wander cooldown. The limit must be per golem, so the literal cannot just be changed globally: the mixin consults the body.
 Golems without the profession get 10 back, i.e. unchanged vanilla.
 
+The Chest Sorter is not subject to the mod's transfer limit: it runs vanilla's brain (one stack per trip). See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
+
 ## Old saves
 
 Saves from the waxed-block version hold waxed copper blocks in `GolemData.items` index 0. `migrateLegacyItems`

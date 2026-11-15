@@ -59,7 +59,7 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | `profession/farmer/` | Farmer declaration and till/plant/harvest/deliver loop, see [farmer.md](../features/farmer.md) |
 | `profession/smelter/` | Smelter declaration and phase loop (fetch, feed, fuel, collect, deliver), see [smelter.md](../features/smelter.md) |
 | `profession/lumber/` | Lumber declaration and fell/replant/deliver loop, see [lumber.md](../features/lumber.md) |
-| `ai/` | `FollowMode`; `WalkTo` (walk to an assigned block or area outline); `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md); `ToolSwing`: visible chopping/hoeing motion for Lumber and Farmer, see [lumber.md](../features/lumber.md) |
+| `ai/` | `FollowMode`; `WalkTo` (walk to an assigned block or area outline); `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md); `TransferBudget`: the 16 items per 5 ticks golem transfer limit, see [transfer-limit.md](transfer-limit.md); `ToolSwing`: visible chopping/hoeing motion for Lumber and Farmer, see [lumber.md](../features/lumber.md) |
 | `assign/` | `AssignMode`: armed next-click target assignment, area capping (`clampCorner`), walk-to trigger |
 | `menu/` | `GolemMenu` (6-row tabbed menu, fixed slots routed to cells, click handling), `GolemViews` (cells per tab), `Cell`, `Tab`, `GolemIcon` (icon stacks), `GolemItemsContainer` over `GolemData`, `GolemMenuOpener` |
 | `src/main/resources/assets/` | Icon models and `minecraft/items/*` overrides; also zipped as the optional resource pack |
@@ -82,6 +82,7 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change the area size cap: `assign/AssignMode:clampCorner`.
 - Change how the spawn chest is recorded: `mixin/GolemSpawnMixin`.
 - Change chunk loading (ticket radius, refresh, release rules): `chunk/GolemChunkLoader:keep`, `GolemChunkLoader:release`, see [chunk-loading.md](../features/chunk-loading.md).
+- Change the item transfer limit or how a visit continues when it runs out: `ai/TransferBudget`, see [transfer-limit.md](transfer-limit.md).
 - Change where golems stand to interact, or the chest-lid animation: `ai/Interact:approach`, `Interact:standPos`, `Interact:openChest`, see [interaction.md](interaction.md).
 - Change the Transporter's item moving: `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`.
 - Change the Cleaner area or pickup rules: `profession/cleaner/CleanerLogic:box`, `CleanerLogic:tick`.

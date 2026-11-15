@@ -1,6 +1,7 @@
 package com.coppergolemsrevamped.profession.smelter;
 
 import com.coppergolemsrevamped.ai.Interact;
+import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemXp;
 import com.coppergolemsrevamped.mixin.AbstractFurnaceAccessor;
@@ -114,6 +115,10 @@ public final class SmelterLogic {
 		@Nullable Phase shown;
 		int served;
 		@Nullable Work work;
+		/** The current work was cut short by the transfer budget: it stays the work and goes on next window. */
+		boolean pending;
+		/** The unfinished part of a FETCH / FUEL_FETCH plan (kept so the even split over the furnaces survives the cut). */
+		@Nullable List<Move> moves;
 		final BlockPos[] fur = new BlockPos[FURNACES];
 		long scanAt;
 		final Kind[] kind = new Kind[SLOTS];
@@ -564,7 +569,9 @@ public final class SmelterLogic {
 		}
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(w.pos()));
 		s.work = null;
+		s.pending = false;
 		s.cooldown = perform(e, w);
+		if (s.pending) s.work = w;
 		GolemData.save(golem, data);
 	}
 
@@ -594,80 +601,125 @@ public final class SmelterLogic {
 		State s = e.s;
 		switch (w.phase()) {
 			case FETCH -> {
-				List<Move> moves = planFetch(e);
-				for (Move m : moves) {
-					removeFrom(e.in, m.stack(), m.stack().getCount());
-					e.data.items.set(m.slot(), m.stack().copy());
-					s.kind[m.slot()] = Kind.RAW;
-				}
-				return opened(e, w, !moves.isEmpty(), Interact.Action.TAKE);
+				List<Move> moves = s.moves != null ? s.moves : planFetch(e);
+				s.moves = null;
+				return fetched(e, w, e.in, moves, Kind.RAW);
 			}
 			case FUEL_FETCH -> {
-				List<Move> moves = planFuel(e);
-				for (Move m : moves) {
-					removeFrom(e.fuel, m.stack(), m.stack().getCount());
-					e.data.items.set(m.slot(), m.stack().copy());
-					s.kind[m.slot()] = Kind.FUEL;
-				}
-				return opened(e, w, !moves.isEmpty(), Interact.Action.TAKE);
+				List<Move> moves = s.moves != null ? s.moves : planFuel(e);
+				s.moves = null;
+				return fetched(e, w, e.fuel, moves, Kind.FUEL);
 			}
 			case FEED -> {
-				s.served |= 1 << w.slot();
 				if (feedable(e, w.slot())) {
 					AbstractFurnaceBlockEntity f = usable(e, w.slot());
 					ItemStack st = e.data.items.get(w.slot());
 					ItemStack in0 = f.getItem(0);
 					int n = Math.min(st.getCount(), Math.min(BATCH, Math.min(st.getMaxStackSize(), f.getMaxStackSize())) - in0.getCount());
-					f.setItem(0, st.copyWithCount(in0.getCount() + n));
-					st.shrink(n);
-					if (st.isEmpty()) e.data.items.set(w.slot(), ItemStack.EMPTY);
+					int g = Math.min(n, TransferBudget.remaining(e.level, e.golem));
+					if (g > 0) {
+						f.setItem(0, st.copyWithCount(in0.getCount() + g));
+						st.shrink(g);
+						if (st.isEmpty()) e.data.items.set(w.slot(), ItemStack.EMPTY);
+						TransferBudget.spend(e.level, e.golem, g);
+					}
+					if (g < n) return cutShort(e);
 				} else {
 					s.scanAt = 0;
 				}
+				s.served |= 1 << w.slot();
 				return ACTION_TICKS;
 			}
 			case FUEL -> {
-				s.served |= 1 << w.slot();
 				if (fuelable(e, w.slot())) {
 					AbstractFurnaceBlockEntity f = usable(e, w.slot());
 					ItemStack st = e.data.items.get(w.slot());
 					ItemStack fs = f.getItem(1);
 					int n = Math.min(st.getCount(), st.getMaxStackSize() - fs.getCount());
-					f.setItem(1, st.copyWithCount(fs.getCount() + n));
-					st.shrink(n);
-					if (st.isEmpty()) e.data.items.set(w.slot(), ItemStack.EMPTY);
+					int g = Math.min(n, TransferBudget.remaining(e.level, e.golem));
+					if (g > 0) {
+						f.setItem(1, st.copyWithCount(fs.getCount() + g));
+						st.shrink(g);
+						if (st.isEmpty()) e.data.items.set(w.slot(), ItemStack.EMPTY);
+						TransferBudget.spend(e.level, e.golem, g);
+					}
+					if (g < n) return cutShort(e);
 				} else {
 					s.scanAt = 0;
 				}
+				s.served |= 1 << w.slot();
 				return ACTION_TICKS;
 			}
 			case COLLECT -> {
+				if (collect(e, w.slot())) return cutShort(e);
 				s.served |= 1 << w.slot();
-				collect(e, w.slot());
 				return ACTION_TICKS;
 			}
 			case DELIVER -> {
 				List<Integer> idxs = new ArrayList<>();
 				for (int i = 0; i < SLOTS; i++) if (kindOf(e, i) == Kind.RESULT) idxs.add(i);
-				boolean moved = moveOut(e.data, idxs, e.out);
+				boolean moved = moveOut(e, idxs, e.out);
 				boolean left = false;
 				for (int i : idxs) left |= !e.data.items.get(i).isEmpty();
-				if (left) s.outBlockedUntil = e.now + BLOCK_TICKS;
-				return opened(e, w, moved, Interact.Action.INSERT);
+				boolean cut = left && TransferBudget.exhausted(e.level, e.golem);
+				if (left && !cut) s.outBlockedUntil = e.now + BLOCK_TICKS;
+				return opened(e, w, moved, Interact.Action.INSERT, cut);
 			}
 			default -> {
 				boolean raw = kindOf(e, w.slot()) == Kind.RAW;
 				Container c = raw ? e.in : e.fuel;
-				boolean moved = moveOut(e.data, List.of(w.slot()), c);
-				if (!e.data.items.get(w.slot()).isEmpty()) {
+				boolean moved = moveOut(e, List.of(w.slot()), c);
+				boolean left = !e.data.items.get(w.slot()).isEmpty();
+				boolean cut = left && TransferBudget.exhausted(e.level, e.golem);
+				if (left && !cut) {
 					if (raw) s.inBlockedUntil = e.now + BLOCK_TICKS; else s.fuelBlockedUntil = e.now + BLOCK_TICKS;
 				}
-				return opened(e, w, moved, Interact.Action.INSERT);
+				return opened(e, w, moved, Interact.Action.INSERT, cut);
 			}
 		}
 	}
 
-	private static int opened(Env e, Work w, boolean moved, Interact.Action action) {
+	/** The budget ran out mid-transfer (not "chest full" or "nothing to do"): the work stays and goes on next window. */
+	private static int cutShort(Env e) {
+		e.s.pending = true;
+		return TransferBudget.waitTicks(e.level);
+	}
+
+	/**
+	 * Takes the planned moves from {@code chest} into the buffers, as far as the budget allows. What is left because of the
+	 * budget is kept as the plan for the next window; a move the chest can no longer fill is dropped.
+	 */
+	private static int fetched(Env e, Work w, Container chest, List<Move> moves, Kind kind) {
+		List<Move> rest = new ArrayList<>();
+		boolean moved = false;
+		for (Move m : moves) {
+			int want = m.stack().getCount();
+			int avail = 0;
+			for (int j = 0; j < chest.getContainerSize(); j++) if (same(chest.getItem(j), m.stack())) avail += chest.getItem(j).getCount();
+			int budget = TransferBudget.remaining(e.level, e.golem);
+			int n = Math.min(Math.min(want, avail), budget);
+			ItemStack cur = e.data.items.get(m.slot());
+			if (n > 0 && (cur.isEmpty() || same(cur, m.stack()))) {
+				removeFrom(chest, m.stack(), n);
+				if (cur.isEmpty()) e.data.items.set(m.slot(), m.stack().copyWithCount(n)); else cur.grow(n);
+				e.s.kind[m.slot()] = kind;
+				TransferBudget.spend(e.level, e.golem, n);
+				moved = true;
+			} else {
+				n = 0;
+			}
+			if (n < Math.min(want, avail) && budget - n <= 0) rest.add(new Move(m.slot(), m.stack().copyWithCount(want - n)));
+		}
+		if (rest.isEmpty()) return opened(e, w, moved, Interact.Action.TAKE, false);
+		e.s.moves = rest;
+		return opened(e, w, moved, Interact.Action.TAKE, true);
+	}
+
+	private static int opened(Env e, Work w, boolean moved, Interact.Action action, boolean cut) {
+		if (cut) {
+			Interact.openChest(e.level, e.golem, w.pos(), action);
+			return cutShort(e);
+		}
 		if (moved) {
 			Interact.openChest(e.level, e.golem, w.pos(), action);
 			e.s.walk.reset();
@@ -680,29 +732,34 @@ public final class SmelterLogic {
 	 * Takes the result (or the fuel slot's leftover, e.g. the empty bucket of lava) of furnace i into its buffer and moves
 	 * the furnace's stored XP into the golem's store ({@link #takeFurnaceXp}).
 	 */
-	private static void collect(Env e, int i) {
+	private static boolean collect(Env e, int i) {
 		AbstractFurnaceBlockEntity f = usable(e, i);
 		if (f == null) {
 			e.s.scanAt = 0;
-			return;
+			return false;
 		}
 		boolean result = !f.getItem(2).isEmpty() && resultSlot(e, i, f.getItem(2)) >= 0;
 		int idx = result ? 2 : 1;
 		ItemStack src = f.getItem(idx);
-		if (src.isEmpty() || !(result || fuelLeftover(f))) return;
+		if (src.isEmpty() || !(result || fuelLeftover(f))) return false;
 		int dst = resultSlot(e, i, src);
-		if (dst < 0) return;
+		if (dst < 0) return false;
 		ItemStack st = e.data.items.get(dst);
-		int n = Math.min(src.getCount(), src.getMaxStackSize() - st.getCount());
-		if (n <= 0) return;
+		int full = Math.min(src.getCount(), src.getMaxStackSize() - st.getCount());
+		if (full <= 0) return false;
+		int n = Math.min(full, TransferBudget.remaining(e.level, e.golem));
+		if (n <= 0) return true;
+		TransferBudget.spend(e.level, e.golem, n);
 		if (st.isEmpty()) e.data.items.set(dst, src.copyWithCount(n)); else st.grow(n);
 		e.s.kind[dst] = Kind.RESULT;
 		ItemStack rest = src.copyWithCount(src.getCount() - n);
 		f.setItem(idx, rest.isEmpty() ? ItemStack.EMPTY : rest);
+		f.setChanged();
+		if (n < full) return true; // cut short by the budget: the XP is paid with the last part
 		if (result) {
 			GolemXp.add(e.data, takeFurnaceXp(e.level, f));
 		}
-		f.setChanged();
+		return false;
 	}
 
 	/**
@@ -727,11 +784,11 @@ public final class SmelterLogic {
 	}
 
 	/** Moves the stacks at {@code idxs} into {@code dst}; what does not fit stays in its slot (nothing lost). */
-	private static boolean moveOut(GolemData data, List<Integer> idxs, Container dst) {
+	private static boolean moveOut(Env e, List<Integer> idxs, Container dst) {
 		NonNullList<ItemStack> carry = NonNullList.create();
-		for (int idx : idxs) carry.add(data.items.get(idx));
-		boolean moved = TransporterLogic.insertAll(carry, dst);
-		for (int k = 0; k < idxs.size(); k++) data.items.set(idxs.get(k), carry.get(k));
+		for (int idx : idxs) carry.add(e.data.items.get(idx));
+		boolean moved = TransferBudget.insert(e.level, e.golem, carry, dst) > 0;
+		for (int k = 0; k < idxs.size(); k++) e.data.items.set(idxs.get(k), carry.get(k));
 		return moved;
 	}
 

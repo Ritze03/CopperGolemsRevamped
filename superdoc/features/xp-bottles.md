@@ -46,6 +46,8 @@ Butchers and Smelters keep the experience they earn in a per-golem store and pay
   without a player) and spawns the remainder below 7 as orbs at the player (or the golem), then the store is 0. Freeze does not
   matter.
 
+Bottle delivery to a chest is part of the golem's transfer budget (`GolemXp:deliver` has a `limit`); creating the bottles is not. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
+
 ## Status tab
 
 When `xp > 0` the Status tab shows an `experience_bottle` icon "Stored XP: N" (`menu/GolemViews:status`), one more generic

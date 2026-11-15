@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.profession.farmer;
 
 import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.ToolSwing;
+import com.coppergolemsrevamped.ai.TransferBudget;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
@@ -52,10 +53,14 @@ public final class FarmerLogic {
 	static final double PROGRESS_EPS = 0.1;
 	/** The seed slot is topped up from the seed chest when it holds fewer than this. */
 	static final int SEED_LOW = 16;
+	/** A seed fetch tops the seed slot up to this (a full stack). */
+	static final int SEED_TARGET = 64;
 
 	public enum Act { HARVEST, FRUIT, PLANT, TILL }
 
 	private static final class State {
+		/** A seed fetch was cut short by the transfer budget: it goes on to {@link #SEED_TARGET}. */
+		boolean seedTopUp;
 		int cooldown;
 		int repath;
 		final Interact.Approach walk = new Interact.Approach();
@@ -164,22 +169,32 @@ public final class FarmerLogic {
 			Container chest = pos == null || s.skip.containsKey(pos) ? null : TransporterLogic.containerAt(level, pos);
 			if (chest != null && findTool(chest, tool) >= 0) {
 				if (walkTo(level, s, golem, pos, now)) {
-					fetchTool(chest, data);
-					Interact.openChest(level, golem, pos, Interact.Action.TAKE);
-					done(s, golem, data, Interact.OPEN_TICKS);
+					if (TransferBudget.remaining(level, golem) >= 1) {
+						fetchTool(chest, data);
+						TransferBudget.spend(level, golem, 1); // a swap counts as one item
+						Interact.openChest(level, golem, pos, Interact.Action.TAKE);
+						done(s, golem, data, Interact.OPEN_TICKS);
+					} else { // budget used up: stay and fetch next window
+						Interact.openChest(level, golem, pos, Interact.Action.TAKE);
+						done(s, golem, data, TransferBudget.waitTicks(level));
+					}
 				}
 				return;
 			}
 		}
 		// 2. seeds
-		if (anyPlant && seed.getCount() < SEED_LOW) {
+		if (anyPlant && seed.getCount() < (s.seedTopUp ? SEED_TARGET : SEED_LOW)) {
 			BlockPos pos = data.assignments.get(FarmerProfession.SEEDS);
 			Container chest = pos == null || s.skip.containsKey(pos) ? null : TransporterLogic.containerAt(level, pos);
 			if (chest != null && seedSlot(chest, seed) >= 0) {
 				if (walkTo(level, s, golem, pos, now)) {
-					fetchSeeds(chest, data);
+					int n = fetchSeeds(chest, data, TransferBudget.remaining(level, golem));
+					TransferBudget.spend(level, golem, n);
+					// budget used up while seeds are still wanted: stay, keep the lid open, go on next window (not "chest empty")
+					s.seedTopUp = TransferBudget.exhausted(level, golem) && data.items.get(FarmerProfession.SEED_SLOT).getCount() < SEED_TARGET
+						&& seedSlot(chest, data.items.get(FarmerProfession.SEED_SLOT)) >= 0;
 					Interact.openChest(level, golem, pos, Interact.Action.TAKE);
-					done(s, golem, data, Interact.OPEN_TICKS);
+					done(s, golem, data, s.seedTopUp ? TransferBudget.waitTicks(level) : Interact.OPEN_TICKS);
 				}
 				return;
 			}
@@ -231,13 +246,18 @@ public final class FarmerLogic {
 				if (walkTo(level, s, golem, seedsPos, now)) {
 					NonNullList<ItemStack> view = carryView(data);
 					for (int i = 0; i < view.size(); i++) if (!isSeed(view.get(i))) view.set(i, ItemStack.EMPTY);
-					boolean moved = TransporterLogic.insertAll(view, seedsChest);
+					boolean moved = TransferBudget.insert(level, golem, view, seedsChest) > 0;
 					for (int i = 0; i < view.size(); i++) {
 						if (isSeed(data.items.get(FarmerProfession.CARRY_FROM + i))) data.items.set(FarmerProfession.CARRY_FROM + i, view.get(i));
 					}
+					if (moved) Interact.openChest(level, golem, seedsPos, Interact.Action.INSERT);
+					if (TransferBudget.exhausted(level, golem) && hasCarrySeeds(data)) { // budget, not "chest full": stay and go on
+						Interact.openChest(level, golem, seedsPos, Interact.Action.INSERT);
+						done(s, golem, data, TransferBudget.waitTicks(level));
+						return;
+					}
 					// leftovers (chest full) go to the output chest next: no loss, no endless retry
 					s.seedChestFull = hasCarrySeeds(data);
-					if (moved) Interact.openChest(level, golem, seedsPos, Interact.Action.INSERT);
 					done(s, golem, data, moved ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
 				}
 				return;
@@ -245,9 +265,14 @@ public final class FarmerLogic {
 			if (!s.skip.containsKey(outPos)) {
 				if (walkTo(level, s, golem, outPos, now)) {
 					NonNullList<ItemStack> carry = carryView(data);
-					boolean moved = TransporterLogic.insertAll(carry, out);
+					boolean moved = TransferBudget.insert(level, golem, carry, out) > 0;
 					writeCarry(data, carry);
 					if (moved) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
+					if (!carryEmpty(data) && TransferBudget.exhausted(level, golem)) { // budget, not "chest full": stay and go on
+						Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
+						done(s, golem, data, TransferBudget.waitTicks(level));
+						return;
+					}
 					done(s, golem, data, !moved ? RETRY_TICKS : carryEmpty(data) ? Interact.OPEN_TICKS : RETRY_TICKS);
 				}
 				return;
@@ -454,14 +479,14 @@ public final class FarmerLogic {
 		return -1;
 	}
 
-	/** Takes up to a full stack of the first seed (or tops up the current seed item). */
-	static void fetchSeeds(Container chest, GolemData data) {
+	/** Takes up to a full stack of the first seed (or tops up the current seed item), at most {@code limit}; returns how many. */
+	static int fetchSeeds(Container chest, GolemData data, int limit) {
 		ItemStack cur = data.items.get(FarmerProfession.SEED_SLOT);
 		int first = seedSlot(chest, cur);
-		if (first < 0) return;
+		if (first < 0 || limit <= 0) return 0;
 		ItemStack kind = chest.getItem(first).copyWithCount(1);
 		int have = cur.getCount();
-		int max = Math.min(64, kind.getMaxStackSize());
+		int max = Math.min(Math.min(64, kind.getMaxStackSize()), have + limit);
 		int took = 0;
 		for (int i = first; i < chest.getContainerSize() && have + took < max; i++) {
 			ItemStack st = chest.getItem(i);
@@ -474,6 +499,7 @@ public final class FarmerLogic {
 		}
 		data.items.set(FarmerProfession.SEED_SLOT, kind.copyWithCount(have + took));
 		chest.setChanged();
+		return took;
 	}
 
 	// ---- carry helpers --------------------------------------------------------------------------------------------

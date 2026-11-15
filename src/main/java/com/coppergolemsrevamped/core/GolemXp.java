@@ -49,16 +49,21 @@ public final class GolemXp {
 	 * stays stored. True if at least one bottle went in.
 	 */
 	public static boolean deliver(GolemData data, Container dst) {
+		return deliver(data, dst, Integer.MAX_VALUE) > 0;
+	}
+
+	/** Like {@link #deliver(GolemData, Container)} but inserts at most {@code limit} bottles; returns how many went in. */
+	public static int deliver(GolemData data, Container dst, int limit) {
 		int ready = bottlesReady(data);
-		if (ready <= 0) return false;
+		if (ready <= 0 || limit <= 0) return 0;
 		NonNullList<ItemStack> carry = NonNullList.create();
 		carry.addAll(makeBottles(ready));
-		TransporterLogic.insertAll(carry, dst);
+		TransporterLogic.insertAll(carry, dst, limit);
 		int left = 0;
 		for (ItemStack s : carry) left += s.getCount();
 		int inserted = ready - left;
 		data.xp -= inserted * XP_PER_BOTTLE;
-		return inserted > 0;
+		return inserted;
 	}
 
 	/**

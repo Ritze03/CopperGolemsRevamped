@@ -79,6 +79,10 @@ Why a buffer holds one thing at a time: one stack per furnace, so raw, fuel and 
 step moves items slot to slot or chest to slot and leaves the remainder where it came from (D9, `GolemData.save` after
 each action).
 
+## Transfer limit
+
+Every item move is budgeted (16 items per 5 ticks per golem): chest fetch, fuel fetch, deliver, return **and** feed / fuel / collect at the furnaces. A cut step keeps its `Work` (`State.pending`, not `served`), the FETCH / FUEL_FETCH plan survives in `State.moves`, and cut visits never set the full-chest blocks. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
+
 ## Never block
 
 Each rule has a test in `SmelterTest`.

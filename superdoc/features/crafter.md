@@ -63,6 +63,7 @@ All walking goes through `Interact:approach` (1-block stand spot, 2-block fallba
 are all reached that way. Lids: `Interact:openChest` with `TAKE` at the input chest after a fetch and `INSERT` at the
 output chest after a delivery that moved something; the cooldown after either is `Interact.OPEN_TICKS`, so the golem
 stands there while the lid is open.
+**Transfer limit:** fetch and deliver are budgeted (16 items per 5 ticks); a cut visit stays at the chest (`State.sticky` FETCH / DELIVER) instead of walking to the table or giving up. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
 Why this loop: user spec "craft until the output stack is full, then go to the chest; when the output is full, move to
 the next block".
 

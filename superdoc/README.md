@@ -7,6 +7,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [architecture/overview.md](architecture/overview.md): start-here hub: big picture, data flow, module map, where to look for X.
 - [architecture/vanilla-copper-golem.md](architecture/vanilla-copper-golem.md): vanilla 26.3 copper golem and Fabric API reference (signatures, mixin targets).
 - [architecture/interaction.md](architecture/interaction.md): `ai/Interact`, shared 1-block reach/stand position and visible chest lids, used by all professions.
+- [architecture/transfer-limit.md](architecture/transfer-limit.md): the per-golem item transfer budget (16 items per 5 ticks), what counts, how a cut visit continues.
 - [architecture/testing.md](architecture/testing.md): GameTests per class, how to run them, registering new test classes, the test-count gotcha.
 
 ## Features
