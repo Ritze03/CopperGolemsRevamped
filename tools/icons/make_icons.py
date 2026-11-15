@@ -358,25 +358,7 @@ def crafting_board():
     return ["".join(r) for r in b]
 
 
-# ---- tab-bar icons (Back, Status, Inventory, Settings) and the crafting arrow ----
-BACK = [                                           # chunky copper arrow pointing left, long shaft
-    "................",
-    "......K.........",
-    ".....KhK........",
-    "....KhCK........",
-    "...KhCCKKKKKKK..",
-    "..KhCCCCCCCCCcK.",
-    ".KhCCCCCCCCCccK.",
-    "KhCCCCCCCCCcccK.",
-    ".KcccccccccdddK.",
-    "..KcccddddddddK.",
-    "...KcdKKKKKKKK..",
-    "....KdK.........",
-    ".....KdK........",
-    "......K.........",
-    "................",
-    "................",
-]
+# ---- tab-bar icons (Status, Inventory, Settings) and the crafting arrow ----
 STATUS = [                                         # copper clipboard: paper, text lines, green ticks
     "................", "......kkkk......", ".....kChhCk.....", "..kkkkcKKckkkk..",
     "..kCCCCCCCCCck..", "..kCk555555kck..", "..kCk522225kck..", "..kCk555555kck..",
@@ -539,7 +521,6 @@ def build():
     stamp(cv, 6, 4, QUESTION)
     icons["help"] = cv
 
-    icons["icon_back"] = fromrows(BACK)               # 21..25 tab bar and crafting arrow
     icons["icon_status"] = fromrows(STATUS)
     icons["icon_inventory"] = fromrows(INVENTORY)
     icons["icon_settings"] = gear()

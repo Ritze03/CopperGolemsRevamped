@@ -125,9 +125,8 @@ public class MenuTest {
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g);
 		helper.assertTrue(menu.tab() == Tab.STATUS && !menu.confirming(), "tab " + menu.tab());
 		helper.assertTrue(menu.slots.size() == 54 + 36, "slots " + menu.slots.size());
-		helper.assertTrue(at(menu, 0, 0).is(Items.ARROW) && name(at(menu, 0, 0)).equals("Back"), "back " + at(menu, 0, 0));
-		helper.assertTrue(at(menu, 0, 1).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 7).is(Items.STAINED_GLASS_PANE.black()),
-			"black panes beside the tab bar");
+		helper.assertTrue(at(menu, 0, 0).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 1).is(Items.STAINED_GLASS_PANE.black())
+			&& at(menu, 0, 7).is(Items.STAINED_GLASS_PANE.black()), "black panes beside the tab bar, no Back at (0,0)");
 		Item[] bases = {Items.WRITABLE_BOOK, Items.TARGET, Items.CHEST, Items.COMPARATOR, Items.IRON_AXE};
 		for (int k = 0; k < 5; k++) {
 			ItemStack t = at(menu, 0, 2 + k);
@@ -156,8 +155,36 @@ public class MenuTest {
 		click(menu, player, 0, 6); // Profession
 		helper.assertTrue(player.containerMenu == menu && menu.tab() == Tab.PROFESSION, "profession tab: " + menu.tab());
 		helper.assertTrue(glint(at(menu, 3, 7)) && lore(at(menu, 3, 7)).contains("Current profession"), "current profession: " + at(menu, 3, 7));
-		click(menu, player, 0, 0); // Back closes
-		helper.assertTrue(player.containerMenu != menu, "back must close the menu");
+		helper.succeed();
+	}
+
+	/** No Back button on any tab of any profession; the Crafter's bar has 6 tabs with Recipe right before Inventory. */
+	@GameTest
+	public void noBackButtonAndCrafterBarHasRecipe(GameTestHelper helper) {
+		for (Identifier id : new Identifier[] {null, TRANSPORTER, SORTER, CLEANER, FARMER, LUMBER, CRAFTER}) {
+			CopperGolem g = golem(helper, id);
+			ServerPlayer player = player(helper, g);
+			for (Tab t : Tab.forProfession(com.coppergolemsrevamped.profession.Professions.get(id))) {
+				GolemMenu menu = new GolemMenu(1, player.getInventory(), g, t);
+				for (int cell = 0; cell < 54; cell++) {
+					helper.assertTrue(!name(menu.slots.get(cell).getItem()).equals("Back"), id + "/" + t + ": Back at cell " + cell);
+				}
+				helper.assertTrue(at(menu, 0, 0).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 7).is(Items.STAINED_GLASS_PANE.black())
+					&& name(at(menu, 0, 8)).equals("Help"), id + "/" + t + ": bar edges");
+			}
+			GolemMenu menu = new GolemMenu(1, player.getInventory(), g);
+			int tabs = 0;
+			for (int col = 1; col <= 6; col++) if (!at(menu, 0, col).is(Items.STAINED_GLASS_PANE.black())) tabs++;
+			helper.assertTrue(tabs == (CRAFTER.equals(id) ? 6 : 5), id + " tab count " + tabs);
+			if (CRAFTER.equals(id)) {
+				String[] names = {"Status", "Targets", "Recipe", "Inventory", "Settings", "Profession"};
+				for (int k = 0; k < 6; k++) helper.assertTrue(name(at(menu, 0, 1 + k)).equals(names[k]), "crafter tab " + k + ": " + name(at(menu, 0, 1 + k)));
+				click(menu, player, 0, 3);
+				helper.assertTrue(menu.tab() == Tab.RECIPE && glint(at(menu, 0, 3)) && !glint(at(menu, 0, 4)), "Recipe tab opens in place");
+			} else {
+				helper.assertTrue(at(menu, 0, 1).is(Items.STAINED_GLASS_PANE.black()), id + " keeps a pane at (0,1)");
+			}
+		}
 		helper.succeed();
 	}
 
@@ -168,7 +195,7 @@ public class MenuTest {
 		player.getAbilities().instabuild = true;
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g);
 		player.getInventory().setItem(0, new ItemStack(Items.STICK, 5));
-		int[] cells = {0 * 9 + 2, 0 * 9 + 8, 1 * 9 + 1, 2 * 9 + 4};
+		int[] cells = {0 * 9 + 0, 0 * 9 + 2, 0 * 9 + 8, 1 * 9 + 1, 2 * 9 + 4};
 		for (int cell : cells) {
 			for (ContainerInput in : new ContainerInput[] {ContainerInput.CLONE, ContainerInput.SWAP, ContainerInput.THROW, ContainerInput.PICKUP_ALL}) {
 				menu.clicked(cell, 0, in, player);
@@ -323,11 +350,42 @@ public class MenuTest {
 		CopperGolem g = golem(helper, TRANSPORTER);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-		helper.assertTrue(at(menu, 3, 4).is(Items.LEAD) && !glint(at(menu, 3, 4)) && name(at(menu, 3, 4)).equals("Follow: off"), "off " + at(menu, 3, 4));
-		click(menu, player, 3, 4);
-		helper.assertTrue(GolemData.get(g).following && glint(at(menu, 3, 4)) && name(at(menu, 3, 4)).equals("Follow: on"), "on " + at(menu, 3, 4));
-		click(menu, player, 3, 4);
-		helper.assertTrue(!GolemData.get(g).following && !glint(at(menu, 3, 4)), "off again");
+		helper.assertTrue(at(menu, 3, 3).is(Items.LEAD) && !glint(at(menu, 3, 3)) && name(at(menu, 3, 3)).equals("Follow: off"), "off " + at(menu, 3, 3));
+		click(menu, player, 3, 3);
+		helper.assertTrue(GolemData.get(g).following && glint(at(menu, 3, 3)) && name(at(menu, 3, 3)).equals("Follow: on"), "on " + at(menu, 3, 3));
+		click(menu, player, 3, 3);
+		helper.assertTrue(!GolemData.get(g).following && !glint(at(menu, 3, 3)), "off again");
+		helper.succeed();
+	}
+
+	/** Freeze: toggle at (3,5), freezing turns Follow off, Follow is refused while frozen, a profession change unfreezes. */
+	@GameTest
+	public void settingsFreezeToggle(GameTestHelper helper) {
+		for (Identifier id : new Identifier[] {null, SORTER, TRANSPORTER}) {
+			CopperGolem g = golem(helper, id);
+			ServerPlayer player = player(helper, g);
+			GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
+			helper.assertTrue(at(menu, 3, 5).is(Items.BLUE_ICE) && !glint(at(menu, 3, 5)) && name(at(menu, 3, 5)).equals("Freeze: off")
+				&& lore(at(menu, 3, 5)).contains("Golem stops all work and stands still") && lore(at(menu, 3, 5)).contains("Use it to safely change its inventory"),
+				id + " freeze off " + at(menu, 3, 5));
+			click(menu, player, 3, 3); // Follow on
+			click(menu, player, 3, 5); // Freeze: follow turns off
+			GolemData d = GolemData.get(g);
+			helper.assertTrue(d.frozen && !d.following && d.followPlayer == null && glint(at(menu, 3, 5)) && name(at(menu, 3, 5)).equals("Freeze: on"),
+				id + " frozen " + d.frozen + "/" + d.following);
+			click(menu, player, 3, 3); // refused
+			helper.assertTrue(!GolemData.get(g).following && name(at(menu, 3, 3)).equals("Follow: off"), id + " follow must be refused while frozen");
+			menu.showTab(Tab.STATUS);
+			boolean next = false;
+			for (int col = 0; col < 9; col++) next |= name(at(menu, 3, col)).startsWith("Frozen");
+			helper.assertTrue(name(at(menu, 2, 4)).endsWith("— Frozen") && next, id + " status " + name(at(menu, 2, 4)));
+			menu.showTab(Tab.SETTINGS);
+			click(menu, player, 3, 5);
+			helper.assertTrue(!GolemData.get(g).frozen, id + " unfrozen");
+			click(menu, player, 3, 5);
+			GolemService.changeProfession(helper.getLevel(), g, id == null ? TRANSPORTER : null);
+			helper.assertTrue(!GolemData.get(g).frozen, id + " a profession change clears freeze");
+		}
 		helper.succeed();
 	}
 
@@ -371,26 +429,116 @@ public class MenuTest {
 		return g;
 	}
 
+	/** Menu slot of recipe/grid cell i (3x3 at rows 2..4, columns 1..3). */
+	private static int recipeCell(int i) {
+		return (2 + i / 3) * 9 + 1 + i % 3;
+	}
+
+	/** A click with a cursor stack sets the cell to a 1-count copy and leaves the cursor untouched; empty hand clears; right-click sets too. */
 	@GameTest
-	public void emptyHandClickForgetsARememberedCell(GameTestHelper helper) {
+	public void recipeCellSetsACopyAndClearsWithAnEmptyHand(GameTestHelper helper) {
+		CopperGolem g = sticksCrafter(helper);
+		ServerPlayer player = player(helper, g);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
+		menu.setCarried(new ItemStack(Items.OAK_PLANKS, 10));
+		menu.clicked(recipeCell(1), 0, ContainerInput.PICKUP, player);
+		GolemData d = GolemData.get(g);
+		helper.assertTrue(menu.getCarried().is(Items.OAK_PLANKS) && menu.getCarried().getCount() == 10, "cursor untouched: " + menu.getCarried());
+		helper.assertTrue(d.items.get(1).is(Items.OAK_PLANKS) && d.items.get(1).getCount() == 1 && !DisplayItems.is(d.items.get(1)), "template 1: " + d.items.get(1));
+		helper.assertTrue(menu.slots.get(recipeCell(1)).getItem().is(Items.OAK_PLANKS) && DisplayItems.is(menu.slots.get(recipeCell(1)).getItem()), "cell shows a copy");
+		// replacing with another item, right-click
+		menu.setCarried(new ItemStack(Items.COBBLESTONE, 3));
+		menu.clicked(recipeCell(1), 1, ContainerInput.PICKUP, player);
+		helper.assertTrue(menu.getCarried().getCount() == 3 && GolemData.get(g).items.get(1).is(Items.COBBLESTONE)
+			&& GolemData.get(g).items.get(1).getCount() == 1, "right-click replaces: " + GolemData.get(g).items.get(1));
+		// empty hand clears; an already empty cell stays empty
+		menu.setCarried(ItemStack.EMPTY);
+		menu.clicked(recipeCell(1), 0, ContainerInput.PICKUP, player);
+		menu.clicked(recipeCell(2), 0, ContainerInput.PICKUP, player);
+		helper.assertTrue(GolemData.get(g).items.get(1).isEmpty() && GolemData.get(g).items.get(2).isEmpty()
+			&& menu.slots.get(recipeCell(1)).getItem().isEmpty(), "cleared");
+		helper.assertTrue(GolemData.get(g).items.get(0).is(Items.OAK_PLANKS) && GolemData.get(g).items.get(3).is(Items.OAK_PLANKS), "other cells keep theirs");
+		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player); // clear cell 0: one plank left = a button
+		helper.assertTrue(lore(at(menu, 3, 5)).contains("Oak Button"), "the arrow follows the recipe: " + lore(at(menu, 3, 5)));
+		helper.assertTrue(!hasDisplay(player, menu), "no display copy in hand");
+		helper.succeed();
+	}
+
+	/** Every other click type on a recipe cell leaves all real items where they are and creates none. */
+	@GameTest
+	public void recipeCellOtherClicksConserveItems(GameTestHelper helper) {
+		CopperGolem g = sticksCrafter(helper);
+		ServerPlayer player = player(helper, g);
+		player.getAbilities().instabuild = true;
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
+		player.getInventory().setItem(0, new ItemStack(Items.STICK, 5));
+		player.getInventory().setItem(1, new ItemStack(Items.OAK_PLANKS, 9));
+		List<ItemStack> snapshot = GolemData.get(g).items.stream().map(ItemStack::copy).toList();
+		int total = realTotal(player, menu, g);
+		for (int i : new int[] {0, 1}) { // a set cell and an empty one
+			for (ItemStack cursor : new ItemStack[] {ItemStack.EMPTY, new ItemStack(Items.STICK, 3)}) {
+				for (ContainerInput in : new ContainerInput[] {ContainerInput.QUICK_MOVE, ContainerInput.CLONE, ContainerInput.PICKUP_ALL,
+					ContainerInput.SWAP, ContainerInput.THROW}) {
+					for (int button : new int[] {0, 1, 40}) {
+						menu.setCarried(cursor.copy());
+						int expected = total + cursor.getCount();
+						menu.clicked(recipeCell(i), button, in, player);
+						helper.assertTrue(!hasDisplay(player, menu), in + "/" + button + " on recipe cell " + i + " leaked a display copy");
+						helper.assertTrue(realTotal(player, menu, g) == expected, in + "/" + button + " on recipe cell " + i + " changed the item count");
+						for (int k = 0; k < snapshot.size(); k++) {
+							helper.assertTrue(ItemStack.matches(snapshot.get(k), GolemData.get(g).items.get(k)), in + "/" + button + " changed golem slot " + k);
+						}
+					}
+				}
+			}
+		}
+		// drag over recipe cells (QUICK_CRAFT) places nothing either
+		menu.setCarried(new ItemStack(Items.STICK, 4));
+		menu.clicked(-999, 0, ContainerInput.QUICK_CRAFT, player);
+		menu.clicked(recipeCell(1), 1, ContainerInput.QUICK_CRAFT, player);
+		menu.clicked(recipeCell(2), 1, ContainerInput.QUICK_CRAFT, player);
+		menu.clicked(-999, 2, ContainerInput.QUICK_CRAFT, player);
+		helper.assertTrue(GolemData.get(g).items.get(1).isEmpty() && GolemData.get(g).items.get(2).isEmpty()
+			&& realTotal(player, menu, g) == total + 4, "drag changed something");
+		helper.succeed();
+	}
+
+	/** An input cell without a recipe item shows empty and refuses items by every route; a matching cell takes planks. */
+	@GameTest
+	public void inputCellWithoutTemplateRefusesItems(GameTestHelper helper) {
 		CopperGolem g = sticksCrafter(helper);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.INVENTORY);
-		int cell = 2 * 9 + 1; // grid cell 0
-		helper.assertTrue(DisplayItems.is(menu.slots.get(cell).getItem()), "remembered, empty");
-		menu.clicked(cell, 0, ContainerInput.PICKUP, player);
-		helper.assertTrue(GolemData.get(g).items.get(0).isEmpty() && menu.slots.get(cell).getItem().isEmpty(), "memory forgotten");
-		helper.assertTrue(GolemData.get(g).items.get(3).is(Items.OAK_PLANKS), "other cells keep theirs");
-		helper.assertTrue(lore(at(menu, 3, 5)).contains("Oak Button"), "the arrow follows (one plank left = a button): " + lore(at(menu, 3, 5)));
-		// an empty cell without memory learns the item placed into it; a full cell keeps its memory when emptied
-		player.getInventory().setItem(0, new ItemStack(Items.COBBLESTONE, 7));
-		menu.setCarried(player.getInventory().removeItem(0, 7));
-		menu.clicked(cell, 0, ContainerInput.PICKUP, player);
-		helper.assertTrue(GolemData.get(g).items.get(IN).is(Items.COBBLESTONE) && GolemData.get(g).items.get(IN).getCount() == 7
-			&& GolemData.get(g).items.get(0).is(Items.COBBLESTONE) && GolemData.get(g).items.get(0).getCount() == 1, "placing sets the memory");
-		menu.clicked(cell, 0, ContainerInput.PICKUP, player); // take the stack out again
-		helper.assertTrue(menu.getCarried().getCount() == 7 && GolemData.get(g).items.get(0).is(Items.COBBLESTONE), "memory stays after taking the stack out");
-		helper.assertTrue(!hasDisplay(player, menu), "no display copy in hand");
+		int bare = recipeCell(1); // no template
+		helper.assertTrue(menu.slots.get(bare).getItem().isEmpty() && !menu.slots.get(bare).mayPlace(new ItemStack(Items.OAK_PLANKS)), "bare cell");
+		menu.setCarried(new ItemStack(Items.OAK_PLANKS, 7));
+		menu.clicked(bare, 0, ContainerInput.PICKUP, player);
+		helper.assertTrue(menu.getCarried().getCount() == 7 && GolemData.get(g).items.get(IN + 1).isEmpty() && GolemData.get(g).items.get(1).isEmpty(),
+			"a click must not place or learn: " + GolemData.get(g).items.get(IN + 1));
+		menu.clicked(bare, 1, ContainerInput.PICKUP, player);
+		helper.assertTrue(menu.getCarried().getCount() == 7 && GolemData.get(g).items.get(IN + 1).isEmpty(), "right-click neither");
+		// an empty-handed click on a faded cell no longer forgets the recipe
+		menu.setCarried(ItemStack.EMPTY);
+		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player);
+		helper.assertTrue(GolemData.get(g).items.get(0).is(Items.OAK_PLANKS), "the memory stays");
+		// a matching cell takes planks
+		menu.setCarried(new ItemStack(Items.OAK_PLANKS, 7));
+		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player);
+		helper.assertTrue(menu.getCarried().isEmpty() && GolemData.get(g).items.get(IN).getCount() == 7, "the matching cell takes planks");
+		helper.succeed();
+	}
+
+	/** A hand-edited template stack bigger than one is not deleted by a Recipe click: the surplus goes to the player. */
+	@GameTest
+	public void recipeCellKeepsTheSurplusOfAnOddStack(GameTestHelper helper) {
+		CopperGolem g = golem(helper, CRAFTER);
+		GolemData data = GolemData.get(g);
+		data.items.set(0, new ItemStack(Items.OAK_PLANKS, 5));
+		GolemData.save(g, data);
+		ServerPlayer player = player(helper, g);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.RECIPE);
+		menu.clicked(recipeCell(0), 0, ContainerInput.PICKUP, player);
+		helper.assertTrue(GolemData.get(g).items.get(0).isEmpty() && count(player, Items.OAK_PLANKS) == 4, "surplus returned: " + count(player, Items.OAK_PLANKS));
 		helper.succeed();
 	}
 
@@ -414,19 +562,15 @@ public class MenuTest {
 				for (ContainerInput in : new ContainerInput[] {ContainerInput.PICKUP, ContainerInput.QUICK_MOVE, ContainerInput.CLONE,
 					ContainerInput.PICKUP_ALL, ContainerInput.SWAP, ContainerInput.THROW}) {
 					for (int button : new int[] {0, 1}) {
-						// an empty-handed click on a faded cell forgets its memory on purpose (emptyHandClickForgetsARememberedCell)
-						if (cell == faded && in == ContainerInput.PICKUP && cursor.isEmpty()) continue;
 						// a fresh state each time: the sticks are the only thing on the cursor, nothing else was moved
 						menu.setCarried(cursor.copy());
 						int expected = total + cursor.getCount();
-						int cellMemoryBefore = GolemData.get(g).items.get(3).getCount();
 						menu.clicked(cell, button, in, player);
 						helper.assertTrue(!hasDisplay(player, menu), in + "/" + button + " on cell " + cell + " leaked a display copy");
 						helper.assertTrue(realTotal(player, menu, g) == expected, in + "/" + button + " on cell " + cell + " changed the item count");
 						for (int i = 0; i < snapshot.size(); i++) {
 							helper.assertTrue(ItemStack.matches(snapshot.get(i), GolemData.get(g).items.get(i)), in + "/" + button + " changed golem slot " + i);
 						}
-						helper.assertTrue(GolemData.get(g).items.get(3).getCount() == cellMemoryBefore, "memory kept");
 					}
 				}
 			}

@@ -32,7 +32,8 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * Server-side-only golem menu: always a vanilla 6-row chest menu, so vanilla clients need no mod. Row 0 is the tab
- * bar; rows 1..5 show the current tab (Status, Targets, Inventory, Settings, Profession) or the profession confirm
+ * bar; rows 1..5 show the current tab (Status, Targets, Recipe for a ghost-recipe profession, Inventory, Settings,
+ * Profession) or the profession confirm
  * screen. The 54 top slots are fixed {@link ViewSlot}s that route to the cells of the current view
  * ({@link GolemViews}), so switching tabs never reopens the menu (a reopen re-centres the mouse on a vanilla
  * client). Cell index = row * 9 + column; the player inventory follows the 54 top cells.
@@ -78,7 +79,7 @@ public class GolemMenu extends AbstractContainerMenu {
 			List<SlotGroup> groups = profession.slots();
 			for (int gi = groups.size() - 1; gi >= 0; gi--) {
 				SlotGroup g = groups.get(gi);
-				if (!g.visible() || !g.quickMove()) continue;
+				if (!g.visible() || g.recipe() || !g.quickMove()) continue;
 				for (int i = 0; i < g.count(); i++) quickMoveCells.add((g.row() + i / g.width()) * COLS + g.col() + i % g.width());
 			}
 		}
@@ -163,9 +164,44 @@ public class GolemMenu extends AbstractContainerMenu {
 
 	void toggleFollow(ServerPlayer player) {
 		GolemData data = GolemData.get(golem);
+		if (data.frozen) {
+			player.sendSystemMessage(Component.literal("Unfreeze the golem first."));
+			return;
+		}
 		data.following = !data.following;
 		data.followPlayer = data.following ? player.getUUID() : null;
 		GolemData.save(golem, data);
+		rebuild();
+	}
+
+	/** Settings tab Freeze: the golem stops all work and stands still; freezing also turns Follow off (see freeze.md). */
+	void toggleFreeze() {
+		GolemData data = GolemData.get(golem);
+		data.frozen = !data.frozen;
+		if (data.frozen) {
+			data.following = false;
+			data.followPlayer = null;
+		}
+		GolemData.save(golem, data);
+		rebuild();
+	}
+
+	/**
+	 * Recipe tab: a click on a ghost cell with an item on the cursor sets the cell to a one-item copy (the cursor is
+	 * untouched, nothing is consumed or moved), with an empty cursor it clears the cell. A stored stack bigger than one
+	 * (not written by this mod, only by hand-edited data) is not deleted: the surplus goes to the player.
+	 * Why a copy and never the real stack: the memory must not be able to create or delete items (D9).
+	 */
+	void setRecipeCell(ServerPlayer player, SlotGroup group, int dataIdx) {
+		ItemStack carried = getCarried();
+		ItemStack cur = items.getItem(dataIdx);
+		if (carried.isEmpty() ? cur.isEmpty() : !group.filter().test(carried)) return;
+		if (cur.getCount() > 1 && golem.level() instanceof ServerLevel level) {
+			ItemStack extra = cur.copyWithCount(cur.getCount() - 1);
+			GolemService.give(player, extra);
+			if (!extra.isEmpty()) player.spawnAtLocation(level, extra);
+		}
+		items.setItem(dataIdx, carried.isEmpty() ? ItemStack.EMPTY : carried.copyWithCount(1));
 		rebuild();
 	}
 
@@ -214,7 +250,7 @@ public class GolemMenu extends AbstractContainerMenu {
 		List<String> lines = new ArrayList<>(tab.help);
 		if (profession != null) {
 			if (tab == Tab.TARGETS) lines.addAll(ProfessionHelp.assignLines(profession));
-			else if (tab == Tab.INVENTORY) lines.addAll(profession.help());
+			else if (tab == Tab.INVENTORY || tab == Tab.RECIPE) lines.addAll(profession.help());
 		}
 		player.sendSystemMessage(Component.literal("-- " + tab.label + (profession == null ? "" : ": " + profession.name().getString()) + " --"));
 		for (String l : lines) player.sendSystemMessage(Component.literal(l));
@@ -233,10 +269,10 @@ public class GolemMenu extends AbstractContainerMenu {
 
 	/**
 	 * Icon cells (controls, labels, filler) never move items: PICKUP / QUICK_MOVE run the control, every other input
-	 * on them (CLONE would copy the icon for creative players, SWAP / THROW / PICKUP_ALL) is dropped. A cell that
-	 * only shows a display copy (faded memory, ghost output) handles PICKUP itself (place an item, or forget the
-	 * memory with an empty hand) and drops every other input, so the copy can never reach a cursor, however the
-	 * click is made. QUICK_CRAFT is always passed on, swallowing it would corrupt the drag state (the slots refuse
+	 * on them (CLONE would copy the icon for creative players, SWAP / THROW / PICKUP_ALL) is dropped; a
+	 * {@code pickupOnly} icon (Recipe tab cell) also ignores shift-click. A cell that only shows a display copy
+	 * (faded input, ghost output) handles PICKUP itself (place a fitting item) and drops every other input, so the
+	 * copy can never reach a cursor, however the click is made. QUICK_CRAFT is always passed on, swallowing it would corrupt the drag state (the slots refuse
 	 * placement anyway).
 	 */
 	@Override
@@ -244,7 +280,7 @@ public class GolemMenu extends AbstractContainerMenu {
 		if (slotId >= 0 && slotId < TOP && input != ContainerInput.QUICK_CRAFT) {
 			Cell c = cells[slotId];
 			if (c instanceof Cell.Icon icon) {
-				if (icon.control() != null && (input == ContainerInput.PICKUP || input == ContainerInput.QUICK_MOVE)
+				if (icon.control() != null && (input == ContainerInput.PICKUP || (input == ContainerInput.QUICK_MOVE && !icon.pickupOnly()))
 					&& player instanceof ServerPlayer sp && stillValid(sp)) {
 					icon.control().click(sp, button);
 				}
@@ -252,27 +288,17 @@ public class GolemMenu extends AbstractContainerMenu {
 			}
 			if (c instanceof Cell.Store s && s.placeholder()) {
 				placeholderClick(s, button, input, player);
-				refreshInventory();
 				return;
 			}
 		}
 		super.clicked(slotId, button, input, player);
-		refreshInventory();
 	}
 
-	/** The Crafter's arrow lore depends on the grid; rebuild after any click while the Inventory tab is shown. */
-	private void refreshInventory() {
-		if (tab == Tab.INVENTORY && !confirming) rebuild();
-	}
-
+	/** A faded cell takes a fitting item on PICKUP; an empty hand does nothing (the recipe is set on the Recipe tab). */
 	private void placeholderClick(Cell.Store s, int button, ContainerInput input, Player player) {
 		if (input != ContainerInput.PICKUP || !(player instanceof ServerPlayer sp) || !stillValid(sp)) return;
 		ItemStack carried = getCarried();
-		if (carried.isEmpty()) {
-			s.clearMemory();
-			return;
-		}
-		if (!s.mayPlace(carried)) return;
+		if (carried.isEmpty() || !s.mayPlace(carried)) return;
 		int n = Math.min(button == 0 ? carried.getCount() : 1, Math.min(s.maxStack(), carried.getMaxStackSize()));
 		if (n > 0) s.set(carried.split(n));
 	}
@@ -310,7 +336,7 @@ public class GolemMenu extends AbstractContainerMenu {
 
 	/**
 	 * Like {@code moveItemStackTo} over the Inventory tab's working slots only (they are not contiguous in cell
-	 * space): first merge into matching non-empty slots, then fill empty ones, both respecting {@code mayQuickPlace}
+	 * space): first merge into matching non-empty slots, then fill empty ones, both respecting {@code mayPlace}
 	 * and the slot max. Groups are tried last-declared first, so shift-click fills working storage before a tool slot;
 	 * a group declared {@code noQuickMove} is skipped. Does nothing on other tabs.
 	 */
@@ -323,7 +349,7 @@ public class GolemMenu extends AbstractContainerMenu {
 				if (!(cells[cell] instanceof Cell.Store s)) continue;
 				ItemStack cur = s.real();
 				if (pass == 0 ? cur.isEmpty() || !ItemStack.isSameItemSameComponents(cur, stack) : !cur.isEmpty()) continue;
-				if (!s.mayQuickPlace(stack)) continue;
+				if (!s.mayPlace(stack)) continue;
 				int room = Math.min(s.maxStack(), stack.getMaxStackSize()) - cur.getCount();
 				int n = Math.min(room, stack.getCount());
 				if (n <= 0) continue;

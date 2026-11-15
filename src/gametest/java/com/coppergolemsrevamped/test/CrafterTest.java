@@ -282,8 +282,9 @@ public class CrafterTest {
 	}
 
 	/**
-	 * Inventory tab: one 3x3 grid (rows 2..4, cols 1..3) whose cells remember their item (template slot i), the
-	 * crafting arrow at (3,5), the output at (3,7), filler elsewhere; the template itself is not shown.
+	 * Inventory tab: one 3x3 grid (rows 2..4, cols 1..3) whose cells accept only their recipe item (template slot i),
+	 * a plain arrow at (3,5), the output at (3,7), the "Ingredients" label at (1,2), filler elsewhere; the template is
+	 * not shown here.
 	 */
 	@GameTest
 	public void guiLayoutIsOneRememberingGrid(GameTestHelper helper) {
@@ -299,11 +300,11 @@ public class CrafterTest {
 			int cell = gridCell(i);
 			special[cell] = true;
 			Slot input = menu.slots.get(cell);
-			// cells 0 and 3 remember planks, the others remember nothing yet (and accept anything)
+			// cells 0 and 3 remember planks and accept only them; a cell without a recipe item refuses everything
 			boolean plank = i == 0 || i == 3;
 			helper.assertTrue(input.getMaxStackSize(planks) == 64, "cell " + i + " max stack " + input.getMaxStackSize(planks));
-			helper.assertTrue(input.mayPlace(planks), "cell " + i + " must accept planks");
-			helper.assertTrue(input.mayPlace(new ItemStack(Items.STICK)) == !plank, "cell " + i + " sticks: " + input.mayPlace(new ItemStack(Items.STICK)));
+			helper.assertTrue(input.mayPlace(planks) == plank, "cell " + i + " planks: " + input.mayPlace(planks));
+			helper.assertTrue(!input.mayPlace(new ItemStack(Items.STICK)), "cell " + i + " sticks: " + input.mayPlace(new ItemStack(Items.STICK)));
 			ItemStack shown = input.getItem();
 			if (plank) {
 				helper.assertTrue(shown.is(Items.OAK_PLANKS) && DisplayItems.is(shown), "cell " + i + " must show a faded copy: " + shown);
@@ -315,7 +316,11 @@ public class CrafterTest {
 		Slot arrow = menu.slots.get(3 * 9 + 5);
 		special[3 * 9 + 5] = true;
 		helper.assertTrue(arrow.getItem().is(Items.SPECTRAL_ARROW) && !arrow.mayPlace(planks) && !arrow.mayPickup(player), "arrow " + arrow.getItem());
-		helper.assertTrue(lore(arrow.getItem()).contains("Stick x4"), "arrow lore: " + lore(arrow.getItem()));
+		helper.assertTrue(lore(arrow.getItem()).isEmpty(), "the inventory arrow is plain: " + lore(arrow.getItem()));
+		ItemStack label = menu.slots.get(1 * 9 + 2).getItem();
+		special[1 * 9 + 2] = true;
+		helper.assertTrue(label.getHoverName().getString().equals("Ingredients")
+			&& lore(label).contains("Filled by the golem from its input chest; you can add items too"), "label " + label.getHoverName().getString() + " " + lore(label));
 		Slot output = menu.slots.get(3 * 9 + 7);
 		special[3 * 9 + 7] = true;
 		helper.assertTrue(!output.mayPlace(planks), "players must not place into the output");
@@ -326,6 +331,39 @@ public class CrafterTest {
 			Slot s = menu.slots.get(cell);
 			helper.assertTrue(s.getItem().is(Items.STAINED_GLASS_PANE.orange()) && !s.mayPlace(planks), "cell " + cell + " must be filler");
 		}
+		helper.succeed();
+	}
+
+	/**
+	 * Recipe tab: the template as a ghost grid at rows 2..4, cols 1..3 (display copies of planks in cells 0 and 3, the
+	 * rest empty), label "Recipe" at (1,2), the arrow with the outcome as lore at (3,5), the ghost output at (3,7);
+	 * nothing in it is placeable or takeable.
+	 */
+	@GameTest
+	public void recipeTabShowsTheTemplateAsGhosts(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[2];
+		CopperGolem golem = setup(helper, true, 0, c);
+		@SuppressWarnings("removal")
+		ServerPlayer player = helper.makeMockServerPlayerInLevel();
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), golem, Tab.RECIPE);
+		ItemStack planks = new ItemStack(Items.OAK_PLANKS, 64);
+		for (int i = 0; i < 9; i++) {
+			Slot s = menu.slots.get(gridCell(i));
+			boolean plank = i == 0 || i == 3;
+			helper.assertTrue(plank ? s.getItem().is(Items.OAK_PLANKS) && DisplayItems.is(s.getItem()) && s.getItem().getCount() == 1
+				: s.getItem().isEmpty(), "recipe cell " + i + ": " + s.getItem());
+			helper.assertTrue(!s.mayPlace(planks) && !s.mayPickup(player), "recipe cell " + i + " is never a real slot");
+		}
+		ItemStack label = menu.slots.get(1 * 9 + 2).getItem();
+		helper.assertTrue(label.getHoverName().getString().equals("Recipe")
+			&& lore(label).contains("Click with an item to set a cell (the item is not used up)")
+			&& lore(label).contains("Click with an empty hand to clear it"), "label " + lore(label));
+		ItemStack arrow = menu.slots.get(3 * 9 + 5).getItem();
+		helper.assertTrue(arrow.is(Items.SPECTRAL_ARROW) && arrow.getHoverName().getString().equals("Crafts")
+			&& lore(arrow).contains("Stick x4"), "arrow " + lore(arrow));
+		Slot out = menu.slots.get(3 * 9 + 7);
+		helper.assertTrue(out.getItem().is(Items.STICK) && out.getItem().getCount() == 4 && DisplayItems.is(out.getItem())
+			&& !out.mayPickup(player) && !out.mayPlace(planks), "ghost outcome " + out.getItem());
 		helper.succeed();
 	}
 
@@ -375,8 +413,8 @@ public class CrafterTest {
 		GolemData.save(golem, data);
 		GolemService.changeProfession(helper.getLevel(), golem, null);
 		helper.runAfterDelay(2, () -> {
-			// 2 template planks + 5 input planks
-			helper.assertTrue(dropped(helper, golem, Items.OAK_PLANKS) == 7, "dropped planks: " + dropped(helper, golem, Items.OAK_PLANKS));
+			// 5 input planks; the 2 template planks are recipe memory, not items
+			helper.assertTrue(dropped(helper, golem, Items.OAK_PLANKS) == 5, "dropped planks: " + dropped(helper, golem, Items.OAK_PLANKS));
 			helper.assertTrue(dropped(helper, golem, Items.COBBLESTONE) == 2, "dropped cobblestone: " + dropped(helper, golem, Items.COBBLESTONE));
 			helper.assertTrue(dropped(helper, golem, Items.STICK) == 3, "dropped sticks: " + dropped(helper, golem, Items.STICK));
 			helper.assertTrue(GolemData.get(golem).items.isEmpty(), "items must be cleared");

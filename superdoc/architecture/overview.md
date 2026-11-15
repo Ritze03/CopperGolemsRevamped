@@ -16,17 +16,19 @@ A golem with no profession stands still. A golem with a profession keeps its chu
 1. Empty-hand right-click: `mixin/CopperGolemMixin:cgr$emptyHand` -> `menu/GolemMenuOpener:open` (server)
    opens `menu/GolemMenu`, a vanilla chest-type menu: the GUI is server-side only, vanilla clients need no mod.
    See [gui.md](../features/gui.md).
-2. The menu is always 6 rows with a tab bar (Status, Targets, Inventory, Settings, Profession); tabs switch in place
+2. The menu is always 6 rows with a tab bar (Status, Targets, Inventory, Settings, Profession, plus Recipe for a
+   profession with a ghost recipe, no Back button); tabs switch in place
    (`menu/GolemMenu:showTab`, the cells come from `menu/GolemViews:build`). Clicks on icon cells are handled in
    `menu/GolemMenu:clicked`: a profession button -> `GolemMenu:choose` (None switches at once, otherwise a confirm screen)
    -> `core/GolemService:changeProfession` (takes the player: stored items go to the player; then the menu reopens),
-   follow toggle -> flips the follow fields of `GolemData`, assign button -> `assign/AssignMode:arm` (see
+   follow and Freeze toggles -> flip the `GolemData` fields (see [freeze.md](../features/freeze.md)), assign button -> `assign/AssignMode:arm` (see
    [assign-mode.md](../features/assign-mode.md)), Show / Clear -> `ai/WalkTo` / the assignments, Help ->
    `menu/GolemMenu:sendHelp` (chat text from `menu/Tab` and `profession/ProfessionHelp`).
 3. All per-golem state is one persistent attachment, `core/GolemData` (`core/ModAttachments:GOLEM_DATA`):
-   profession, assignments, carried items, follow state.
+   profession, assignments, carried items, follow and freeze state.
 4. Every server tick the vanilla brain tick is wrapped (`mixin/CopperGolemMixin:cgr$gateBrain`) and routed to
-   `core/GolemTicker:tick`: first the chunk ticket is kept or released (`chunk/GolemChunkLoader`), then
+   `core/GolemTicker:tick`: first the chunk ticket is kept or released (`chunk/GolemChunkLoader`) and the hand display
+   synced, then a frozen golem stops and returns (nothing below runs, see [freeze.md](../features/freeze.md)), then
    `ai/WalkTo:tick` (a pending walk-to wins), then follow mode (`ai/FollowMode:tick`); a golem with no profession stands
    still; otherwise the vanilla brain runs only for professions with `runsVanillaBrain` (Chest Sorter), every other
    profession runs its own tick (`profession/Profession#tick`, e.g. `profession/transporter/TransporterLogic:tick`).

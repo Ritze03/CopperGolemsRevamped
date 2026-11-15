@@ -27,8 +27,9 @@ public class GolemData {
 		Codec.BOOL.optionalFieldOf("following", false).forGetter(d -> d.following),
 		UUIDUtil.CODEC.optionalFieldOf("follow_player").forGetter(d -> Optional.ofNullable(d.followPlayer)),
 		BlockPos.CODEC.optionalFieldOf("spawn_chest").forGetter(d -> Optional.ofNullable(d.spawnChest)),
-		Codec.STRING.optionalFieldOf("auto_name").forGetter(d -> Optional.ofNullable(d.autoName))
-	).apply(i, (p, a, it, f, u, sc, an) -> {
+		Codec.STRING.optionalFieldOf("auto_name").forGetter(d -> Optional.ofNullable(d.autoName)),
+		Codec.BOOL.optionalFieldOf("frozen", false).forGetter(d -> d.frozen)
+	).apply(i, (p, a, it, f, u, sc, an, fr) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
@@ -37,6 +38,7 @@ public class GolemData {
 		d.followPlayer = u.orElse(null);
 		d.spawnChest = sc.orElse(null);
 		d.autoName = an.orElse(null);
+		d.frozen = fr;
 		return d;
 	}));
 
@@ -47,6 +49,8 @@ public class GolemData {
 	/** The profession's inventory, sized from its declaration. */
 	public NonNullList<ItemStack> items = NonNullList.create();
 	public boolean following;
+	/** Freeze: the golem does nothing and stands still (see superdoc/features/freeze.md). Cleared on a profession change. */
+	public boolean frozen;
 	public @Nullable UUID followPlayer;
 
 	/** The chest the build pattern left where the copper block was; null for golems spawned any other way. */

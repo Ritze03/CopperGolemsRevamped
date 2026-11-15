@@ -45,7 +45,6 @@ public enum GolemIcon {
 	ASSIGN_SEEDS("assign_seeds", Items.WHEAT_SEEDS),
 	ASSIGN_TREE("assign_tree", Items.OAK_SAPLING),
 	HELP("help", Items.BOOK),
-	BACK("icon_back", Items.ARROW),
 	STATUS("icon_status", Items.WRITABLE_BOOK),
 	INVENTORY("icon_inventory", Items.CHEST),
 	SETTINGS("icon_settings", Items.COMPARATOR),
