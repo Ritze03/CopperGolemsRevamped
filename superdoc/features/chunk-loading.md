@@ -64,3 +64,9 @@ structures are packed side by side, so the next chunk lies inside another test's
 tick, so `keep` never ran ("no ticket at ..." in about 1 of 4 runs, depending on which neighbour finished
 on the same tick). It was a test race, not a production bug. Tests that move entities must keep them out
 of other tests' bounds. (A far chunk held by a test-own ticket was tried: it never became entity-ticking.)
+
+Why `ticketMovesWithGolem` has `maxTicks = 3000`: it waits for the next chunk to be entity-ticking before
+teleporting. GameTests tick as fast as the server can, but chunk generation/promotion runs on worker threads;
+in a batch of 50 parallel tests that sometimes took longer than the old 200 ticks (~1 s), giving about 1 failure
+in 3 full runs ("waiting for the next chunk to tick on tick 202"). The ticket logic was not at fault (the ticket
+is added the same tick). The wait is for a condition, so the large bound only matters when the server is slow.
