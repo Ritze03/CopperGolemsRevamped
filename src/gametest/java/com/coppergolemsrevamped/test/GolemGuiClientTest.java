@@ -65,6 +65,34 @@ public class GolemGuiClientTest implements FabricClientGameTest {
 			context.getInput().setCursorPos(422, 212);
 			context.waitTicks(10);
 			context.takeScreenshot("golem-gui-transporter-tooltip");
+
+			// (d) chest sorter with 12 waxed copper blocks
+			world.getServer().runOnServer(server -> {
+				ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
+				player.closeContainer();
+				GolemService.changeProfession(player.level(), golem, CopperGolemsRevamped.id("chest_sorter"));
+				GolemData data = GolemData.get(golem);
+				data.items.set(0, new ItemStack(Items.COPPER_BLOCK.waxed().unaffected(), 12));
+				GolemData.save(golem, data);
+				GolemMenuOpener.open(player, golem);
+			});
+			context.waitTicks(20);
+			context.takeScreenshot("golem-gui-chest-sorter");
+
+			// (e) cleaner with area and output assigned
+			world.getServer().runOnServer(server -> {
+				ServerPlayer player = server.getPlayerList().getPlayers().getFirst();
+				player.closeContainer();
+				GolemService.changeProfession(player.level(), golem, CopperGolemsRevamped.id("cleaner"));
+				GolemData data = GolemData.get(golem);
+				data.assignments.put("area_a", player.blockPosition().offset(-4, -1, -4));
+				data.assignments.put("area_b", player.blockPosition().offset(4, -1, 4));
+				data.assignments.put("output", player.blockPosition().offset(3, 0, 0));
+				GolemData.save(golem, data);
+				GolemMenuOpener.open(player, golem);
+			});
+			context.waitTicks(20);
+			context.takeScreenshot("golem-gui-cleaner");
 		}
 	}
 }
