@@ -84,3 +84,26 @@ publishing {
 		// retrieving dependencies.
 	}
 }
+
+// Resource pack for vanilla clients: the mod's assets plus a pack.mcmeta (see superdoc/features/gui.md).
+def packMcmetaFile = layout.buildDirectory.file('resourcepack/pack.mcmeta')
+def genPackMcmeta = tasks.register('generatePackMcmeta') {
+	def out = packMcmetaFile
+	outputs.file(out)
+	doLast {
+		out.get().asFile.text = '{"pack":{"description":"Copper Golems Revamped GUI icons","min_format":97,"max_format":97}}\n'
+	}
+}
+def resourcePackZip = tasks.register('resourcePackZip', Zip) {
+	group = 'build'
+	description = 'Zips the mod assets + pack.mcmeta as a resource pack for vanilla clients.'
+	archiveBaseName = project.mod_id
+	archiveVersion = project.version
+	archiveClassifier = 'resourcepack'
+	destinationDirectory = layout.buildDirectory.dir('libs')
+	from(genPackMcmeta)
+	from('src/main/resources/assets') { into 'assets' }
+	preserveFileTimestamps = false
+	reproducibleFileOrder = true
+}
+tasks.named('build') { dependsOn resourcePackZip }
