@@ -375,6 +375,7 @@ public final class LumberLogic {
 		if (boneMeal(s, level, golem, data, t, now)) return;
 		List<BlockPos> fp = footprintCells(level, t, s);
 		if (collect(s, level, golem, data, t, fp, now)) return; // waiting for growth: stragglers from decaying leaves
+		if (mendVisit(s, level, golem, data, in, inPos, now)) return; // the idle time repairs Mending axes, however little they miss
 		if (!standOutside(s, level, golem, t, fp, WAIT_MIN, WAIT_MAX, now)) return;
 		idle(s, golem);
 	}
@@ -478,6 +479,61 @@ public final class LumberLogic {
 		if (took > 0 || pending) Interact.openChest(level, golem, inPos, Interact.Action.TAKE);
 		if (!pending) s.walk.reset();
 		done(s, golem, data, pending ? TransferBudget.waitTicks(level) : took > 0 ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+	}
+
+	// ---- Mending while waiting -----------------------------------------------------------------------------------
+
+	/** A bottle in the input chest and a damaged Mending axe (held or in the chest), whatever the damage. */
+	private static boolean wantsTopUp(ServerLevel level, GolemData data, Container in) {
+		if (GolemMending.bottlesIn(in) <= 0) return false;
+		if (damagedMending(level, data.items.get(LumberProfession.AXE_SLOT))) return true;
+		for (int i = 0; i < in.getContainerSize(); i++) if (damagedMending(level, in.getItem(i))) return true;
+		return false;
+	}
+
+	private static boolean damagedMending(ServerLevel level, ItemStack a) {
+		return a.getCount() == 1 && isAxe(a) && GolemMending.hasMending(a) && a.isDamaged() && GolemMending.perBottle(level, a) > 0;
+	}
+
+	/** Repairs held axe first, then the chest's Mending axes, one bottle at a time to full (the last bottle may overshoot); bottles used. */
+	private static int topUpMending(ServerLevel level, GolemData data, Container in, int limit) {
+		int used = 0;
+		for (int i = -1; i < in.getContainerSize() && used < limit; i++) {
+			ItemStack a = i < 0 ? data.items.get(LumberProfession.AXE_SLOT) : in.getItem(i);
+			if (!damagedMending(level, a)) continue;
+			while (used < limit && a.isDamaged() && takeBottle(in)) {
+				a.setDamageValue(Math.max(0, a.getDamageValue() - GolemMending.perBottle(level, a)));
+				used++;
+			}
+		}
+		if (used > 0) in.setChanged();
+		return used;
+	}
+
+	private static boolean takeBottle(Container chest) {
+		for (int i = 0; i < chest.getContainerSize(); i++) {
+			ItemStack st = chest.getItem(i);
+			if (!st.is(Items.EXPERIENCE_BOTTLE)) continue;
+			st.shrink(1);
+			if (st.isEmpty()) chest.setItem(i, ItemStack.EMPTY);
+			return true;
+		}
+		return false;
+	}
+
+	/** While waiting for growth: walk to the input chest and top up damaged Mending axes. True when this tick was used. */
+	private static boolean mendVisit(State s, ServerLevel level, CopperGolem golem, GolemData data, @Nullable Container in, @Nullable BlockPos inPos, long now) {
+		if (in == null || inPos == null || !wantsTopUp(level, data, in)) return false;
+		if (!reach(s, level, golem, inPos, inPos, now)) return true;
+		golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
+		int used = topUpMending(level, data, in, TransferBudget.remaining(level, golem));
+		TransferBudget.spend(level, golem, used);
+		s.anchored = false;
+		boolean pending = TransferBudget.exhausted(level, golem) && wantsTopUp(level, data, in);
+		if (used > 0 || pending) Interact.openChest(level, golem, inPos, Interact.Action.TAKE);
+		if (!pending) s.walk.reset();
+		done(s, golem, data, pending ? TransferBudget.waitTicks(level) : used > 0 ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
+		return true;
 	}
 
 	// ---- delivery -------------------------------------------------------------------------------------------------

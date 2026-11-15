@@ -120,6 +120,11 @@ is possible (no collision) and the trunk growing around the golem would suffocat
 retried after the skip or the next cycle. After a pickup the golem walks back to its waiting spot (`standOutside`), so the growth logic is unchanged.
 Test: `LumberTest:collectsDropsWhileWaitingForGrowth`.
 
+Mending while waiting: after collecting, if the input chest holds XP bottles and any Mending axe (held or in the chest) is
+damaged, the golem walks to the chest and repairs it to full (`LumberLogic:mendVisit`), even for a few missing points
+(the felling-time rule only visits when a whole bottle's worth is missing), then goes back to waiting. Why: user request,
+the wait is free time. Details in [mending.md](mending.md). Test: `LumberTest:repairsMendingAxeWhileWaitingForGrowth`.
+
 PICKUP still exists, but only as the cleanup phase: a fresh state with no tree, PLANT that cannot plant (no saplings, a 2x2 site
 waiting for four) and a vanished sapling go through it, the same collection and end rule as below. Picking up around T:
 
@@ -231,6 +236,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
 - `bonemealGrowsTheSaplingThenFellsIt`: 64 bone meal in the chest, sapling on T: logs reach the output, bone meal used.
 - `fullCycleOrder`: phases recorded by the listener: PICKUP, DELIVER, PLANT, BONEMEAL, FELL, DELIVER, PLANT, BONEMEAL, with
   FELL always followed by DELIVER (no wait) and DELIVER by PLANT; surplus birch saplings (put in the carry) end in the input chest, logs in the output.
+- `repairsMendingAxeWhileWaitingForGrowth`: axe with 5 damage, 5 bottles in the input chest, sapling and no bone meal: axe whole, one bottle used.
 - `collectsDropsWhileWaitingForGrowth`: sapling, no bone meal; drops spawned once in BONEMEAL (2 sticks, 2 apples, a sapling, plus a stick next to T that is left alone) end in the carry while it is still a sapling; never in the sapling volume.
 - `twoByTwoSiteWaitsForFourSaplings`: marked 2x2 site, 3 spruce saplings plant nothing, a 4th plants all four.
 - `neverStandsInTheSapling` (bone meal run: never in T's column while a sapling stands, health unchanged) and

@@ -26,6 +26,11 @@ different tool"). Bottles come from [xp-bottles.md](xp-bottles.md) (`GolemXp:XP_
 - When it visits: Lumber while felling (logs left), Butcher when a cull is needed, Farmer when the field has work for a tool
   (tillable ground or a fruit block), i.e. exactly when a tool fetch could happen. A chest holding bottles and a damaged
   Mending tool is the extra reason to go there. No bottles, no visit.
+- Lumber also repairs **while waiting for the sapling to grow** (BONEMEAL, when not applying bone meal and nothing is left to
+  collect): any damaged Mending axe, held or in the input chest, is topped up to full with `LumberLogic:mendVisit`, even when it
+  misses less than one bottle's worth. Why: user request, the idle wait is free time, so the "not worth a trip" rule
+  (`wantsRepair`) does not apply there. It does not call `GolemMending:repair` (that keeps the rule); it uses only
+  `hasMending`, `perBottle` and `bottlesIn`. Budget rules as usual (1 item per bottle). Test: `LumberTest:repairsMendingAxeWhileWaitingForGrowth`.
 
 ## Never break a Mending tool
 

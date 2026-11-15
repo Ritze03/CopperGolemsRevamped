@@ -507,6 +507,27 @@ public class LumberTest {
 		});
 	}
 
+	/**
+	 * Waiting for growth with XP bottles in the input chest: a Mending axe that misses only 5 points (below one bottle's
+	 * worth, so the felling visit rule would ignore it) is repaired to full during the wait, with exactly one bottle.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void repairsMendingAxeWhileWaitingForGrowth(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		ChestBlockEntity in = chest(helper, IN);
+		in.setItem(0, new ItemStack(Items.EXPERIENCE_BOTTLE, 5));
+		CopperGolem golem = lumber(helper);
+		GolemData d = GolemData.get(golem);
+		d.items.set(LumberProfession.AXE_SLOT, MendingTest.mending(helper, Items.IRON_AXE, 250 - 5));
+		GolemData.save(golem, d);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS), "the sapling grew before the check");
+			helper.assertTrue(axeDamage(golem) == 0, "axe damage: " + axeDamage(golem));
+			helper.assertTrue(count(in, Items.EXPERIENCE_BOTTLE) == 4, "bottles left: " + count(in, Items.EXPERIENCE_BOTTLE));
+		});
+	}
+
 	/** A golem that starts inside the sapling steps out and waits at least 2 blocks from it (no bone meal: natural growth). */
 	@GameTest(maxTicks = 600)
 	public void stepsOutOfTheSapling(GameTestHelper helper) {
