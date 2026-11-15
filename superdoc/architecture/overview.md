@@ -29,7 +29,7 @@ mode. Six professions are planned: Chest Sorter, Lumber, Crafter, Transporter, F
 
 ## Module map
 
-Package root: `src/main/java/com/coppergolemsrevamped` (`src/client` holds no Java: the mod is server-side only; tests in `src/gametest`).
+Package root: `src/main/java/com/coppergolemsrevamped` (there is no client source code (no `src/client` set): the mod is server-side only; tests in `src/gametest`).
 
 | Path | Role |
 | --- | --- |

@@ -33,3 +33,4 @@ replay_*.log
 .claude/teamlead/
 .claude/worktrees/
 .claude/local/
+__pycache__/

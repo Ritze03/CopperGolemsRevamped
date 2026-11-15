@@ -78,7 +78,8 @@ public class GolemMenu extends AbstractContainerMenu {
 		super(TYPES.get(rowsFor(profession) - 1), id);
 		this.golem = golem;
 		this.profession = profession;
-		this.openedProfession = profession == null ? null : profession.id();
+		// raw stored id (not the resolved Profession): an unregistered id resolves to null but must still match in stillValid
+		this.openedProfession = GolemData.get(golem).profession;
 		this.rows = rowsFor(profession);
 		this.itemCount = profession == null ? 0 : Math.min(profession.inventorySize(), (rows - 1) * COLS);
 		this.icons = new SimpleContainer(rows * COLS);
@@ -199,7 +200,7 @@ public class GolemMenu extends AbstractContainerMenu {
 		List<Identifier> order = new ArrayList<>();
 		order.add(null);
 		for (Profession p : Professions.all()) order.add(p.id());
-		int cur = order.indexOf(GolemData.get(golem).profession);
+		int cur = Math.max(0, order.indexOf(GolemData.get(golem).profession)); // unknown id counts as None
 		int next = Math.floorMod(cur + (button == 1 ? -1 : 1), order.size());
 		GolemService.changeProfession(level, golem, order.get(next));
 		// the slot layout depends on the profession, so rebuild the menu
