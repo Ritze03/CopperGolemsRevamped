@@ -28,7 +28,7 @@ fabricApi {
 		createSourceSet = true
 		modId = "coppergolemsrevamped-test"
 		enableGameTests = true
-		enableClientGameTests = false
+		enableClientGameTests = true
 	}
 }
 

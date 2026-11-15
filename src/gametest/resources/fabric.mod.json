@@ -8,6 +8,9 @@
 		"fabric-gametest": [
 			"com.coppergolemsrevamped.test.TransporterTest",
 			"com.coppergolemsrevamped.test.GolemDataTest"
+		],
+		"fabric-client-gametest": [
+			"com.coppergolemsrevamped.test.GolemGuiClientTest"
 		]
 	},
 	"depends": {
