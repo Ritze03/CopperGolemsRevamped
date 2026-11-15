@@ -92,13 +92,8 @@ public final class CleanerLogic {
 				}
 				if (--s.repath <= 0 || golem.getNavigation().isDone()) {
 					Path path = golem.getNavigation().createPath(target, 0);
-					if (path == null) {
-						skip(s, target.getUUID(), now);
-						golem.getNavigation().stop();
-						s.repath = 0;
-						return;
-					}
-					golem.getNavigation().moveTo(path, SPEED);
+					// A null path is transient (spawn tick, mid-air, chunk edge): no progress, so the chase timeout decides.
+					if (path != null) golem.getNavigation().moveTo(path, SPEED);
 					s.repath = REPATH_TICKS;
 				}
 				return;
@@ -135,7 +130,7 @@ public final class CleanerLogic {
 	/**
 	 * Progress tracker for the current chase; false = give up on {@code id}. Resets when the target changes or the
 	 * distance shrank by more than {@link #PROGRESS_EPS}; otherwise counts ticks without progress.
-	 * ponytail: a no-progress timeout stands in for a real reachability check.
+	 * ponytail: a no-progress timeout stands in for a real reachability check; a null path is no progress, not instant give-up.
 	 */
 	static boolean chase(State s, UUID id, double distSqr) {
 		if (!id.equals(s.target) || distSqr < s.bestDist - PROGRESS_EPS) {

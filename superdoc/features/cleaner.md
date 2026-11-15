@@ -46,12 +46,17 @@ Transient per-golem state in `CleanerLogic:State`: current `target` UUID, `bestD
 
 - `CleanerLogic:chase` runs every tick while walking to an item: distance shrinking by more than 0.1 (squared)
   resets `stuck`; otherwise `stuck` counts up and at 200 ticks (10 s) the golem gives up.
-- At each repath `getNavigation().createPath(target, 0)` returning null gives up immediately.
+- At each repath `getNavigation().createPath(target, 0)` returning null does not give up: the golem just keeps the
+  current navigation and retries at the next repath. The 200-tick no-progress timeout above decides.
 - Give-up (`CleanerLogic:skip`): the UUID is ignored for 1200 ticks (1 min); expired entries are purged each scan.
   The golem then picks another item or, with a non-empty carry and no other candidate, delivers.
 - A partial path that never gets within pickup range (item on a ledge above the feet; pickup range is measured
   from the feet) is covered by the 200-tick no-progress timeout, not by `isDone()`.
 - Test hooks: `CleanerLogic:skipItem` and `CleanerLogic:isSkipped` (public, take golem, UUID, game time).
+
+Why (null paths): a golem configured on its spawn tick is not on the ground yet and gets null paths for its first
+ticks; skipping on the first null ignored the nearest items for a minute. Any transient failure (mid-air after a fall,
+chunk edge) would do the same. `CleanerTest:pickupWorksFromSpawnTick` covers it.
 
 Why: the scan used to pick the nearest candidate forever, so one item on a ledge, behind a wall or in a 1-block gap
 kept the golem walking and it never delivered. ponytail: a no-progress timeout stands in for a real reachability
@@ -64,3 +69,4 @@ check; the cost is up to 10 s wasted per unreachable item (then 1 min ignored).
   in the box and the outside entities are unchanged. maxTicks 1200.
 - `areaLimit16`: AREA spec has maxSize 16; `areaFits` true for 16x16, false for 17x16 and 16x17; `box` height
   is Y range + 2 and null when unset.
+- `pickupWorksFromSpawnTick`: golem configured on the spawn tick, diamonds 3+ blocks away (pathing needed) must reach the chest.

@@ -17,10 +17,13 @@ not part of `check`.
 - `GolemDataTest:assignAreaHelpers`: pure `AssignMode:areaFits` / `AssignMode:inRange`.
 - `ChestSorterTest:visitedLimitScalesWithWaxedBlocks`, `mixinAppliesLimit`, `waxedSlotFilter`: Chest Sorter
   limit scaling, the mixin applying it, and the waxed-slot filter (see [chest-sorter.md](../features/chest-sorter.md)).
-- `CleanerTest:cleansItemsInsideArea`, `areaLimit16`: Cleaner pickup/delivery and the 16x16 area limit
-  (see [cleaner.md](../features/cleaner.md)).
+- `CleanerTest:cleansItemsInsideArea`, `areaLimit16`, `partialPickupConservesItems`, `borderItemIgnored`,
+  `skipRuleExpires`, `deliversWhenOnlySkippedItemsRemain`, `unreachableItemDoesNotBlock`,
+  `pickupWorksFromSpawnTick`: Cleaner pickup/delivery, area limit, item conservation, border and give-up rules, and
+  configuring on the spawn tick (see [cleaner.md](../features/cleaner.md)).
 
-Total: 8 `@GameTest` methods, so the log says `All 9 required tests passed` (see Gotchas).
+Total: 14 `@GameTest` methods (TransporterTest 1, GolemDataTest 2, ChestSorterTest 3, CleanerTest 8), so the log
+says `All 15 required tests passed` (see Gotchas).
 
 ## Client tests (headless sway only)
 

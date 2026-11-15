@@ -107,22 +107,17 @@ public class CleanerTest {
 		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
 	}
 
-	/**
-	 * Spawns a golem and makes it a Cleaner 5 ticks later: on the spawn tick the golem is not yet on the ground and
-	 * pathing returns null, so the item scan would skip the nearest items for a minute.
-	 */
+	/** Spawns a golem and makes it a Cleaner on the spawn tick. */
 	private static CopperGolem cleaner(GameTestHelper helper, BlockPos at, BlockPos a, BlockPos b, BlockPos chestPos,
 		java.util.function.BiConsumer<CopperGolem, GolemData> extra) {
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, at);
-		helper.runAfterDelay(5, () -> {
-			GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
-			GolemData data = GolemData.get(golem);
-			data.assignments.put("area_a", helper.absolutePos(a));
-			data.assignments.put("area_b", helper.absolutePos(b));
-			data.assignments.put("output", helper.absolutePos(chestPos));
-			extra.accept(golem, data);
-			GolemData.save(golem, data);
-		});
+		GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("area_a", helper.absolutePos(a));
+		data.assignments.put("area_b", helper.absolutePos(b));
+		data.assignments.put("output", helper.absolutePos(chestPos));
+		extra.accept(golem, data);
+		GolemData.save(golem, data);
 		return golem;
 	}
 
@@ -244,5 +239,19 @@ public class CleanerTest {
 			helper.assertTrue(chestCount(chest, Items.DIAMOND) == 3, "diamonds in chest: " + chestCount(chest, Items.DIAMOND));
 			helper.assertTrue(high.isAlive() && chestCount(chest, Items.GOLD_INGOT) == 0, "pillar item should stay put");
 		});
+	}
+
+	/** Configured on the spawn tick (golem not yet on the ground, null paths): an item 3+ blocks away is still fetched. */
+	@GameTest(maxTicks = 600)
+	public void pickupWorksFromSpawnTick(GameTestHelper helper) {
+		floor(helper);
+		BlockPos chestPos = new BlockPos(5, 1, 1);
+		helper.setBlock(chestPos, Blocks.CHEST);
+		ChestBlockEntity chest = helper.getBlockEntity(chestPos, ChestBlockEntity.class);
+		drop(helper, Items.DIAMOND, 3, 0.5, 2.5);
+		cleaner(helper, new BlockPos(4, 1, 2), new BlockPos(0, 0, 0), new BlockPos(3, 0, 3), chestPos, (g, d) -> {});
+
+		helper.succeedWhen(() ->
+			helper.assertTrue(chestCount(chest, Items.DIAMOND) == 3, "diamonds in chest: " + chestCount(chest, Items.DIAMOND)));
 	}
 }
