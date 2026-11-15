@@ -6,6 +6,7 @@ import com.coppergolemsrevamped.ai.WalkTo;
 import com.coppergolemsrevamped.chunk.GolemChunkLoader;
 import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.chest_sorter.ChestSorterProfession;
+import com.coppergolemsrevamped.profession.transporter.TransporterProfession;
 
 import java.util.Map;
 import java.util.UUID;
@@ -80,6 +81,7 @@ public final class GolemTicker {
 		else GolemChunkLoader.release(level, golem);
 		// old saves kept waxed copper in the sorter's slot; a no-op early return unless a sorter still holds items
 		if (p != null && ChestSorterProfession.ID.equals(p.id())) ChestSorterProfession.migrateLegacyItems(level, golem);
+		if (p != null && TransporterProfession.ID.equals(p.id())) TransporterProfession.migrate(data); // old saves lack the filter slots
 		if (golem.tickCount % GolemHandDisplay.PERIOD == 0) GolemHandDisplay.sync(golem);
 		if (data.frozen) {
 			// Freeze: no profession tick, no vanilla brain, no follow, no WalkTo; phase and WalkTo state stay for the unfreeze.

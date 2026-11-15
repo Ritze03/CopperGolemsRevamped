@@ -57,7 +57,7 @@ public class GolemDataTest {
 		helper.assertTrue(d.assignments.size() == 2, "assignments: " + d.assignments);
 		helper.assertTrue(input.equals(d.assignments.get("input")), "input: " + d.assignments.get("input"));
 		helper.assertTrue(output.equals(d.assignments.get("output")), "output: " + d.assignments.get("output"));
-		helper.assertTrue(d.items.size() == 9, "items size: " + d.items.size());
+		helper.assertTrue(d.items.size() == 18, "items size: " + d.items.size());
 		helper.assertTrue(ItemStack.matches(d.items.get(0), new ItemStack(Items.COBBLESTONE, 64)), "slot 0: " + d.items.get(0));
 		helper.assertTrue(ItemStack.matches(d.items.get(4), new ItemStack(Items.DIAMOND, 3)), "slot 4: " + d.items.get(4));
 		helper.assertTrue(input.equals(d.spawnChest), "spawnChest: " + d.spawnChest);

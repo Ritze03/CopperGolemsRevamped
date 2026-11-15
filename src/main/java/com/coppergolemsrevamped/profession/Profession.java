@@ -56,7 +56,7 @@ public record Profession(
 	 * slot is empty it shows the outcome as a take-less ghost, and the label's lore names it.
 	 */
 	public record SlotGroup(String key, int count, int maxStack, Predicate<ItemStack> filter, int width,
-		int row, int col, boolean quickMove, int memoryOffset, boolean inHand, boolean recipe, @Nullable Label label,
+		int row, int col, boolean quickMove, int memoryOffset, boolean inHand, boolean recipe, boolean onFilterTab, @Nullable Label label,
 		@Nullable Preview preview) {
 		public static final int DEFAULT_WIDTH = 9;
 		public static final int HIDDEN = -1;
@@ -66,7 +66,7 @@ public record Profession(
 		}
 
 		public SlotGroup(String key, int count, int maxStack, Predicate<ItemStack> filter, int width) {
-			this(key, count, maxStack, filter, width, HIDDEN, 0, true, 0, false, false, null, null);
+			this(key, count, maxStack, filter, width, HIDDEN, 0, true, 0, false, false, false, null, null);
 		}
 
 		public SlotGroup(String key, int count, int maxStack, Predicate<ItemStack> filter) {
@@ -79,32 +79,32 @@ public record Profession(
 
 		/** Shown in the Inventory tab starting at {@code r} (1..5), {@code c} (0..8). */
 		public SlotGroup at(int r, int c) {
-			return new SlotGroup(key, count, maxStack, filter, width, r, c, quickMove, memoryOffset, inHand, recipe, label, preview);
+			return new SlotGroup(key, count, maxStack, filter, width, r, c, quickMove, memoryOffset, inHand, recipe, onFilterTab, label, preview);
 		}
 
 		/** A label icon cell at its own position. */
 		public SlotGroup labeled(int r, int c, String icon, String name, String lore) {
-			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, inHand, recipe,
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, inHand, recipe, onFilterTab,
 				new Label(r, c, icon, name, lore), preview);
 		}
 
 		/** Slot {@code k} remembers its item in data slot {@code k - offset}. */
 		public SlotGroup remembers(int offset) {
-			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, offset, inHand, recipe, label, preview);
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, offset, inHand, recipe, onFilterTab, label, preview);
 		}
 
 		/** Shift-click never fills this group. */
 		public SlotGroup noQuickMove() {
-			return new SlotGroup(key, count, maxStack, filter, width, row, col, false, memoryOffset, inHand, recipe, label, preview);
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, false, memoryOffset, inHand, recipe, onFilterTab, label, preview);
 		}
 
 		/** The golem shows the first non-empty stack of this group in its main hand (display only). */
 		public SlotGroup shownInHand() {
-			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, true, recipe, label, preview);
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, true, recipe, onFilterTab, label, preview);
 		}
 
 		public SlotGroup previewing(Preview p) {
-			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, inHand, recipe, label, p);
+			return new SlotGroup(key, count, maxStack, filter, width, row, col, quickMove, memoryOffset, inHand, recipe, onFilterTab, label, p);
 		}
 
 		/**
@@ -113,7 +113,16 @@ public record Profession(
 		 * Never shown on the Inventory tab. A profession with such a group gets the Recipe tab (see {@link #hasRecipeTab}).
 		 */
 		public SlotGroup recipeAt(int r, int c) {
-			return new SlotGroup(key, count, maxStack, filter, width, r, c, false, memoryOffset, inHand, true, label, preview);
+			return new SlotGroup(key, count, maxStack, filter, width, r, c, false, memoryOffset, inHand, true, false, label, preview);
+		}
+
+		/**
+		 * A filter group (Transporter): real container slots (max stack 1) shown only on the Filter tab starting at
+		 * {@code r}, {@code c}; never on the Inventory tab, never shift-click targets. Its label cell holds the mode button.
+		 * A profession with such a group gets the Filter tab (see {@link #hasFilterTab}).
+		 */
+		public SlotGroup filterAt(int r, int c) {
+			return new SlotGroup(key, count, maxStack, filter, width, r, c, false, memoryOffset, inHand, false, true, label, preview);
 		}
 
 		/** GUI rows this group occupies. */
@@ -164,6 +173,12 @@ public record Profession(
 		return false;
 	}
 
+	/** True when a group is a filter group ({@link SlotGroup#filterAt}): the menu then shows a Filter tab before Inventory. */
+	public boolean hasFilterTab() {
+		for (SlotGroup g : slots) if (g.onFilterTab()) return true;
+		return false;
+	}
+
 	/**
 	 * Throws when a shown group or label leaves rows 1..5 / columns 0..8 or two cells overlap (checked on registration).
 	 * The Inventory tab and the Recipe tab are separate boards: recipe groups only on the Recipe tab, previewing groups
@@ -172,9 +187,11 @@ public record Profession(
 	public void validateLayout() {
 		boolean[] inventory = new boolean[6 * 9];
 		boolean[] recipe = new boolean[6 * 9];
+		boolean[] filterBoard = new boolean[6 * 9];
 		for (SlotGroup g : slots) {
 			if (!g.visible()) continue;
-			if (!g.recipe()) claimGroup(inventory, g);
+			if (!g.recipe() && !g.onFilterTab()) claimGroup(inventory, g);
+			if (g.onFilterTab()) claimGroup(filterBoard, g);
 			if (g.recipe() || g.preview() != null) claimGroup(recipe, g);
 		}
 	}

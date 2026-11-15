@@ -40,6 +40,7 @@ public final class GolemService {
 		drop(level, golem, data, player);
 		data.assignments.clear();
 		data.frozen = false; // a new profession starts working (freeze.md)
+		data.filterMode = FilterMode.OFF; // the filter items are dropped with the other items
 		data.profession = id;
 		Profession p = Professions.get(id);
 		data.items = NonNullList.withSize(p == null ? 0 : p.inventorySize(), ItemStack.EMPTY);

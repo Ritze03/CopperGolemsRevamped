@@ -29,8 +29,9 @@ public class GolemData {
 		BlockPos.CODEC.optionalFieldOf("spawn_chest").forGetter(d -> Optional.ofNullable(d.spawnChest)),
 		Codec.STRING.optionalFieldOf("auto_name").forGetter(d -> Optional.ofNullable(d.autoName)),
 		Codec.BOOL.optionalFieldOf("frozen", false).forGetter(d -> d.frozen),
-		Codec.INT.optionalFieldOf("xp", 0).forGetter(d -> d.xp)
-	).apply(i, (p, a, it, f, u, sc, an, fr, xp) -> {
+		Codec.INT.optionalFieldOf("xp", 0).forGetter(d -> d.xp),
+		Codec.STRING.optionalFieldOf("filter_mode", FilterMode.OFF.id).forGetter(d -> d.filterMode.id)
+	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
@@ -41,6 +42,7 @@ public class GolemData {
 		d.autoName = an.orElse(null);
 		d.frozen = fr;
 		d.xp = xp;
+		d.filterMode = FilterMode.parse(fm);
 		return d;
 	}));
 
@@ -55,6 +57,8 @@ public class GolemData {
 	public boolean frozen;
 	/** Stored experience points (Butcher kills, Smelter furnaces), paid out as bottles; see superdoc/features/xp-bottles.md. */
 	public int xp;
+	/** Transporter filter mode; the filter items themselves are the profession's {@code filter} slot group in {@link #items}. */
+	public FilterMode filterMode = FilterMode.OFF;
 	public @Nullable UUID followPlayer;
 
 	/** The chest the build pattern left where the copper block was; null for golems spawned any other way. */

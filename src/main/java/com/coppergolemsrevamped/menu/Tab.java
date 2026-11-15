@@ -12,7 +12,7 @@ import net.minecraft.world.item.Items;
 
 /**
  * The golem menu's tabs, in tab-bar order. {@code icon == null && plain == null}: the current profession's icon is shown.
- * {@link #RECIPE} exists only for a profession with a recipe group ({@link #forProfession}).
+ * {@link #RECIPE} exists only for a profession with a recipe group, {@link #FILTER} only with a filter group ({@link #forProfession}).
  */
 public enum Tab {
 	STATUS("Status", "What the golem is doing now", GolemIcon.STATUS, List.of(
@@ -27,6 +27,10 @@ public enum Tab {
 	RECIPE("Recipe", "The recipe the golem follows", null, Items.KNOWLEDGE_BOOK, List.of(
 		"The grid is the recipe. Click a cell with an item to set it (the item is not used up), click with an empty hand to clear it.",
 		"Nothing here is a real item; the ingredients live on the Inventory tab.")),
+	FILTER("Filter", "Which items the golem moves", null, Items.HOPPER, List.of(
+		"Put items in the nine slots (the item stays here, one per slot); only the item type counts.",
+		"The button picks the mode: Off moves everything, Whitelist moves only these items, Blacklist moves everything except them.",
+		"An empty whitelist moves nothing.")),
 	INVENTORY("Inventory", "The golem's slots", GolemIcon.INVENTORY, List.of(
 		"These are the golem's own slots; the layout depends on the profession.",
 		"Tool, seed and supply slots only take matching items.",
@@ -64,7 +68,11 @@ public enum Tab {
 	/** The tabs of the tab bar for a profession (null = None): all of them, {@link #RECIPE} only with a recipe group. */
 	public static List<Tab> forProfession(@Nullable Profession p) {
 		List<Tab> out = new ArrayList<>();
-		for (Tab t : values()) if (t != RECIPE || (p != null && p.hasRecipeTab())) out.add(t);
+		for (Tab t : values()) {
+			if (t == RECIPE && !(p != null && p.hasRecipeTab())) continue;
+			if (t == FILTER && !(p != null && p.hasFilterTab())) continue;
+			out.add(t);
+		}
 		return out;
 	}
 }

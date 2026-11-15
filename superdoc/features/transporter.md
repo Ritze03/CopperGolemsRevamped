@@ -7,7 +7,7 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
 ## Entry points
 
 - `profession/transporter/TransporterProfession:init` declares it (id `coppergolemsrevamped:transporter`,
-  slot group `carry` = 9 slots, max 64, `data.items` indices 0..8; assigns `input`, `output`;
+  slot group `carry` = 9 slots, max 64, `data.items` indices 0..8, plus the `filter` group (below); assigns `input`, `output`;
   `runsVanillaBrain = false`; tick = `TransporterLogic::tick`).
 - `profession/transporter/TransporterLogic:tick` is the work loop; static helpers below.
 - `ai/FollowMode:tick` is follow mode.
@@ -38,17 +38,42 @@ Why: navigation is driven by the profession itself because the vanilla brain doe
 Transporter (`GolemTicker` skips it). `PathNavigation` is ticked in `Mob#serverAiStep` before
 `customServerAiStep`, independent of the brain, so `moveTo` works while the brain is skipped.
 
+## Filter tab (user request: a filter of up to 9 items, then "different modes" instead of empty = none)
+
+The Transporter has a second slot group `filter` (`TransporterProfession:FILTER_FROM` = `data.items` indices 9..17, max 1,
+`filterAt(3, 0)`), shown on the **Filter** tab (see [gui.md](gui.md)) in the same cells as carry on the Inventory tab.
+The items are real: the player puts one in, it stays in the golem, and it is dropped to the player on a profession change
+and on death like every other slot (`GolemService:drop`); nothing in the work loop touches them. Why in `items` and not a
+new list: drop, reset and the container/menu code then work unchanged; the carry code uses `TransporterLogic:carry`, a
+live `subList(0, 9)` view, so the filter slots are never carried.
+
+`GolemData.filterMode` (`core/FilterMode`, saved as `filter_mode`, default Off, reset to Off on a profession change) is
+cycled Off -> Whitelist -> Blacklist by the button at (2,4) (icon glass pane / white wool / black wool, lore explains):
+- **Off**: everything moves, the filter items are ignored.
+- **Whitelist**: only stacks matching a filter slot move. An empty whitelist moves nothing (Status: "Whitelist is empty:
+  nothing to move").
+- **Blacklist**: everything except matches moves.
+Matching is `ItemStack.isSameItem` (item type only, components ignored). Why: keep it simple; a named or damaged item
+counts as its type.
+
+`TransporterLogic:tick` takes from A through `TransferBudget:take(..., accepts(data))`; non-passing stacks stay in A.
+"Nothing passing in A" is "nothing moved", so the golem waits 40 ticks like for an empty chest. The delivery to B never
+filters: carried items that no longer pass (filter changed mid-trip) are still delivered, never stranded.
+
+Migration: old saves have 9 items and no `filter_mode`. `TransporterProfession:migrate` pads the list to 18 (called from
+`GolemTicker` and the `GolemMenu` constructor, like the other per-profession migrations); the mode reads as Off.
+
 ## State
 
-- Persistent: `data.items` (carry, survives reload) and `data.assignments`.
+- Persistent: `data.items` (carry 0..8, filter 9..17, survive reload), `data.filterMode` and `data.assignments`.
 - Transient: cooldown and re-path timers in `TransporterLogic`'s `WeakHashMap<CopperGolem, State>`.
   After a reload the golem simply recomputes from carry and assignments.
 
 ## Item helpers (static, usable from a GameTest)
 
-- `takeAll(Container src, NonNullList<ItemStack> carry): boolean` merges same-item stacks (normal max
+- `takeAll(Container src, List<ItemStack> carry): boolean` (optional limit and `Predicate<ItemStack>`) merges same-item stacks (normal max
   stack size), then fills empty slots; shrinks the source.
-- `insertAll(NonNullList<ItemStack> carry, Container dst): boolean` same into a container
+- `insertAll(List<ItemStack> carry, Container dst): boolean` same into a container
   (`canPlaceItem`, container max stack size respected); remainder stays in `carry`.
 - `containerAt(Level, BlockPos): @Nullable Container`, `isEmpty(list)`.
 

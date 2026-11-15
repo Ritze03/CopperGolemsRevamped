@@ -7,6 +7,7 @@
 	"entrypoints": {
 		"fabric-gametest": [
 			"com.coppergolemsrevamped.test.TransporterTest",
+			"com.coppergolemsrevamped.test.TransporterFilterTest",
 			"com.coppergolemsrevamped.test.GolemDataTest",
 			"com.coppergolemsrevamped.test.CoreFeedbackTest",
 			"com.coppergolemsrevamped.test.MenuTest",

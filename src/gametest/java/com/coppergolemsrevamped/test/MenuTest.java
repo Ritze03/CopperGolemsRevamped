@@ -176,12 +176,15 @@ public class MenuTest {
 			GolemMenu menu = new GolemMenu(1, player.getInventory(), g);
 			int tabs = 0;
 			for (int col = 0; col <= 7; col++) if (!at(menu, 0, col).is(Items.STAINED_GLASS_PANE.black())) tabs++;
-			helper.assertTrue(tabs == (CRAFTER.equals(id) ? 6 : 5), id + " tab count " + tabs);
+			helper.assertTrue(tabs == (CRAFTER.equals(id) || TRANSPORTER.equals(id) ? 6 : 5), id + " tab count " + tabs);
 			if (CRAFTER.equals(id)) {
 				String[] names = {"Status", "Targets", "Recipe", "Inventory", "Settings", "Profession"};
 				for (int k = 0; k < 6; k++) helper.assertTrue(name(at(menu, 0, k)).equals(names[k]), "crafter tab " + k + ": " + name(at(menu, 0, k)));
 				click(menu, player, 0, 2);
 				helper.assertTrue(menu.tab() == Tab.RECIPE && glint(at(menu, 0, 2)) && !glint(at(menu, 0, 3)), "Recipe tab opens in place");
+			} else if (TRANSPORTER.equals(id)) {
+				String[] names = {"Status", "Targets", "Filter", "Inventory", "Settings", "Profession"};
+				for (int k = 0; k < 6; k++) helper.assertTrue(name(at(menu, 0, k)).equals(names[k]), "transporter tab " + k + ": " + name(at(menu, 0, k)));
 			} else {
 				helper.assertTrue(at(menu, 0, 5).is(Items.STAINED_GLASS_PANE.black()) && at(menu, 0, 6).is(Items.STAINED_GLASS_PANE.black()), id + " keeps panes at (0,5) and (0,6)");
 			}

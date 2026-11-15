@@ -1,9 +1,10 @@
 package com.coppergolemsrevamped.ai;
 
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.function.Predicate;
 
-import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
@@ -58,14 +59,19 @@ public final class TransferBudget {
 	}
 
 	/** Budgeted {@link TransporterLogic#takeAll}: returns the number of items moved. */
-	public static int take(ServerLevel level, CopperGolem golem, Container src, NonNullList<ItemStack> carry) {
-		int n = TransporterLogic.takeAll(src, carry, remaining(level, golem));
+	public static int take(ServerLevel level, CopperGolem golem, Container src, List<ItemStack> carry) {
+		return take(level, golem, src, carry, s -> true);
+	}
+
+	/** Budgeted take of only the stacks {@code accept} passes (Transporter filter). */
+	public static int take(ServerLevel level, CopperGolem golem, Container src, List<ItemStack> carry, Predicate<ItemStack> accept) {
+		int n = TransporterLogic.takeAll(src, carry, remaining(level, golem), accept);
 		spend(level, golem, n);
 		return n;
 	}
 
 	/** Budgeted {@link TransporterLogic#insertAll}: returns the number of items moved. */
-	public static int insert(ServerLevel level, CopperGolem golem, NonNullList<ItemStack> carry, Container dst) {
+	public static int insert(ServerLevel level, CopperGolem golem, List<ItemStack> carry, Container dst) {
 		int n = TransporterLogic.insertAll(carry, dst, remaining(level, golem));
 		spend(level, golem, n);
 		return n;

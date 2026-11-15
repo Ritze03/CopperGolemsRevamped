@@ -7,6 +7,7 @@ import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Profession.SlotGroup;
 import com.coppergolemsrevamped.profession.ProfessionHelp;
+import com.coppergolemsrevamped.profession.transporter.TransporterProfession;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,7 @@ public class GolemMenu extends AbstractContainerMenu {
 		super(MenuType.GENERIC_9x6, id);
 		this.golem = golem;
 		this.profession = GolemService.profession(golem);
+		if (profession != null && TransporterProfession.ID.equals(profession.id())) TransporterProfession.migrate(GolemData.get(golem));
 		// raw stored id (not the resolved Profession): an unregistered id resolves to null but must still match in stillValid
 		this.openedProfession = GolemData.get(golem).profession;
 		this.itemCount = profession == null ? 0 : profession.inventorySize();
@@ -79,7 +81,7 @@ public class GolemMenu extends AbstractContainerMenu {
 			List<SlotGroup> groups = profession.slots();
 			for (int gi = groups.size() - 1; gi >= 0; gi--) {
 				SlotGroup g = groups.get(gi);
-				if (!g.visible() || g.recipe() || !g.quickMove()) continue;
+				if (!g.visible() || g.recipe() || g.onFilterTab() || !g.quickMove()) continue;
 				for (int i = 0; i < g.count(); i++) quickMoveCells.add((g.row() + i / g.width()) * COLS + g.col() + i % g.width());
 			}
 		}
@@ -186,6 +188,14 @@ public class GolemMenu extends AbstractContainerMenu {
 		rebuild();
 	}
 
+	/** Filter tab mode button: Off -> Whitelist -> Blacklist -> Off. */
+	void cycleFilterMode() {
+		GolemData data = GolemData.get(golem);
+		data.filterMode = data.filterMode.next();
+		GolemData.save(golem, data);
+		rebuild();
+	}
+
 	/** Targets tab "Show": the golem walks to the target (block: next to it, area: along its outline). */
 	void show(ServerPlayer player, AssignSpec spec) {
 		if (!(golem.level() instanceof ServerLevel level)) return;
@@ -231,7 +241,7 @@ public class GolemMenu extends AbstractContainerMenu {
 		List<String> lines = new ArrayList<>(tab.help);
 		if (profession != null) {
 			if (tab == Tab.TARGETS) lines.addAll(ProfessionHelp.assignLines(profession));
-			else if (tab == Tab.INVENTORY || tab == Tab.RECIPE) lines.addAll(profession.help());
+			else if (tab == Tab.INVENTORY || tab == Tab.RECIPE || tab == Tab.FILTER) lines.addAll(profession.help());
 		}
 		player.sendSystemMessage(Component.literal("-- " + tab.label + (profession == null ? "" : ": " + profession.name().getString()) + " --"));
 		for (String l : lines) player.sendSystemMessage(Component.literal(l));

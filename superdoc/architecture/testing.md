@@ -65,14 +65,15 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `XpTest` (9): stored XP and XP bottles for Smelter and Butcher, full chest, profession change, save/load; the smelter test uses gold ore (exactly 1.0 XP) because furnace XP of 0.7 is rounded at random per collection, which made an iron-ore version flaky ([xp-bottles.md](../features/xp-bottles.md)).
 - `SmelterTest` (18 incl. blast furnace cases): even split, 8-furnace cap, furnace types, one test per never-block rule, lava bucket, freeze, Inventory layout ([smelter.md](../features/smelter.md)).
 - `TransferLimitTest` (2): `transporterNeverMovesMoreThan16PerWindow` (256 items A to B, chest totals sampled every tick, at most 16 per 5-tick window, A's lid open during the whole take, at least 150 ticks), `smelterFetchOf64OreCompletes` (a fetch cut by the budget several times still gives 8 to each of 8 furnaces and 64 ingots). See [transfer-limit.md](transfer-limit.md). No existing test needed a larger tick budget.
+- `TransporterFilterTest` (12): Filter tab only for the Transporter, layout equal to the Inventory tab, placing one item, filter items and mode survive save/load, old save (9 items, no mode) loads as Off and is padded, mode button cycles, Whitelist / Blacklist / Off move the right items (item conservation), empty whitelist moves nothing and the status says so, non-passing carry is still delivered, filter items go to the player on a profession change ([transporter.md](../features/transporter.md)).
 - `FreezeTest` (5): `frozenTransporterMovesNothing` (200 ticks, chests unchanged, golem within 0.5 blocks),
   `unfreezingResumesTheWork`, `freezingClosesAnOpenLidAndStops`, `frozenSurvivesSaveLoad`, `frozenChestSorterDoesNotSort`
   ([freeze.md](../features/freeze.md)).
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 193 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 194 required tests passed` (see Gotchas). Update the numbers here when
+Total: 205 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 206 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

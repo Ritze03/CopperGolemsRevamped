@@ -2,6 +2,7 @@ package com.coppergolemsrevamped.menu;
 
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.DisplayItems;
+import com.coppergolemsrevamped.core.FilterMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.Profession.AssignSpec;
@@ -46,6 +47,7 @@ final class GolemViews {
 			case STATUS -> status(m, cells);
 			case TARGETS -> targets(m, cells);
 			case RECIPE -> recipe(m, cells);
+			case FILTER -> filter(m, cells);
 			case INVENTORY -> inventory(m, cells);
 			case SETTINGS -> settings(m, cells);
 			case PROFESSION -> professions(m, cells);
@@ -158,7 +160,7 @@ final class GolemViews {
 		int idx = 0;
 		for (SlotGroup g : p.slots()) {
 			for (int i = 0; i < g.count(); i++, idx++) {
-				if (g.maxStack() > 1 && g.visible() && !g.recipe() && idx < data.items.size()) n += data.items.get(idx).getCount();
+				if (g.maxStack() > 1 && g.visible() && !g.recipe() && !g.onFilterTab() && idx < data.items.size()) n += data.items.get(idx).getCount();
 			}
 		}
 		return n;
@@ -246,7 +248,7 @@ final class GolemViews {
 		boolean any = false;
 		if (prof != null) {
 			for (SlotGroup g : prof.slots()) {
-				if (!g.visible() || g.recipe()) continue;
+				if (!g.visible() || g.recipe() || g.onFilterTab()) continue;
 				any = true;
 				int first = prof.firstIndex(g);
 				for (int i = 0; i < g.count(); i++) {
@@ -295,6 +297,37 @@ final class GolemViews {
 					lore("Crafted by the golem", "Cannot be taken"))));
 			}
 		}
+	}
+
+	// ---- Filter ----
+
+	/**
+	 * The Filter tab: the filter group's cells are real container slots (one item each, same cells as the Inventory
+	 * tab's carry); the group's label cell holds the mode button (Off, Whitelist, Blacklist).
+	 */
+	private static void filter(GolemMenu m, Cell[] cells) {
+		Profession prof = m.profession();
+		if (prof == null) return;
+		GolemData data = GolemData.get(m.golem());
+		for (SlotGroup g : prof.slots()) {
+			if (!g.visible() || !g.onFilterTab()) continue;
+			int first = prof.firstIndex(g);
+			for (int i = 0; i < g.count(); i++) {
+				set(cells, g.row() + i / g.width(), g.col() + i % g.width(), new Cell.Store(m.golem(), m.items(), first + i, g));
+			}
+			if (g.label() != null) set(cells, g.label().row(), g.label().col(), icon(modeIcon(data.filterMode), (p, b) -> m.cycleFilterMode()));
+		}
+	}
+
+	private static ItemStack modeIcon(FilterMode mode) {
+		return switch (mode) {
+			case OFF -> GolemIcon.plain(Items.GLASS_PANE, Component.literal("Filter: Off"),
+				lore("Moves everything", "The items below are ignored", "Click: Whitelist"), false);
+			case WHITELIST -> GolemIcon.plain(Items.WOOL.white(), Component.literal("Filter: Whitelist"),
+				lore("Moves only the items below", "Empty whitelist moves nothing", "Click: Blacklist"), true);
+			case BLACKLIST -> GolemIcon.plain(Items.WOOL.black(), Component.literal("Filter: Blacklist"),
+				lore("Moves everything except the items below", "Click: Off"), true);
+		};
 	}
 
 	// ---- Settings ----

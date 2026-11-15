@@ -8,7 +8,7 @@ A Fabric mod for Minecraft 26.3 that makes vanilla Copper Golems useful. Right-c
 
 Pick one in the **Profession** tab of the golem menu. Assign targets in the **Targets** tab: press the Assign button, then right-click the block in the world. For areas, right-click two opposite corners; an area that is too large is capped to the maximum size.
 
-- **Transporter** moves everything from an input chest to an output chest, up to 9 full stacks per trip. Assign: input chest, output chest.
+- **Transporter** moves everything from an input chest to an output chest, up to 9 full stacks per trip. Assign: input chest, output chest. A Filter tab (9 item slots) with the modes Off, Whitelist and Blacklist picks which items it takes.
 - **Chest Sorter** is vanilla copper golem sorting (from a copper chest into chests that already hold the same item), except that it visits up to 64 chests instead of 10 before it gives up. No targets.
 - **Cleaner** collects dropped items in an area and delivers them to a chest. Assign: area (max 16x16; the height is the two clicks' Y range plus 2 blocks above), output chest.
 - **Crafter** fetches ingredients from an input chest, crafts at a crafting table and delivers the results to an output chest. You set the recipe as a 3x3 grid in the Recipe tab. Assign: input chest, crafting table, output chest.

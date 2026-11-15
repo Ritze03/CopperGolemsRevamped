@@ -9,6 +9,7 @@ import com.coppergolemsrevamped.profession.crafter.CrafterLogic;
 import com.coppergolemsrevamped.profession.lumber.LumberLogic;
 import com.coppergolemsrevamped.profession.lumber.LumberLogic.Phase;
 import com.coppergolemsrevamped.profession.smelter.SmelterLogic;
+import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import org.jspecify.annotations.Nullable;
 
@@ -44,7 +45,7 @@ public final class ProfessionStatus {
 		if (p.runsVanillaBrain()) return "Sorting items between chests";
 		if (missing(p, data) != null) return "Waiting for targets";
 		return switch (p.id().getPath()) {
-			case "transporter" -> "Moving items from A to B";
+			case "transporter" -> transporter(data);
 			case "butcher" -> ButcherLogic.status(golem);
 			case "cleaner" -> "Picking up loose items";
 			case "farmer" -> "Farming the field";
@@ -76,6 +77,15 @@ public final class ProfessionStatus {
 				yield "Next: " + lower(lumber(ph == null ? Phase.FELL : Phase.values()[(ph.ordinal() + 1) % Phase.values().length]));
 			}
 			default -> "Next: keep working";
+		};
+	}
+
+	private static String transporter(GolemData data) {
+		return switch (data.filterMode) {
+			case OFF -> "Moving items from A to B";
+			case WHITELIST -> TransporterLogic.filterHasItems(data)
+				? "Moving only filtered items from A to B" : "Whitelist is empty: nothing to move";
+			case BLACKLIST -> "Moving everything except filtered items from A to B";
 		};
 	}
 

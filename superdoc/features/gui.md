@@ -51,13 +51,22 @@ of `Tab:forProfession` from column 0 going right, with black panes between the l
 |---|---|
 | 5..7 (cols after the tabs; 6..7 with six tabs) | Black pane filler |
 | 0..4 (five tabs) | Status (`icon_status`), Targets (`assign_block`), Inventory (`icon_inventory`), Settings (`icon_settings`), Profession (the current profession's icon). The active tab has the glint |
-| 0..5 (six tabs) | Status, Targets, **Recipe** (plain `knowledge_book`), Inventory, Settings, Profession |
+| 0..5 (six tabs) | Status, Targets, **Recipe** (plain `knowledge_book`, Crafter) or **Filter** (plain `hopper`, Transporter), Inventory, Settings, Profession |
 | 8 | Help (`help`): `GolemMenu:sendHelp` sends the tab's help to chat, the menu stays open |
 
 Which professions get the sixth tab is declared, not coded in `menu/`: `Tab.RECIPE` appears only when
 `Profession:hasRecipeTab` is true, i.e. when a slot group is a recipe group (`SlotGroup:recipeAt`, see "Crafter").
 Why: user wanted Recipe directly before Inventory and, with Back gone, the bar has room for a sixth tab; a declaration
 keeps D6 (no profession ids in `menu/`).
+
+**Filter tab** (user request: "Transporters should have a special tab for a filter", then three modes): `Tab.FILTER` appears
+only when `Profession:hasFilterTab` is true, i.e. a slot group is a filter group (`SlotGroup:filterAt`; the flag is
+`onFilterTab`, because `filter` already names the slot predicate). Same mechanism as Recipe: real max-1 container slots
+(`GolemViews:filter`, `Cell.Store`), never shown on the Inventory tab, never a shift-click target (`GolemMenu` skips
+them in `quickMoveCells`), own board in `Profession:validateLayout`. The cells sit exactly where the Transporter's carry
+sits on the Inventory tab (row 3, cols 0..8); the group's label cell (2,4) holds the mode button instead of a label
+(`GolemMenu:cycleFilterMode`). Icon: plain `hopper` (no custom icon, so the resource pack is unchanged). Details and the
+mode semantics: [transporter.md](transporter.md).
 
 Rows 1..5 are the tab content on orange stained-glass filler (tooltip hidden).
 

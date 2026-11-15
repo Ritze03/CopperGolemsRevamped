@@ -2,15 +2,17 @@ package com.coppergolemsrevamped.profession.transporter;
 
 import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.TransferBudget;
+import com.coppergolemsrevamped.core.FilterMode;
 import com.coppergolemsrevamped.core.GolemData;
 
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.NonNullList;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
@@ -51,13 +53,14 @@ public final class TransporterLogic {
 			s.cooldown = RETRY_TICKS;
 			return;
 		}
-		boolean carryEmpty = isEmpty(data.items);
+		List<ItemStack> carry = carry(data);
+		boolean carryEmpty = isEmpty(carry);
 		boolean loading = s.loading; // a take cut short by the transfer budget goes on before the carry is delivered
 		BlockPos target = loading || carryEmpty ? a : b;
 		if (!Interact.approach(level, golem, target, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
 		if (loading || carryEmpty) {
-			boolean moved = TransferBudget.take(level, golem, ca, data.items) > 0;
+			boolean moved = TransferBudget.take(level, golem, ca, carry, accepts(data)) > 0;
 			if (moved) Interact.openChest(level, golem, target, Interact.Action.TAKE);
 			if (TransferBudget.exhausted(level, golem)) {
 				// budget used up, not "chest empty": stay, keep the lid open and go on next window
@@ -70,8 +73,8 @@ public final class TransporterLogic {
 				s.loading = false;
 			}
 		} else {
-			if (TransferBudget.insert(level, golem, data.items, cb) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
-			boolean empty = isEmpty(data.items);
+			if (TransferBudget.insert(level, golem, carry, cb) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
+			boolean empty = isEmpty(carry);
 			if (empty) s.walk.reset();
 			if (empty) s.cooldown = Interact.OPEN_TICKS;
 			else if (TransferBudget.exhausted(level, golem)) {
@@ -80,6 +83,42 @@ public final class TransporterLogic {
 			} else s.cooldown = RETRY_TICKS;
 		}
 		GolemData.save(golem, data);
+	}
+
+	/** The carry slots of a Transporter: a live view of the first {@link TransporterProfession#CARRY_SLOTS} items. */
+	public static List<ItemStack> carry(GolemData data) {
+		return data.items.subList(0, Math.min(TransporterProfession.CARRY_SLOTS, data.items.size()));
+	}
+
+	/** True when {@code s} matches a filter slot by item type only ({@link ItemStack#isSameItem}, components ignored). */
+	public static boolean inFilter(GolemData data, ItemStack s) {
+		int end = Math.min(TransporterProfession.FILTER_FROM + TransporterProfession.FILTER_SLOTS, data.items.size());
+		for (int i = TransporterProfession.FILTER_FROM; i < end; i++) {
+			ItemStack f = data.items.get(i);
+			if (!f.isEmpty() && ItemStack.isSameItem(f, s)) return true;
+		}
+		return false;
+	}
+
+	/** True when the filter has at least one item. */
+	public static boolean filterHasItems(GolemData data) {
+		int end = Math.min(TransporterProfession.FILTER_FROM + TransporterProfession.FILTER_SLOTS, data.items.size());
+		for (int i = TransporterProfession.FILTER_FROM; i < end; i++) if (!data.items.get(i).isEmpty()) return true;
+		return false;
+	}
+
+	/** Whether the golem takes {@code s} from chest A under the current filter mode. */
+	public static boolean passes(GolemData data, ItemStack s) {
+		return switch (data.filterMode) {
+			case OFF -> true;
+			case WHITELIST -> inFilter(data, s);
+			case BLACKLIST -> !inFilter(data, s);
+		};
+	}
+
+	/** {@link #passes} as a predicate. */
+	public static Predicate<ItemStack> accepts(GolemData data) {
+		return data.filterMode == FilterMode.OFF ? s -> true : s -> passes(data, s);
 	}
 
 	/** The container at pos (both halves for a double chest), or null when it is not a container. */
@@ -91,22 +130,27 @@ public final class TransporterLogic {
 		return level.getBlockEntity(pos) instanceof Container c ? c : null;
 	}
 
-	public static boolean isEmpty(NonNullList<ItemStack> items) {
+	public static boolean isEmpty(List<ItemStack> items) {
 		for (ItemStack s : items) if (!s.isEmpty()) return false;
 		return true;
 	}
 
 	/** Moves items from {@code src} into {@code carry} (merge first, then empty slots). Returns true if anything moved. */
-	public static boolean takeAll(Container src, NonNullList<ItemStack> carry) {
+	public static boolean takeAll(Container src, List<ItemStack> carry) {
 		return takeAll(src, carry, Integer.MAX_VALUE) > 0;
 	}
 
-	/** Like {@link #takeAll(Container, NonNullList)} but moves at most {@code limit} items; returns how many moved. */
-	public static int takeAll(Container src, NonNullList<ItemStack> carry, int limit) {
+	/** Like {@link #takeAll(Container, List)} but moves at most {@code limit} items; returns how many moved. */
+	public static int takeAll(Container src, List<ItemStack> carry, int limit) {
+		return takeAll(src, carry, limit, s -> true);
+	}
+
+	/** Like {@link #takeAll(Container, List, int)} but only stacks {@code accept} passes move; the rest stay in {@code src}. */
+	public static int takeAll(Container src, List<ItemStack> carry, int limit, Predicate<ItemStack> accept) {
 		int total = 0;
 		for (int i = 0; i < src.getContainerSize() && total < limit; i++) {
 			ItemStack in = src.getItem(i);
-			if (in.isEmpty()) continue;
+			if (in.isEmpty() || !accept.test(in)) continue;
 			int before = in.getCount();
 			ItemStack rest = addTo(carry, in.copy(), null, limit - total);
 			if (rest.getCount() != before) {
@@ -119,12 +163,12 @@ public final class TransporterLogic {
 	}
 
 	/** Inserts every carried stack into {@code dst}; what does not fit stays in {@code carry}. Returns true if anything moved. */
-	public static boolean insertAll(NonNullList<ItemStack> carry, Container dst) {
+	public static boolean insertAll(List<ItemStack> carry, Container dst) {
 		return insertAll(carry, dst, Integer.MAX_VALUE) > 0;
 	}
 
-	/** Like {@link #insertAll(NonNullList, Container)} but moves at most {@code limit} items; returns how many moved. */
-	public static int insertAll(NonNullList<ItemStack> carry, Container dst, int limit) {
+	/** Like {@link #insertAll(List, Container)} but moves at most {@code limit} items; returns how many moved. */
+	public static int insertAll(List<ItemStack> carry, Container dst, int limit) {
 		int total = 0;
 		for (int i = 0; i < carry.size() && total < limit; i++) {
 			ItemStack s = carry.get(i);
@@ -139,7 +183,7 @@ public final class TransporterLogic {
 	}
 
 	/** Adds at most {@code limit} items of stack to a list or a container (exactly one non-null); returns the remainder. */
-	private static ItemStack addTo(@Nullable NonNullList<ItemStack> list, ItemStack stack, @Nullable Container cont, int limit) {
+	private static ItemStack addTo(@Nullable List<ItemStack> list, ItemStack stack, @Nullable Container cont, int limit) {
 		int size = list != null ? list.size() : cont.getContainerSize();
 		int left = limit;
 		for (int pass = 0; pass < 2 && !stack.isEmpty() && left > 0; pass++) {
