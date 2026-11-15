@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.profession.transporter;
 
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.core.GolemData;
 
 import java.util.Map;
@@ -26,15 +27,13 @@ public final class TransporterLogic {
 	/** Chest Y minus golem Y must be within [-2, +1] (vanilla reach: chest 2 below to 1 above). */
 	static final int REACH_DOWN = 2;
 	static final int REACH_UP = 1;
-	static final int REPATH_TICKS = 20;
 	static final int RETRY_TICKS = 40;
-	static final int AFTER_ACTION_TICKS = 5;
 	static final double SPEED = 1.0;
 
 	/** Transient per-golem timers; the persistent state is only GolemData items + assignments. */
 	private static final class State {
 		int cooldown;
-		int repath;
+		final Interact.Approach walk = new Interact.Approach();
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
@@ -56,27 +55,22 @@ public final class TransporterLogic {
 		}
 		boolean carryEmpty = isEmpty(data.items);
 		BlockPos target = carryEmpty ? a : b;
-		if (!inReach(golem, target)) {
-			if (--s.repath <= 0 || golem.getNavigation().isDone()) {
-				golem.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, SPEED);
-				s.repath = REPATH_TICKS;
-			}
-			return;
-		}
-		golem.getNavigation().stop();
+		if (!Interact.approach(level, golem, target, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
-		s.repath = 0;
 		if (carryEmpty) {
 			boolean moved = takeAll(ca, data.items);
-			s.cooldown = moved ? AFTER_ACTION_TICKS : RETRY_TICKS;
+			if (moved) Interact.openChest(level, golem, target, Interact.Action.TAKE);
+			s.cooldown = moved ? Interact.OPEN_TICKS : RETRY_TICKS;
+			if (moved) s.walk.reset();
 		} else {
-			insertAll(data.items, cb);
-			s.cooldown = isEmpty(data.items) ? AFTER_ACTION_TICKS : RETRY_TICKS;
+			if (insertAll(data.items, cb)) Interact.openChest(level, golem, target, Interact.Action.INSERT);
+			s.cooldown = isEmpty(data.items) ? Interact.OPEN_TICKS : RETRY_TICKS;
+			if (isEmpty(data.items)) s.walk.reset();
 		}
 		GolemData.save(golem, data);
 	}
 
-	/** Golem is close enough to interact with the chest at {@code chest}. */
+	/** Legacy 2-block reach, still used by Crafter, Farmer and Lumber until they move to {@code ai/Interact}. */
 	public static boolean inReach(CopperGolem golem, BlockPos chest) {
 		double dx = golem.getX() - (chest.getX() + 0.5);
 		double dz = golem.getZ() - (chest.getZ() + 0.5);

@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.profession.cleaner;
 
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
@@ -43,6 +44,7 @@ public final class CleanerLogic {
 	private static final class State {
 		int cooldown;
 		int repath;
+		final Interact.Approach walk = new Interact.Approach();
 		@Nullable UUID target;
 		double bestDist;
 		int stuck;
@@ -112,18 +114,11 @@ public final class CleanerLogic {
 			s.cooldown = SCAN_TICKS;
 			return;
 		}
-		if (!TransporterLogic.inReach(golem, out)) {
-			if (--s.repath <= 0 || golem.getNavigation().isDone()) {
-				golem.getNavigation().moveTo(out.getX() + 0.5, out.getY(), out.getZ() + 0.5, SPEED);
-				s.repath = REPATH_TICKS;
-			}
-			return;
-		}
-		golem.getNavigation().stop();
+		if (!Interact.approach(level, golem, out, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(out));
-		s.repath = 0;
-		TransporterLogic.insertAll(data.items, chest);
-		s.cooldown = TransporterLogic.isEmpty(data.items) ? AFTER_ACTION_TICKS : RETRY_TICKS;
+		if (TransporterLogic.insertAll(data.items, chest)) Interact.openChest(level, golem, out, Interact.Action.INSERT);
+		s.cooldown = TransporterLogic.isEmpty(data.items) ? Interact.OPEN_TICKS : RETRY_TICKS;
+		if (TransporterLogic.isEmpty(data.items)) s.walk.reset();
 		GolemData.save(golem, data);
 	}
 

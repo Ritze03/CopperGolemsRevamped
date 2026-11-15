@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.test;
 
+import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
@@ -253,5 +254,34 @@ public class CleanerTest {
 
 		helper.succeedWhen(() ->
 			helper.assertTrue(chestCount(chest, Items.DIAMOND) == 3, "diamonds in chest: " + chestCount(chest, Items.DIAMOND)));
+	}
+
+	/** The output chest lid opens while the golem delivers, from a 1-block stand spot, and is closed again afterwards. */
+	@GameTest(maxTicks = 600)
+	public void opensOutputChestWhenDelivering(GameTestHelper helper) {
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		BlockPos chestPos = new BlockPos(5, 1, 1);
+		helper.setBlock(chestPos, Blocks.CHEST);
+		ChestBlockEntity chest = helper.getBlockEntity(chestPos, ChestBlockEntity.class);
+		drop(helper, Items.DIAMOND, 3, 1.5, 1.5);
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 3));
+		GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("area_a", helper.absolutePos(new BlockPos(0, 0, 0)));
+		data.assignments.put("area_b", helper.absolutePos(new BlockPos(3, 0, 3)));
+		data.assignments.put("output", helper.absolutePos(chestPos));
+		GolemData.save(golem, data);
+		boolean[] seen = new boolean[1];
+		helper.onEachTick(() -> {
+			if (ChestBlockEntity.getOpenCount(helper.getLevel(), helper.absolutePos(chestPos)) > 0) {
+				seen[0] = true;
+				helper.assertTrue(Interact.inReach(golem, helper.absolutePos(chestPos)), "golem at " + golem.blockPosition() + " not 1 block from the chest");
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(chest.getItem(0).is(Items.DIAMOND) && chest.getItem(0).getCount() == 3, "chest holds " + chest.getItem(0));
+			helper.assertTrue(seen[0], "lid never seen open");
+			helper.assertTrue(ChestBlockEntity.getOpenCount(helper.getLevel(), helper.absolutePos(chestPos)) == 0, "lid still open");
+		});
 	}
 }
