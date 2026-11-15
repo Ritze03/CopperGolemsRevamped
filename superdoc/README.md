@@ -10,7 +10,7 @@ Agent-facing documentation for the project. Start at the overview.
 
 ## Features
 
-- [features/gui.md](features/gui.md): right-click menu, screen and serverbound payloads.
+- [features/gui.md](features/gui.md): server-side chest menu, CMD icons, resource pack.
 - [features/assign-mode.md](features/assign-mode.md): armed next-click target assignment.
 - [features/transporter.md](features/transporter.md): Transporter profession and follow mode.
 

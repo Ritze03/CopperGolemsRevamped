@@ -1,19 +1,19 @@
 # Golem GUI
 
-Menu, screen and serverbound payloads for configuring a golem. Fabric/vanilla signatures used here:
+Server-side-only chest-style menu for configuring a golem, plus an optional resource pack for custom icons.
+Vanilla clients (no mod) can join and use it. Fabric/vanilla signatures used here:
 [vanilla-copper-golem.md](../architecture/vanilla-copper-golem.md) (sections 8 and 9).
+
+Why server-side only: user request (2026-11-15), so players do not have to install the mod. It rules out a
+custom `MenuType`, custom payloads, a client screen and anything in a synced registry: a vanilla client would
+reject the unknown registry entry or payload. The mod has no client code (`src/client` holds no Java);
+`fabric.mod.json` keeps `"environment": "*"` because the singleplayer integrated server needs the mod.
 
 ## Opening
 
 A main-hand right-click on a copper golem with BOTH hands empty: `mixin/CopperGolemMixin:cgr$emptyHand` calls
-`menu/GolemMenuOpener:open` (server). That builds a `GolemMenuData` snapshot and calls
-`ServerPlayer#openMenu` with an `ExtendedMenuProvider`. The menu type is
-`menu/ModMenus:GOLEM` (an `ExtendedMenuType<GolemMenu, GolemMenuData>`); the client screen is
-registered in `client/CopperGolemsRevampedClient:onInitializeClient`.
-
-`GolemMenuData(golemId, Optional<Identifier> profession, boolean following, Map<String,BlockPos> assignments)`
-is the opening data; its `STREAM_CODEC` lives on the record. The client builds its menu from it, so
-the layout is identical on both sides.
+`menu/GolemMenuOpener:open` (server), which calls `ServerPlayer#openMenu` with a `SimpleMenuProvider`.
+Title: `Copper Golem`, plus an em dash and the profession name when one is set.
 
 Why: both hands, not just the main one. Vanilla tries the main hand first and the off hand only if the
 main one passes, so opening the GUI on an empty main hand alone would swallow off-hand honeycomb, axe or
@@ -21,67 +21,134 @@ shears use. Any item in either hand stays vanilla (decision D4).
 
 ## Layout comes from the declaration
 
-`menu/GolemMenu` computes every slot position from the profession (`profession/Profession`), with no
-profession-specific code, so a new profession shows up with zero GUI changes:
+`menu/GolemMenu` extends `AbstractContainerMenu` directly and uses a vanilla chest type
+(`MenuType.GENERIC_9x1..9x6`, chosen from the row count), so the client builds its normal chest screen. No
+profession-specific code: a new profession shows up with zero GUI changes (decision D6).
 
-- top row: profession cycle button + follow button; then one full-width button per `AssignSpec`
-  (label from the spec, current value appended: `x, y, z`, `a to b` for AREA, or `unset`);
-- the held-item slot (slot index 0);
-- one section per `SlotGroup` (heading = capitalised group key, 9 columns, wraps to more rows),
-  slot `mayPlace` = group filter, `getMaxStackSize` = group `maxStack` (`GolemMenu.GroupSlot`);
-- player inventory + hotbar.
+`rows = min(6, 1 + ceil(profession slots / 9))` (profession None: 1 row). There are exactly `rows*9` top slots
+(cell = row*9 + column, row-major) followed by the 27 + 9 player slots (`addStandardInventorySlots`); the
+client desyncs if the count is not `rows*9 + 36`.
 
-Slot order: held (0), profession slots in declaration order, player inventory, hotbar. The screen
-(`client/GolemScreen`) reads all y coordinates from the menu; background is plain fills (no texture).
+| Cell | Content |
+|---|---|
+| 0 | Profession cycle button |
+| 1 | Follow toggle |
+| 2..7 | One assign button per `AssignSpec` of the profession, in order (max 6) |
+| 8 | Held-item slot (the golem's carried item, take-out only) |
+| 9.. | The profession's slots in declaration order (`SlotGroup`s back to back, 9 per row) |
+| rest | Filler |
 
-Containers: server side `menu/GolemItemsContainer` is a live view over `GolemData.items` that calls
-`GolemData.save` on every change (size = declared inventory size; out-of-range slots read empty and refuse placement);
-`menu/GolemHeldContainer` views the main hand. Client side uses plain `SimpleContainer`s synced by
-vanilla slot sync. The held slot is take-out only (`mayPlace` false): the vanilla brain owns what the
-golem carries. Writes to the main hand call
-`setGuaranteedDrop(MAINHAND)` like vanilla pickup.
+Example, Transporter (one group of 9, two assigns): 2 rows, cells 0 profession, 1 follow, 2 and 3 assign
+buttons (A, B), 4..7 filler, 8 held, 9..17 carry slots; top slots 0..17, player inventory 18..53.
+Profession None: 1 row, cells 0 and 1 controls, 2..7 filler, 8 held; top slots 0..8, player inventory 9..44.
+Groups are not aligned to rows and carry no labels (a chest menu has no room for headings). At most 45 profession
+slots are shown (5 rows); the container is sized to that.
 
-`quickMoveStack`: held or profession slot -> player inventory (hotbar end first); player slot ->
-profession slots only, via `moveItemStackTo`, which honours `mayPlace` and the slot max stack (the held
-slot refuses placement so it is skipped). Returns empty when nothing moved.
+Slot `mayPlace` = group filter, `getMaxStackSize` = group `maxStack` (`GolemMenu.GroupSlot`).
 
-The follow state is mirrored to the client with a `DataSlot` (server reads `GolemData.following`),
-so the button label updates without reopening.
+## Controls
 
-## Payloads (`network/GolemPayloads`, registered in `network/ModNetworking:init`, all serverbound)
+Control and filler cells are `GolemMenu.IconSlot`s (`mayPlace` and `mayPickup` false) backed by a plain
+`SimpleContainer` of icon stacks (`menu/GolemIcon` builds them). Updating an icon live (the follow toggle) is a
+`setItem` on that container; vanilla's `broadcastChanges` syncs it on the next tick.
 
-| Payload | Fields | Server action |
-|---|---|---|
-| `SelectProfession` | `int golemId`, `Optional<Identifier> profession` (empty = none) | `GolemService.changeProfession`, then `GolemMenuOpener.open` again |
-| `ToggleFollow` | `int golemId` | toggles `GolemData.following`; on: `followPlayer` = sender UUID, off: null; save |
-| `AssignTarget` | `int golemId`, `String key` (AssignSpec base key) | `player.closeContainer()` then `AssignMode.arm(player, golem, key)` |
+| Control | Click action |
+|---|---|
+| Profession (cell 0) | left = next, right = previous, in the order None then `Professions.all()`. `GolemService.changeProfession`, then `GolemMenuOpener.open` again (layout changes) |
+| Follow (cell 1) | `following = !following`, `followPlayer` = clicker UUID when on else null, `GolemData.save`, icon swapped in place |
+| Assign (cell 2..) | `player.closeContainer()`, then `AssignMode.arm(player, golem, spec.key())` (AREA passes the base key) |
 
-Validation (`ModNetworking:resolve`, run on the server thread via `ctx.server().execute`): the sender's
-open container must be a `GolemMenu` for that same entity id, the entity must be a live `CopperGolem`
-within 8 blocks (`GolemMenu:inRange`). Then: profession id must be registered (and different from the
-current one, so a duplicate packet cannot wipe assignments); assign key must be in the current
-profession's `assigns()`. Anything else is ignored silently.
+Tooltip: the name says what the control is (`Profession: Transporter`, `Follow: on`, the `AssignSpec` label),
+lore says how to use it and shows the current target (`Current: x, y, z` / `a to b` for AREA / `unset`).
+
+## Click handling (`GolemMenu:clicked`)
+
+- On a control or filler cell: `PICKUP` and `QUICK_MOVE` run the control (if any); every other input is
+  dropped (`CLONE` would copy the icon for creative players; `SWAP`, `THROW`, `PICKUP_ALL` do nothing).
+  `QUICK_CRAFT` is always passed to `super.clicked` - swallowing it corrupts the drag state; the slots refuse
+  placement anyway.
+- Trust check before running a control: `stillValid` (golem alive, within 8 blocks via `GolemMenu:inRange`,
+  profession unchanged, stored list not shrunk).
+- Everything else (golem slots, player inventory) is vanilla `super.clicked`.
+- A vanilla client shows the clicked icon on the cursor until the server's correction arrives; unavoidable.
+- `openMenu` closes any open container first and `removed()` returns the cursor stack, so reopening from inside
+  `clicked` is safe.
+
+`quickMoveStack`: control / filler -> nothing; held or profession slot -> player inventory (hotbar end first);
+player slot -> profession slots only (`moveItemStackTo` over the profession cell range only, because its merge
+pass skips `mayPlace` and would otherwise fill the held / control cells).
+
+## Containers
+
+`menu/GolemItemsContainer` is a live view over `GolemData.items` that calls `GolemData.save` on every change
+(out-of-range slots read empty and refuse placement; `setItem` past the stored list drops the stack at the golem).
+`menu/GolemHeldContainer` views the main hand; the held slot is take-out only (`mayPlace` false) because the
+vanilla brain owns what the golem carries. Writes call `setGuaranteedDrop(MAINHAND)` like vanilla pickup.
 
 ## Stale menus close
 
-`GolemMenu` snapshots the profession (`openedProfession`) and slot count when opened. `GolemMenu:stillValid`
-(server side) returns false when the golem's current `GolemData.profession` differs from that snapshot, or
-`GolemData.items` is shorter than the declared slot count; vanilla then closes the menu next tick and returns
-the cursor stack. Defence in depth: `GolemItemsContainer:canPlaceItem` is false for out-of-range slots
-(checked by `GolemMenu.GroupSlot:mayPlace`), and `GolemItemsContainer:setItem` drops an out-of-range stack
-at the golem instead of discarding it.
-Why: only the player who changes the profession gets a reopened menu; any other viewer keeps the old slot
-layout, and an item placed in a slot that no longer exists would vanish (decision D9, no item is ever lost).
+`GolemMenu` snapshots the profession and slot count when opened. `GolemMenu:stillValid` returns false when
+the golem's current `GolemData.profession` differs, `GolemData.items` is shorter than the slot count, or the
+player is out of range; vanilla then closes the menu next tick and returns the cursor stack.
+Why: only the player who changes the profession gets a reopened menu; any other viewer keeps the old layout,
+and an item placed in a slot that no longer exists would vanish (decision D9, no item is ever lost).
 
-## Why reopen on profession change
+## Icons
 
-The slot layout (sections, assign buttons, container size) depends on the profession, and a menu's
-slot list is fixed at construction. Rebuilding the menu is simpler and safer than mutating slots and
-resyncing; the carried cursor stack is returned to the player by the close. Follow toggle does not
-reopen (layout unchanged).
+An icon is a vanilla base item with `DataComponents.CUSTOM_MODEL_DATA` = one string `coppergolemsrevamped:<icon>`
+(`menu/GolemIcon`). Names come from `DataComponents.ITEM_NAME` (not `CUSTOM_NAME`, which renders italic), lore
+lines are explicitly non-italic gray, filler has the whole tooltip hidden (`TOOLTIP_DISPLAY`), the other icons
+hide `ATTRIBUTE_MODIFIERS` (tool base items), an "on" toggle gets `ENCHANTMENT_GLINT_OVERRIDE`.
+
+The mod jar and the resource pack both ship `assets/minecraft/items/<base>.json`, overriding the vanilla item
+definition with a `minecraft:select` on `minecraft:custom_model_data` (string index 0): one case per icon using
+that base item, and `fallback` = the vanilla definition's `model` object copied verbatim. The icon model is
+`assets/coppergolemsrevamped/models/item/gui/<icon>.json` (parent `minecraft:item/generated`, layer0 texture
+`coppergolemsrevamped:item/gui/<icon>`, a 16x16 PNG).
+
+Why: CMD-select instead of the `item_model` component. A client without the pack that receives an unknown
+`item_model` renders the missing-model cube; with CMD-select and a vanilla fallback it just sees the genuine base
+item, so the pack is optional (decision D18).
+
+| Icon | Base item | Fallback look |
+|---|---|---|
+| `profession_none` | `light_gray_dye` | dye |
+| `profession_transporter` | `chest_minecart` | chest minecart |
+| `profession_chest_sorter` | `comparator` | comparator |
+| `profession_cleaner` | `hopper` | hopper |
+| `profession_crafter`, `assign_crafting_table` | `crafting_table` | crafting table |
+| `profession_farmer` | `iron_hoe` | iron hoe |
+| `profession_lumber` | `iron_axe` | iron axe |
+| `follow_on`, `follow_off` | `lead` | lead (glint when on) |
+| `assign_chest` | `chest` | chest (its override copies vanilla's special seasonal model) |
+| `assign_block` | `target` | target block |
+| `assign_area` | `map` | empty map |
+| `filler` | gray stained glass pane | pane, no tooltip |
+
+Profession -> icon: `profession_<profession id path>` (`GolemIcon:profession`), `profession_none` when there is no
+such icon, so a new profession only needs its texture, model and a `GolemIcon` entry plus a base-item case.
+Assign icon by `AssignSpec.kind()`: CHEST, CRAFTING_TABLE, BLOCK, AREA.
+
+Adding an icon: enum entry in `GolemIcon` (base item must match), model JSON, a case in the base item's override
+file (create the file by copying the vanilla `items/<base>.json` `model` into `fallback`; the vanilla files are in
+the client jar), texture PNG. Prefer base items whose vanilla definition is a plain `minecraft:model`.
+
+## Resource pack for vanilla clients
+
+`./gradlew build` also produces `build/libs/coppergolemsrevamped-<version>-resourcepack.zip` (task
+`resourcePackZip`: the mod's `assets/` plus a generated `pack.mcmeta` with `min_format` / `max_format` 97; a lone
+`pack_format` above 64 is an error in 26.x). Clients with the mod need nothing: the jar carries the same assets.
+To give vanilla clients the icons, host the zip at an https URL and set in `server.properties`:
+
+```
+resource-pack=<https URL of the zip>
+resource-pack-sha1=<sha1 of the zip>
+require-resource-pack=false   # optional: true kicks players who decline
+```
+
+The pack is optional because every icon falls back to a recognisable vanilla item.
 
 ## Notes
 
 - Strings are `Component.literal` for now (no lang file yet).
-- Unverified: handler threading is not relied on (everything is wrapped in `server().execute`);
-  the client screen was compiled but never run headlessly.
+- Unverified: the menu was compiled and the build's GameTests pass, but no vanilla client was run against it.
