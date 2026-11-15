@@ -21,6 +21,8 @@ for the golem API.
 - `AREA`: two clicks on non-air blocks; footprint `|ax-bx|+1` and `|az-bz|+1` each <= `maxSize`,
   else "Area too large" and the player stays armed for the second corner. Stored as `key_a`, `key_b`
   (written only when both corners are valid). Other kinds store under `key`.
+  The limit applies to X/Z only; Y is unbounded (the Cleaner adds 2 blocks above the higher corner, see
+  [cleaner.md](cleaner.md)). Each profession's limit is its `AssignSpec` `maxSize`, read by `AssignMode:areaFits`.
 - Wrong block, out of range, area too large: message, stays armed.
 
 ## Cancel / timeout / range
