@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.function.BiFunction;
 
 import org.jspecify.annotations.Nullable;
 
@@ -26,7 +27,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CropBlock;
-import net.minecraft.world.level.block.StemBlock;
+import net.minecraft.world.level.block.TorchflowerCropBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -64,9 +65,12 @@ public final class FarmerLogic {
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
-	/** A seed is an item that plants a crop: a {@link BlockItem} whose block is a {@link CropBlock} or {@link StemBlock}. */
+	/**
+	 * A seed plants a harvestable crop: a {@link BlockItem} whose block is a {@link CropBlock}. Stems (fruit is never
+	 * harvested) and torchflower (turns into a flower block at its last stage) would block their cell forever.
+	 */
 	public static boolean isSeed(ItemStack stack) {
-		return stack.getItem() instanceof BlockItem bi && (bi.getBlock() instanceof CropBlock || bi.getBlock() instanceof StemBlock);
+		return stack.getItem() instanceof BlockItem bi && bi.getBlock() instanceof CropBlock && !(bi.getBlock() instanceof TorchflowerCropBlock);
 	}
 
 	/** Soil positions of the field (x outer, z inner, both ascending) at the lower click's Y; empty when unset or larger than 9x9. */
@@ -191,20 +195,31 @@ public final class FarmerLogic {
 		GolemData.save(golem, data);
 	}
 
-	/** Inventory-aware: can this act be done right now? */
+	/** Inventory-aware cheap pre-check (a separate drop roll): {@link #act} is the authority and re-checks its own roll. */
 	private static boolean workable(ServerLevel level, GolemData data, BlockPos soil, Act act) {
 		boolean seed = isSeed(data.items.get(FarmerProfession.SEED_SLOT));
 		return switch (act) {
 			case HARVEST -> {
 				BlockState st = level.getBlockState(soil.above());
-				yield fitsAll(data, drops(level, soil.above(), st));
+				yield fitsAll(data, drops(level, soil.above(), st, false));
 			}
 			case PLANT -> seed;
 			case TILL -> seed && data.items.get(FarmerProfession.TOOL_SLOT).is(ItemTags.HOES);
 		};
 	}
 
-	private static List<ItemStack> drops(ServerLevel level, BlockPos crop, BlockState st) {
+	/**
+	 * Test hook: when set, replaces the drop roll. Arguments: crop position, true for the roll {@link #act} stores
+	 * (false for the {@link #workable} pre-check); a null result means roll normally (the hook is global, tests run in parallel). Lets a test force "the stored roll is bigger than the checked one".
+	 */
+	public static volatile @Nullable BiFunction<BlockPos, Boolean, List<ItemStack>> testDropRoll;
+
+	private static List<ItemStack> drops(ServerLevel level, BlockPos crop, BlockState st, boolean forAct) {
+		BiFunction<BlockPos, Boolean, List<ItemStack>> hook = testDropRoll;
+		if (hook != null) {
+			List<ItemStack> forced = hook.apply(crop, forAct);
+			if (forced != null) return forced;
+		}
 		return Block.getDrops(st, level, crop, null, null, ItemStack.EMPTY);
 	}
 
@@ -214,7 +229,9 @@ public final class FarmerLogic {
 		return switch (act) {
 			case HARVEST -> {
 				BlockState st = level.getBlockState(crop);
-				List<ItemStack> drops = drops(level, crop, st);
+				// roll once; the roll that is checked is the roll that is stored. Nothing is destroyed unless it fits.
+				List<ItemStack> drops = drops(level, crop, st, true);
+				if (!fitsAll(data, drops)) yield false;
 				level.destroyBlock(crop, false, golem);
 				storeAll(data, drops);
 				yield true;
@@ -255,7 +272,16 @@ public final class FarmerLogic {
 	private static boolean walkTo(State s, CopperGolem golem, BlockPos pos, long now, boolean chest) {
 		if (TransporterLogic.inReach(golem, pos)) return true;
 		// airborne on the first ticks after spawning: paths are null, wait instead of counting no-progress ticks
-		if (!golem.onGround()) return false;
+		// (bounded: a golem that never lands, e.g. floating in water, gives up like any stuck walk)
+		if (!golem.onGround()) {
+			if (++s.stuck >= GIVE_UP_TICKS) {
+				s.skip.put(pos, now + SKIP_TICKS);
+				s.target = null;
+				s.stuck = 0;
+				s.repath = 0;
+			}
+			return false;
+		}
 		double dist = golem.distanceToSqr(pos.getX() + 0.5, pos.getY() + (chest ? 0 : 1), pos.getZ() + 0.5);
 		if (!pos.equals(s.target) || dist < s.bestDist - PROGRESS_EPS) {
 			s.target = pos;
@@ -393,7 +419,7 @@ public final class FarmerLogic {
 	private static void storeAll(GolemData data, List<ItemStack> drops) {
 		List<ItemStack> rest = new ArrayList<>(drops);
 		storeInto(data, rest);
-		// cannot happen: workable() proved the drops fit (fitsAll) and nothing ran in between
+		// cannot happen: act() checked fitsAll on this very list before destroying the crop
 		if (!rest.isEmpty()) throw new IllegalStateException("farmer drops did not fit: " + rest);
 	}
 }
