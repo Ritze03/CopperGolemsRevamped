@@ -43,7 +43,11 @@ Area assigns start no walk. `WalkTo:outline` (4 corners of the rectangle in orde
 to the first, each on the highest standable position near the clicked Y range) is kept only for the menu's Targets-tab
 "Show" button. Outline arrived = within 1 block
 horizontally. Each waypoint has its own timeout (`WalkTo.TIMEOUT_TICKS` = 200) and is skipped when `moveTo` finds no
-path, so an unreachable corner never blocks. Transient (weak map, not saved); a profession change cancels it.
+path, so an unreachable corner never blocks. After the final arrival (block in reach, or the outline's last corner) the golem stands still for
+`WalkTo.HOLD_TICKS` (60 = 3 s): navigation stopped, looking at the block centre, and only then does the walk end and the
+profession resume. A walk that gives up or times out does not hold. Freeze still wins (`GolemTicker` returns early).
+Why hold: the user asked for it ("he should stay there for 3 seconds") so the shown target is clear.
+Transient (weak map, not saved); a profession change cancels it.
 Why: the user wanted the golem to show what it was just given ("walks right in front of it"). The automatic area
 outline walk was removed at the user's request ("remove the walking around the marked area thingy again").
 
