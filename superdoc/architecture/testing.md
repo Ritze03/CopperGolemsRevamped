@@ -56,20 +56,21 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `fullCycleOrder`, `twoByTwoSiteWaitsForFourSaplings`,
   `neverStandsInTheSapling`, `stepsOutOfTheSapling`, `breakAllowedRules`, `detectTreeRules`,
   `breakTimeFollowsAxeSpeed`, `chopsHoldTheInteractionStateAndReturnsToIdle`, `toolSwingRulesAndCleanup`, `toolSwingHoldAndCleanup`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
-- `ButcherTest` (17): `cullsSurplusKeepsEightAdultsAndCalves` (12 cows + 3 calves), `namedAndLeashedAreNeverTouched`, `protectionRules`, `countingRules`,
+- `ButcherTest` (20, incl. `cooldownAnimalsAreCulledFirst`, `crowdDoesNotMoveTheButcher`, `pushIsOneSidedOnlyAgainstAnimals`): `cullsSurplusKeepsEightAdultsAndCalves` (12 cows + 3 calves), `namedAndLeashedAreNeverTouched`, `protectionRules`, `countingRules`,
   `lootingThreeIsAppliedToTheKill` / `noLootingWithoutTheEnchantment` (the Looting level the loot function reads, and that the real tool is in hand during
   the hit), `durabilityGoesToTheRealStack`, `wornWeaponIsSwappedNotLost`, `breedsPigsWithCarrots`, `noBreedingAtTheBabyCap`,
   `noWeaponStillBreeds`, `cycleOrder` (recorded phases BREED, KILL, DELIVER), `dropsGoStraightToCarry` (no item entity, drops in the carry), `noCullingWithoutCarryRoom`, `fullOutputStopsCullingKeepsTheCarry`, `frozenButcherDoesNothing`,
   `butcherDeclaration` ([butcher.md](../features/butcher.md)). Each test builds a walled 6x6 pen with the chests in the wall.
-- `SmelterTest` (12): even split, 8-furnace cap, furnace types, one test per never-block rule, lava bucket, freeze, Inventory layout ([smelter.md](../features/smelter.md)).
+- `XpTest` (9): stored XP and XP bottles for Smelter and Butcher, full chest, profession change, save/load ([xp-bottles.md](../features/xp-bottles.md)).
+- `SmelterTest` (18 incl. blast furnace cases): even split, 8-furnace cap, furnace types, one test per never-block rule, lava bucket, freeze, Inventory layout ([smelter.md](../features/smelter.md)).
 - `FreezeTest` (5): `frozenTransporterMovesNothing` (200 ticks, chests unchanged, golem within 0.5 blocks),
   `unfreezingResumesTheWork`, `freezingClosesAnOpenLidAndStops`, `frozenSurvivesSaveLoad`, `frozenChestSorterDoesNotSort`
   ([freeze.md](../features/freeze.md)).
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 159 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 160 required tests passed` (see Gotchas). Update the numbers here when
+Total: 173 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 174 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

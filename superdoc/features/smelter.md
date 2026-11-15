@@ -9,15 +9,15 @@ delivers the results to an output chest. Id `coppergolemsrevamped:smelter`, `run
 - Assigns: `furnaces` (`Kind.AREA`, max 16x16, Y is the span of the two corners, scanned at most 32 high), `input`,
   `fuel`, `output` (`Kind.CHEST`). Icons: `assign_input`, `assign_output` are reused, `assign_fuel` (chest with a coal
   badge, base item coal) is new, the area uses the generic `assign_area`.
-- Slots: one group `furnace` of 9 (`SmelterProfession:SLOTS`), one full row on the Inventory tab at row 3, columns 0..8,
-  furnace label centred above it at (2,4). Slots 0..7 (`MAX_FURNACES`): slot `i` is the golem's buffer for furnace `i`.
-  Slot 8 (`OVERFLOW`) is a shared overflow buffer (see below). Nothing is shown in the golem's hand.
-  Why 9: the user asked for it ("hold up to 9 stacks, looks nicer"): a full row of 9 looks better than 8. The furnace cap
-  stays 8 (earlier user spec "up to 8 furnaces max"), so slot 8 has no furnace and needs a job.
-  Why overflow for results: simplest role that never blocks and loses nothing. `SmelterLogic:resultSlot` puts a result
-  into furnace `i`'s buffer, and when that is busy (raw or fuel waiting, or a different result) into slot 8, so the
-  furnace keeps working. `kindOf` always reads slot 8 as RESULT, so `DELIVER` takes it to the output chest and `FEED`,
-  `FUEL`, `RETURN` never touch it. Slot 8 is never fed to a furnace, so it cannot be stuck on an item nobody accepts.
+- Slots (`SmelterProfession:SLOTS` = 9): group `furnace` (8 slots, row 3, columns 0..7, label centred above at (2,4)) and group
+  `xp` (1 slot at row 3, column 8, take-only for players, label "XP bottles" at (2,8)). Slot `i` (0..7, `MAX_FURNACES`) is the
+  golem's buffer for furnace `i`. Slot 8 (`XP_SLOT`) holds the XP bottles made from the golem's stored XP, see
+  [xp-bottles.md](xp-bottles.md). Nothing is shown in the golem's hand.
+  Why 9: the user asked for a row of 9 ("looks nicer"); the furnace cap stays 8, so slot 8 got the XP bottle job (user
+  request: the 9th slot shows the bottle count). It used to be a shared overflow buffer for results; that is gone: a result
+  goes into its own furnace's buffer (`SmelterLogic:resultSlot`), and a furnace whose buffer is busy waits until the next
+  pass, since every result is collected each cycle anyway. `kindOf` reads slot 8 as RESULT, so `DELIVER` takes it to the
+  output chest (also an item an older version left there: nothing is lost) and `FEED`, `FUEL`, `RETURN` never touch it.
 - Older golems saved with 8 slots: `SmelterLogic:tick` grows `GolemData.items` to `SLOTS` (items kept, slot 8 empty) and
   saves, on its first tick. Until then `GolemMenu:stillValid` closes an open menu (stored list shorter than the profession's
   size), which is one tick at most.
@@ -52,10 +52,10 @@ furnace before it runs dry, so few furnaces with lots of input stay busy. Raisin
 
 1. `COLLECT`: result slot into the buffer, and a non-fuel leftover in the fuel slot (the empty bucket of lava) the same
    way. Any result is collected, no threshold (the old "8 or more, or done" rule is gone: results must come out regularly).
-   The furnace's stored XP pops at the furnace (`getRecipesToAwardAndPopExperience`) and the map is cleared through
-   `mixin/AbstractFurnaceAccessor` (vanilla clears it only in the player variant; without that the XP would pop on every
-   collect and the map grows forever).
-2. `DELIVER` (output chest): every RESULT buffer, slot 8 included, goes to the chest, even a few items.
+   The furnace's stored XP goes into the golem's store (`SmelterLogic:takeFurnaceXp`, no orbs, see
+   [xp-bottles.md](xp-bottles.md)) and the map is cleared through `mixin/AbstractFurnaceAccessor` (vanilla clears it only in
+   the player variant; without that the XP would be paid on every collect and the map grows forever).
+2. `DELIVER` (output chest): every RESULT buffer, the XP bottle slot included, goes to the chest, even a few items.
 3. `FETCH` (input chest): `planFetch`. For each smeltable item type in chest order, the furnaces that can take it (their
    own type has a recipe, checked with `RecipeManager.createCheck(RecipeType.SMELTING/BLASTING/SMOKING)`; input empty or
    the same item; room left up to `BATCH`) share it one item at a time to the lowest level, into their empty buffers. 24 ore
@@ -98,4 +98,5 @@ Each rule has a test in `SmelterTest`.
 `evenSplitAcrossThreeFurnaces`, `atMostEightFurnacesAreUsed`, `typeSplitSmokerAndFurnace`,
 `unsmeltableItemsStayInTheInputChest`, `foreignInputIsNeverFought`, `fullOutputChestKeepsResultsAndKeepsFeeding`,
 `noFuelStillCollectsAndFeeds`, `noFurnacesAndMissingTargetsIdle`, `lavaBucketLeavesAnEmptyBucketInTheOutput`,
-`unreachableFurnaceIsGivenUp` (furnace 4 blocks above the floor), `frozenSmelterDoesNothing`, `inventoryTabIsOneFullRowOfNine` (9 cells, label at (2,4)), `eightSlotSmelterGrowsToNine`, `phasesRunInCycleOrder`, `earlyOutput`, `inputNeverExceedsBatch`.
+`unreachableFurnaceIsGivenUp` (furnace 4 blocks above the floor), `frozenSmelterDoesNothing`, `inventoryTabIsOneFullRowOfNine` (8 buffer cells + the take-only XP cell, labels at (2,4) and (2,8)), `eightSlotSmelterGrowsToNine`, `phasesRunInCycleOrder`, `earlyOutput`, `inputNeverExceedsBatch`,
+`blastFurnaceAndFurnaceSplit` (ore reaches the blast furnace, beef never does), `blastFurnaceAloneWorksEndToEnd`. XP tests are in `XpTest` ([xp-bottles.md](xp-bottles.md)).
