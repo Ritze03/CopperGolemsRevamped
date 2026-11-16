@@ -102,7 +102,7 @@ public class SmelterTest {
 		return v;
 	}
 
-	/** 3 furnaces, 24 ore: 8 each, 24 ingots arrive, the XP is kept (no orbs) and the stored-XP map cleared. */
+	/** 3 furnaces, 24 gold ore: 8 each, 24 ingots arrive, all 24 XP is kept (no orbs) and the stored-XP map cleared. */
 	@GameTest(maxTicks = 3800)
 	public void evenSplitAcrossThreeFurnaces(GameTestHelper helper) {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
@@ -110,18 +110,20 @@ public class SmelterTest {
 		BlockPos[] fp = {new BlockPos(1, 1, 5), new BlockPos(3, 1, 5), new BlockPos(5, 1, 5)};
 		AbstractFurnaceBlockEntity[] f = new AbstractFurnaceBlockEntity[3];
 		for (int i = 0; i < 3; i++) f[i] = furnace(helper, fp[i], Blocks.FURNACE);
-		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 24));
+		c[0].setItem(0, new ItemStack(Items.GOLD_ORE, 24));
 		addFuel(c[1], 64);
 		int[] max = new int[3];
 		helper.onEachTick(() -> {
 			for (int i = 0; i < 3; i++) max[i] = Math.max(max[i], f[i].getItem(0).getCount());
 		});
 		helper.succeedWhen(() -> {
-			helper.assertTrue(count(c[2], Items.IRON_INGOT) == 24, "ingots in the output chest: " + count(c[2], Items.IRON_INGOT));
+			helper.assertTrue(count(c[2], Items.GOLD_INGOT) == 24, "ingots in the output chest: " + count(c[2], Items.GOLD_INGOT));
 			helper.assertTrue(max[0] == 8 && max[1] == 8 && max[2] == 8, "each furnace gets 8, saw " + max[0] + "," + max[1] + "," + max[2]);
 			helper.assertTrue(orbValue(helper) == 0, "no orbs: " + orbValue(helper));
-			int xp = GolemData.get(golem).xp + 7 * count(c[2], Items.EXPERIENCE_BOTTLE);
-			helper.assertTrue(xp >= 10, "XP kept (24 ore, about 17): " + xp);
+			// Gold ore is exactly 1.0 XP per item (iron's 0.7 is rounded at random per collection, which made
+			// this flaky), so the total is exact: stored XP + 7 per bottle held by the golem or delivered.
+			int xp = GolemData.get(golem).xp + 7 * (held(golem, Items.EXPERIENCE_BOTTLE) + count(c[2], Items.EXPERIENCE_BOTTLE));
+			helper.assertTrue(xp == 24, "XP kept (24 ore x 1.0): " + xp);
 			helper.assertTrue(heldTotal(golem) == 0 && total(c[0]) == 0, "nothing left over");
 			for (int i = 0; i < 3; i++) {
 				helper.assertTrue(((com.coppergolemsrevamped.mixin.AbstractFurnaceAccessor) f[i]).cgr$recipesUsed().isEmpty(), "stored XP map cleared " + i);

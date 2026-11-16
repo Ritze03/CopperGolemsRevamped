@@ -17,7 +17,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `GolemDataTest` (2): `golemDataSurvivesSaveLoad` (full entity round trip: `Entity#saveWithoutId` into
   `TagValueOutput`, then `Entity#load` of a fresh golem from `TagValueInput`; proves `GolemData` is a persistent
   attachment, not just that its codec works), `assignAreaHelpers` (pure `AssignMode:areaFits` / `AssignMode:inRange`).
-- `CoreFeedbackTest` (13): `throwingGolemBacksOff` (the `GolemTicker` safety net; the class sets `GolemTicker.rethrow = true` statically so every other test still fails on exceptions), spawn chest (`spawnChestFromBuildPattern`, `spawnChestPrefillRules`), profession switch hands
+- `CoreFeedbackTest` (14): `throwingGolemBacksOff` (the `GolemTicker` safety net; the class sets `GolemTicker.rethrow = true` statically so every other test still fails on exceptions), spawn chest (`spawnChestFromBuildPattern`, `spawnChestPrefillRules`), profession switch hands
   items to the player (`switchMovesItemsToPlayer`, `switchDropsRestAtPlayerWhenFull`), None stands still
   (`noneProfessionStandsStill`), auto profession name (`professionShownAsName`, `playerNameTagIsKept`), `WalkTo`
   (`walkToStopsNextToBlock`, `areaAssignWalksOutline`, `unreachableWaypointIsSkipped`), area clamp
@@ -38,32 +38,32 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `menuWithoutSlotGroups` (same 6-row menu), `mixinAppliesLimit`, `sortsFreshGolem`,
   `sortsWaxedOxidizedSourceIntoMatchingChest` (a waxed oxidized copper chest as the source), `sortsAfterBeingTransporter`
   ([chest-sorter.md](../features/chest-sorter.md)).
-- `CleanerTest` (9): `cleansItemsInsideArea`, `areaLimit16`, `partialPickupConservesItems`, `borderItemIgnored`,
+- `CleanerTest` (10): `cleansItemsInsideArea`, `areaLimit16`, `partialPickupConservesItems`, `borderItemIgnored`,
   `skipRuleExpires`, `deliversWhenOnlySkippedItemsRemain`, `unreachableItemDoesNotBlock`, `pickupWorksFromSpawnTick`,
-  `opensOutputChestWhenDelivering` ([cleaner.md](../features/cleaner.md)).
-- `CrafterTest` (12): `craftsSticksUntilOutputFull`, `craftsRepeaterWithPerCellSlots`, `fullOutputChestKeepsProductAndResumes`,
+  `opensOutputChestWhenDelivering`, `keepLayoutDeliversOnlyOntoMatchingStacks` ([cleaner.md](../features/cleaner.md)).
+- `CrafterTest` (14): `craftsSticksUntilOutputFull`, `craftsRepeaterWithPerCellSlots`, `fullOutputChestKeepsProductAndResumes`,
   `noCraftWithoutTable`, `noCraftWhenTableReplaced`, `deliversEverythingWhenTemplateCleared`, `staleInputItemsAreDelivered`,
   `lidsOpenAndReachIsOneBlock`, `guiLayoutIsOneRememberingGrid`, `recipeTabShowsTheTemplateAsGhosts`, `shiftClickFillsRememberedInputOnly`,
-  `itemsDropOnProfessionChange` ([crafter.md](../features/crafter.md)).
-- `FarmerTest` (19): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
+  `itemsDropOnProfessionChange`, `keepLayoutUsesOnlyTakeablesAndMerges`, `keepLayoutOutputWithoutMatchingStackCountsAsFull` ([crafter.md](../features/crafter.md)).
+- `FarmerTest` (20): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
   `harvestWithNearlyFullCarryLosesNothing`, `stemSeedsIgnored`, `seedsGoToSeedChestRestToOutput`, `seedsOverflowToOutput`,
   `noSeedChestSeedsToOutput`, `axeHarvestsFruitLeavesStems`, `hoeIgnoresMelons`, `wornHoeReplacedOnlyByHoe`,
   `wornAxeReplacedOnlyByAxe`, `noReplacementKeepsWornHoe`, `noReplacementKeepsWornAxe`, `emptySlotTakesFirstToolAndFilter`,
-  `fieldLimit9`, `seedDefinition`, `hoeWorkSwingsAndReturnsToIdle`, `swingCounts` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
+  `fieldLimit9`, `seedDefinition`, `hoeWorkSwingsAndReturnsToIdle`, `swingCounts`, `keepLayoutFetchesAndDeliversAroundTheLayout` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
   through the global hook `FarmerLogic:testDropRoll` (filtered to its own crop position, since tests run in parallel).
-- `LumberTest` (37): `stripLogsGivesStrippedLogs`, `stripLogsIsVisibleStep`, `fellsMixedPlainAndStrippedTree`, `stripLogsOffByDefault`, `stripLogsNeverBreaksMendingAxe`, `strippedStateFollowsVanilla`, `fellsAlreadyStrippedTree`, `stripLogsSurvivesSaveLoad` (strip setting, see lumber.md), `brokenAxeEmptiesSlotAndRefetches` (axe at 1 durability breaks, slot empty, no exception, new axe fetched), `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`, `collectsDropsOneBlockFromTheSapling`, `collectsDropInsideTheSaplingFromOutside` (drop on the sapling cell is pulled in from the safe ring),
+- `LumberTest` (38): `stripLogsGivesStrippedLogs`, `stripLogsIsVisibleStep`, `fellsMixedPlainAndStrippedTree`, `stripLogsOffByDefault`, `stripLogsNeverBreaksMendingAxe`, `strippedStateFollowsVanilla`, `fellsAlreadyStrippedTree`, `stripLogsSurvivesSaveLoad` (strip setting, see lumber.md), `brokenAxeEmptiesSlotAndRefetches` (axe at 1 durability breaks, slot empty, no exception, new axe fetched), `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`, `collectsDropsOneBlockFromTheSapling`, `collectsDropInsideTheSaplingFromOutside` (drop on the sapling cell is pulled in from the safe ring),
   `bonemealGrowsTheSaplingThenFellsIt`, `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped`,
   `walledInTrunkIsFelledFromTwoBlocks`, `unreachableTreeIsSkipped`, `fullCycleOrder`, `dropsAreCollectedBeforeBoneMeal`, `lowSaplingStockWaitsForDropsBeforeBoneMeal`, `boneMealCyclesKeepTheSaplingStock`, `twoByTwoSiteWaitsForFourSaplings`,
   `neverStandsInTheSapling`, `stepsOutOfTheSapling`, `breakAllowedRules`, `detectTreeRules`,
-  `breakTimeFollowsAxeSpeed`, `chopsHoldTheInteractionStateAndReturnsToIdle`, `toolSwingRulesAndCleanup`, `toolSwingHoldAndCleanup`, `lumberDeclaration` ([lumber.md](../features/lumber.md)).
-- `ButcherTest` (20, incl. `cooldownAnimalsAreCulledFirst`, `crowdDoesNotMoveTheButcher`, `pushIsOneSidedOnlyAgainstAnimals`): `cullsSurplusKeepsEightAdultsAndCalves` (12 cows + 3 calves), `namedAndLeashedAreNeverTouched`, `protectionRules`, `countingRules`,
+  `breakTimeFollowsAxeSpeed`, `chopsHoldTheInteractionStateAndReturnsToIdle`, `toolSwingRulesAndCleanup`, `toolSwingHoldAndCleanup`, `lumberDeclaration`, `keepLayoutFetchesAndDeliversAroundTheLayout` ([lumber.md](../features/lumber.md)).
+- `ButcherTest` (22, incl. `keepLayoutFoodFetchLeavesOne`, `keepLayoutSingleFoodItemIsNotTaken`, `cooldownAnimalsAreCulledFirst`, `crowdDoesNotMoveTheButcher`, `pushIsOneSidedOnlyAgainstAnimals`): `cullsSurplusKeepsEightAdultsAndCalves` (12 cows + 3 calves), `namedAndLeashedAreNeverTouched`, `protectionRules`, `countingRules`,
   `lootingThreeIsAppliedToTheKill` / `noLootingWithoutTheEnchantment` (the Looting level the loot function reads, and that the real tool is in hand during
   the hit), `durabilityGoesToTheRealStack`, `wornWeaponIsSwappedNotLost`, `breedsPigsWithCarrots`, `noBreedingAtTheBabyCap`,
   `noWeaponStillBreeds`, `cycleOrder` (recorded phases BREED, KILL, DELIVER), `dropsGoStraightToCarry` (no item entity, drops in the carry), `noCullingWithoutCarryRoom`, `fullOutputStopsCullingKeepsTheCarry`, `frozenButcherDoesNothing`,
   `butcherDeclaration` ([butcher.md](../features/butcher.md)). Each test builds a walled 6x6 pen with the chests in the wall.
 - `MendingTest` (12): Mending repair with bottles and never breaking a Mending tool for Lumber, Butcher and Farmer, stored tools repaired and reused, D9 every tick, idle top-up for Butcher and Farmer, `mendingWastesNoXp` (no XP wasted, store spent first) ([mending.md](../features/mending.md)).
-- `XpTest` (9): stored XP and XP bottles for Smelter and Butcher, full chest, profession change, save/load; the smelter test uses gold ore (exactly 1.0 XP) because furnace XP of 0.7 is rounded at random per collection, which made an iron-ore version flaky ([xp-bottles.md](../features/xp-bottles.md)).
-- `SmelterTest` (18 incl. blast furnace cases): even split, 8-furnace cap, furnace types, one test per never-block rule, lava bucket, freeze, Inventory layout ([smelter.md](../features/smelter.md)).
+- `XpTest` (11, incl. `keepLayoutBottlesMergeOnly`, `keepLayoutNoMatchingStackKeepsTheXp`): stored XP and XP bottles for Smelter and Butcher, full chest, profession change, save/load; the smelter test uses gold ore (exactly 1.0 XP) because furnace XP of 0.7 is rounded at random per collection, which made an iron-ore version flaky ([xp-bottles.md](../features/xp-bottles.md)).
+- `SmelterTest` (24 incl. blast furnace cases and `keepLayoutLeavesOneAndNeverFillsEmptyOutputSlots`, `keepLayoutOutputWithoutMatchingStackCountsAsFull`): even split (gold ore, exactly 1.0 XP, so the XP total is asserted exactly; iron's random rounding made a bound flaky), 8-furnace cap, furnace types, one test per never-block rule, lava bucket, freeze, Inventory layout ([smelter.md](../features/smelter.md)).
 - `TransferLimitTest` (2): `transporterNeverMovesMoreThan16PerWindow` (256 items A to B, chest totals sampled every tick, at most 16 per 5-tick window, A's lid open during the whole take, at least 150 ticks), `smelterFetchOf64OreCompletes` (a fetch cut by the budget several times still gives 8 to each of 8 furnaces and 64 ingots). See [transfer-limit.md](transfer-limit.md). No existing test needed a larger tick budget.
 - `TransporterFilterTest` (12): Filter tab only for the Transporter, layout equal to the Inventory tab, placing one item, filter items and mode survive save/load, old save (9 items, no mode) loads as Off and is padded, mode button cycles, Whitelist / Blacklist / Off move the right items (item conservation), empty whitelist moves nothing and the status says so, non-passing carry is still delivered, filter items go to the player on a profession change ([transporter.md](../features/transporter.md)).
 - `FreezeTest` (5): `frozenTransporterMovesNothing` (200 ticks, chests unchanged, golem within 0.5 blocks),
@@ -73,8 +73,8 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 227 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 228 required tests passed` (see Gotchas). Update the numbers here when
+Total: 238 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 239 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An
