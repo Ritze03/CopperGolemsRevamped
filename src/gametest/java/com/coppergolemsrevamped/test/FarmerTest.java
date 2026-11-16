@@ -523,4 +523,32 @@ public class FarmerTest {
 			helper.assertTrue(!FarmerLogic.isSeed(new ItemStack(i)), i + " must not be a seed");
 		helper.succeed();
 	}
+
+	/**
+	 * Keep layout: seed chest slots hold 3 and 1 wheat seeds, the output chest one wheat in slot 0. Two ripe wheat are
+	 * harvested and replanted from the 2 spare seeds (both seed slots keep 1); the wheat goes onto slot 0 only.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void keepLayoutFetchesAndDeliversAroundTheLayout(GameTestHelper helper) {
+		world(helper);
+		for (int x = 0; x < 2; x++) {
+			helper.setBlock(new BlockPos(x, 0, 0), Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, 7));
+			helper.setBlock(new BlockPos(x, 1, 0), ((CropBlock) Blocks.WHEAT).getStateForAge(7));
+		}
+		ChestBlockEntity seeds = chest(helper, SEEDS), out = chest(helper, OUT);
+		seeds.setItem(0, new ItemStack(Items.WHEAT_SEEDS, 3));
+		seeds.setItem(1, new ItemStack(Items.WHEAT_SEEDS, 1));
+		out.setItem(0, new ItemStack(Items.WHEAT, 1));
+		farmer(helper, 2, 1, (g, d) -> d.keepLayout = true);
+
+		helper.succeedWhen(() -> {
+			helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(0, 1, 0));
+			helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(1, 1, 0));
+			helper.assertTrue(out.getItem(0).is(Items.WHEAT) && out.getItem(0).getCount() == 3, "wheat slot: " + out.getItem(0));
+			for (int i = 1; i < out.getContainerSize(); i++) helper.assertTrue(out.getItem(i).isEmpty(), "output slot " + i + " filled: " + out.getItem(i));
+			helper.assertTrue(seeds.getItem(0).is(Items.WHEAT_SEEDS) && seeds.getItem(0).getCount() >= 1, "seed slot 0: " + seeds.getItem(0));
+			helper.assertTrue(seeds.getItem(1).is(Items.WHEAT_SEEDS) && seeds.getItem(1).getCount() >= 1, "seed slot 1: " + seeds.getItem(1));
+			for (int i = 2; i < seeds.getContainerSize(); i++) helper.assertTrue(seeds.getItem(i).isEmpty(), "seed slot " + i + " filled: " + seeds.getItem(i));
+		});
+	}
 }

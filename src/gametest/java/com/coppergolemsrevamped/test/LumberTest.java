@@ -1048,4 +1048,32 @@ public class LumberTest {
 		helper.assertTrue(p.assigns().getFirst().kind() == Profession.Kind.BLOCK, "tree kind");
 		helper.succeed();
 	}
+
+	/**
+	 * Keep layout: the input chest holds saplings in slots of 3 and 1, the output chest one log in slot 0. The golem fetches
+	 * only the 2 spare saplings (both slots keep 1), and the logs go onto the existing log slot only (empty slots stay empty).
+	 */
+	@GameTest(maxTicks = 2500)
+	public void keepLayoutFetchesAndDeliversAroundTheLayout(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 3, 0);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		in.setItem(0, new ItemStack(Items.IRON_AXE));
+		in.setItem(1, new ItemStack(Items.OAK_SAPLING, 3));
+		in.setItem(2, new ItemStack(Items.OAK_SAPLING, 1));
+		out.setItem(0, new ItemStack(Items.OAK_LOG, 1));
+		CopperGolem golem = lumber(helper);
+		GolemData d = GolemData.get(golem);
+		d.keepLayout = true;
+		GolemData.save(golem, d);
+
+		helper.succeedWhen(() -> {
+			helper.assertTrue(out.getItem(0).is(Items.OAK_LOG) && out.getItem(0).getCount() == 4, "log slot: " + out.getItem(0));
+			for (int i = 1; i < out.getContainerSize(); i++) helper.assertTrue(out.getItem(i).isEmpty(), "output slot " + i + " filled: " + out.getItem(i));
+			helper.assertTrue(in.getItem(1).is(Items.OAK_SAPLING) && in.getItem(1).getCount() >= 1, "input slot 1: " + in.getItem(1));
+			helper.assertTrue(in.getItem(2).is(Items.OAK_SAPLING) && in.getItem(2).getCount() >= 1, "input slot 2: " + in.getItem(2));
+			for (int i = 3; i < in.getContainerSize(); i++) helper.assertTrue(in.getItem(i).isEmpty(), "input slot " + i + " filled: " + in.getItem(i));
+			helper.assertBlockPresent(Blocks.OAK_SAPLING, T);
+		});
+	}
 }

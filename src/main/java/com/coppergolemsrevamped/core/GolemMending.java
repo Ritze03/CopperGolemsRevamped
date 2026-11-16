@@ -79,8 +79,16 @@ public final class GolemMending {
 	}
 
 	public static int bottlesIn(Container chest) {
+		return bottlesIn(chest, false);
+	}
+
+	/** Bottles the golem may take: under keep layout one per slot stays behind (see superdoc/features/keep-layout.md). */
+	public static int bottlesIn(Container chest, boolean keepLayout) {
 		int n = 0;
-		for (int i = 0; i < chest.getContainerSize(); i++) if (chest.getItem(i).is(Items.EXPERIENCE_BOTTLE)) n += chest.getItem(i).getCount();
+		for (int i = 0; i < chest.getContainerSize(); i++) {
+			ItemStack st = chest.getItem(i);
+			if (st.is(Items.EXPERIENCE_BOTTLE)) n += TransporterLogic.takeable(chest, st, keepLayout);
+		}
 		return n;
 	}
 
@@ -94,7 +102,7 @@ public final class GolemMending {
 	 * Why: user request, repair while waiting instead of idling; an idle golem has nothing better to do.
 	 */
 	public static boolean canRepair(ServerLevel level, GolemData data, ItemStack held, Container chest, Predicate<ItemStack> isTool, boolean topUp) {
-		if (data.xp <= 0 && bottlesIn(chest) <= 0) return false;
+		if (data.xp <= 0 && bottlesIn(chest, data.keepLayout) <= 0) return false;
 		if (wantsRepair(level, held, isTool, topUp)) return true;
 		for (int i = 0; i < chest.getContainerSize(); i++) if (wantsRepair(level, chest.getItem(i), isTool, topUp)) return true;
 		return false;
@@ -122,7 +130,7 @@ public final class GolemMending {
 				int need = xpFor(level, t, t.getDamageValue());
 				if (data.xp < need && data.xp < GolemXp.XP_PER_BOTTLE) {
 					// store alone is not enough: open one more bottle (a partial repair from the store is fine when none is left)
-					if (used < limit && takeBottle(chest)) { GolemXp.add(data, GolemXp.XP_PER_BOTTLE); used++; continue; }
+					if (used < limit && takeBottle(chest, data.keepLayout)) { GolemXp.add(data, GolemXp.XP_PER_BOTTLE); used++; continue; }
 					if (data.xp <= 0) break;
 				}
 				int spend = Math.min(need, data.xp);
@@ -136,10 +144,10 @@ public final class GolemMending {
 		return used;
 	}
 
-	private static boolean takeBottle(Container chest) {
+	private static boolean takeBottle(Container chest, boolean keepLayout) {
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (!st.is(Items.EXPERIENCE_BOTTLE)) continue;
+			if (!st.is(Items.EXPERIENCE_BOTTLE) || TransporterLogic.takeable(chest, st, keepLayout) <= 0) continue;
 			st.shrink(1);
 			if (st.isEmpty()) chest.setItem(i, ItemStack.EMPTY);
 			return true;
