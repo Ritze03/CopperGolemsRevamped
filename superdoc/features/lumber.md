@@ -141,9 +141,14 @@ a separate PICKUP phase after FELL waited up to 150 ticks (`PICKUP_QUIET`) for l
 Why collect while waiting: leaves decay for a long time after the felling, so the stragglers (saplings, sticks, apples) land
 during the growth wait anyway; the walk to the chests is not delayed. Items collected while waiting stay in the carry
 and go out at the next DELIVER (after the next felling); a full carry just stops the collecting (`fitsSome`), nothing is lost
-(FELL delivers mid-tree when needed). Rule while a sapling stands (`LumberLogic:collect` with the footprint): an item is
-ignored only when it lies inside the footprint itself (one block beside it is collected), and an item whose path
-(`LumberLogic:crosses`) passes the sapling volume (`inVolume`) is first re-routed over a waypoint on the ring 1..2 blocks from the footprint (`LumberLogic:detour`, repeated per repath until the drop is reached) and skipped for `SKIP_TICKS` only when no such waypoint exists. Why: pathing over a sapling cell
+(FELL delivers mid-tree when needed). Rule while a sapling stands (`LumberLogic:collect` with the footprint): a drop inside
+the footprint (the danger area) is walked towards over the safe ring (1..2 blocks from the footprint) and picked up from there at
+`DANGER_PICKUP_RANGE_SQR` (3 blocks; covers the far corner of a 2x2 footprint from the opposite corner of the adjacent ring, 2.83);
+the golem never stands in the footprint. A drop whose path (`LumberLogic:crosses`) passes the sapling volume and has no detour is
+likewise picked up at that range from a safe cell instead of skipped. Why: user request, "they can also just suck up the items at a
+greater range when they are in a dangerous area": rather than leaving drops on or behind the sapling, the golem pulls them in from
+a safe distance. An item whose path
+(`LumberLogic:crosses`) passes the sapling volume (`inVolume`) is first re-routed over a waypoint on the ring 1..2 blocks from the footprint (`LumberLogic:detour`, repeated per repath until the drop is reached) and skipped for `SKIP_TICKS` only when no such waypoint exists and the drop is out of the extended range. Why: pathing over a sapling cell
 is possible (no collision) and the trunk growing around the golem would suffocate it; the pathfinder walks straight through a sapling cell, so without the detour a drop on the far side
 of the sapling (now in range, one block from it) would always be skipped; a skipped item costs nothing, it is
 retried after the skip or the next cycle. Why no margin around the footprint (user decision: "if he's not standing directly in

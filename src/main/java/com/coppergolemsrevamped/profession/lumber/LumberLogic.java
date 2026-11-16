@@ -95,6 +95,12 @@ public final class LumberLogic {
 	static final int ITEM_BELOW = 1;
 	static final int ITEM_ABOVE = 4;
 	static final double PICKUP_RANGE_SQR = 1.5 * 1.5;
+	/**
+	 * Pickup range for a drop in the danger area (inside the sapling footprint, or behind it with no safe way round), taken from
+	 * a safe cell outside the footprint. Smallest round value that covers the worst case: the far corner cell of a 2x2
+	 * footprint seen from the opposite corner of the adjacent ring (2 * sqrt(2) = 2.83 blocks, squared 8, plus a little height).
+	 */
+	static final double DANGER_PICKUP_RANGE_SQR = 3.0 * 3.0;
 
 	/** Ticks without a drop in the pickup box that end PICKUP (leaves decay slowly, see lumber.md). */
 	static final int PICKUP_QUIET = 150;
@@ -1060,27 +1066,24 @@ public final class LumberLogic {
 
 	/**
 	 * Walk to a drop lying around T and pick it up (the Cleaner's chase and give-up pattern). True when this tick was used.
-	 * While a sapling stands, drops inside the footprint are left alone (the golem must not stand there).
+	 * While a sapling stands, a drop inside the footprint (or one it cannot reach without crossing the sapling) is picked up
+	 * from a safe cell outside the footprint at {@link #DANGER_PICKUP_RANGE_SQR}; the golem never enters the footprint.
 	 */
 	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable List<BlockPos> growing, long now) {
 		AABB box = new AABB(t.getX() - ITEM_RADIUS, t.getY() - ITEM_BELOW, t.getZ() - ITEM_RADIUS,
 			t.getX() + ITEM_RADIUS + 1, t.getY() + ITEM_ABOVE, t.getZ() + ITEM_RADIUS + 1);
 		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem())
-				&& (growing == null || footDist(e.blockPosition(), growing) > 0));
+			e -> e.isAlive() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem()));
 		if (items.isEmpty()) {
 			s.chasing = null;
 			return false;
 		}
 		s.lastSeen = now; // a drop is there: PICKUP does not end yet
 		ItemEntity target = items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
-		if (golem.distanceToSqr(target) <= PICKUP_RANGE_SQR) {
-			golem.getNavigation().stop();
-			s.chasing = null;
-			List<ItemStack> rest = new ArrayList<>(List.of(target.getItem().copy()));
-			storeInto(data, rest);
-			if (rest.isEmpty()) target.discard(); else target.setItem(rest.getFirst());
-			done(s, golem, data, AFTER_ACTION_TICKS);
+		boolean safe = growing == null || !inVolume(golem.blockPosition(), t, growing);
+		boolean danger = growing != null && footDist(target.blockPosition(), growing) == 0;
+		if (golem.distanceToSqr(target) <= PICKUP_RANGE_SQR && !(danger && !safe) || danger && safe && golem.distanceToSqr(target) <= DANGER_PICKUP_RANGE_SQR) {
+			pickUp(s, golem, data, target);
 			return true;
 		}
 		if (!target.equals(s.chasing)) {
@@ -1102,6 +1105,10 @@ public final class LumberLogic {
 			Path path = golem.getNavigation().createPath(target, 0);
 			if (path != null && growing != null && crosses(path, t, growing)) { // never walk over a growing sapling: go round it
 				path = detour(level, golem, target, t, growing);
+				if (path == null && safe && golem.distanceToSqr(target) <= DANGER_PICKUP_RANGE_SQR) { // no way round: suck it up from here
+					pickUp(s, golem, data, target);
+					return true;
+				}
 				if (path == null) { // no way round: skip this drop for now
 					s.skip.put(target.getUUID(), now + SKIP_TICKS);
 					s.chasing = null;
@@ -1114,6 +1121,15 @@ public final class LumberLogic {
 			s.chaseRepath = REPATH_TICKS;
 		}
 		return true;
+	}
+
+	private static void pickUp(State s, CopperGolem golem, GolemData data, ItemEntity target) {
+		golem.getNavigation().stop();
+		s.chasing = null;
+		List<ItemStack> rest = new ArrayList<>(List.of(target.getItem().copy()));
+		storeInto(data, rest);
+		if (rest.isEmpty()) target.discard(); else target.setItem(rest.getFirst());
+		done(s, golem, data, AFTER_ACTION_TICKS);
 	}
 
 	/**

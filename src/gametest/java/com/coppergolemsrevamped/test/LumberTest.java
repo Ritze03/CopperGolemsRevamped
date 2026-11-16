@@ -683,6 +683,34 @@ public class LumberTest {
 		});
 	}
 
+	/**
+	 * An apple lies on the sapling's own cell (inside the footprint, the danger area): the golem sucks it up from a safe cell
+	 * 1..2 blocks away, never stands in the sapling volume, and the sapling still stands.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void collectsDropInsideTheSaplingFromOutside(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		CopperGolem golem = lumber(helper);
+		BlockPos at = helper.absolutePos(T);
+		boolean[] spawned = {false};
+		helper.onEachTick(() -> {
+			if (!helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS)) return;
+			helper.assertTrue(!LumberLogic.inVolume(golem.blockPosition(), at, List.of(at)), "golem is in the sapling volume at " + golem.blockPosition());
+			if (!spawned[0] && LumberLogic.phaseOf(golem) == LumberLogic.Phase.BONEMEAL) {
+				spawned[0] = true;
+				helper.spawnItem(Items.APPLE, new Vec3(T.getX() + 0.5, T.getY(), T.getZ() + 0.5));
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(spawned[0], "still waiting for the BONEMEAL phase");
+			helper.assertTrue(helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS), "the sapling grew before the check");
+			int apples = 0;
+			for (ItemStack st : GolemData.get(golem).items) if (st.is(Items.APPLE)) apples += st.getCount();
+			helper.assertTrue(apples == 1, "carried apples: " + apples);
+		});
+	}
+
 	/** A golem that starts inside the sapling steps out and waits 1..2 blocks from it (no bone meal: natural growth). */
 	@GameTest(maxTicks = 600)
 	public void stepsOutOfTheSapling(GameTestHelper helper) {
