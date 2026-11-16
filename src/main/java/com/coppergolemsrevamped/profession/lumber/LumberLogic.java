@@ -91,7 +91,7 @@ public final class LumberLogic {
 	/** Logs within this horizontal distance of T are worked on from T's stand spot, farther ones from a spot nearer to them. */
 	static final double NEAR_TREE = 3.5;
 	/** Ground-drop area around T: horizontal radius, blocks below T, blocks above T. */
-	static final int ITEM_RADIUS = 6;
+	static final int ITEM_RADIUS = 8;
 	static final int ITEM_BELOW = 1;
 	static final int ITEM_ABOVE = 4;
 	static final double PICKUP_RANGE_SQR = 1.5 * 1.5;
@@ -103,7 +103,7 @@ public final class LumberLogic {
 	/** Ticks without progress towards a stand spot before that spot is dropped (3 s). */
 	static final int SPOT_STUCK_TICKS = 60;
 	/** Chebyshev distance (blocks) from the grow footprint to plant and bone-meal from, and to wait at. */
-	static final int WORK_MIN = 1, WORK_MAX = 2, WAIT_MIN = 2, WAIT_MAX = 3;
+	static final int WORK_MIN = 1, WORK_MAX = 2;
 
 	public enum Result { BROKEN, FULL, DENIED }
 
@@ -399,13 +399,13 @@ public final class LumberLogic {
 		}
 		List<BlockPos> fp = footprintCells(level, t, s);
 		// 1. every reachable drop first: with bone meal the tree is up in seconds and decaying leaves would otherwise drop their saplings unseen
-		if (collect(s, level, golem, data, t, fp, supplySlot(data, LumberLogic::isBone) >= 0 ? WORK_MIN : WAIT_MIN, now)) return;
+		if (collect(s, level, golem, data, t, fp, now)) return;
 		// 2. low sapling stock: do not out-run the leaves, wait for natural-speed drops (until a spare sapling is there or they stop)
 		boolean starving = saplingStock(data, in) <= (fp.size() == 4 ? 4 : 1)
 			&& now - s.lastSeen < PICKUP_QUIET && now - s.pickupStart < PICKUP_MAX;
 		if (!starving && boneMeal(s, level, golem, data, t, now)) return;
 		if (mendVisit(s, level, golem, data, in, inPos, now)) return; // the idle time repairs Mending axes, however little they miss
-		if (!standOutside(s, level, golem, t, fp, WAIT_MIN, WAIT_MAX, now)) return;
+		if (!standOutside(s, level, golem, t, fp, WORK_MIN, WORK_MAX, now)) return;
 		idle(s, golem);
 	}
 
@@ -450,12 +450,12 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.DELIVER, now);
 			return;
 		}
-		if (collect(s, level, golem, data, t, isGrowing(level, t, s) ? footprintCells(level, t, s) : null, WAIT_MIN, now)) return;
+		if (collect(s, level, golem, data, t, isGrowing(level, t, s) ? footprintCells(level, t, s) : null, now)) return;
 		if (now - s.lastSeen >= PICKUP_QUIET) {
 			setPhase(s, golem, Phase.DELIVER, now);
 			return;
 		}
-		if (isGrowing(level, t, s) && !standOutside(s, level, golem, t, footprintCells(level, t, s), WAIT_MIN, WAIT_MAX, now)) return;
+		if (isGrowing(level, t, s) && !standOutside(s, level, golem, t, footprintCells(level, t, s), WORK_MIN, WORK_MAX, now)) return;
 		idle(s, golem);
 	}
 
@@ -1060,14 +1060,14 @@ public final class LumberLogic {
 
 	/**
 	 * Walk to a drop lying around T and pick it up (the Cleaner's chase and give-up pattern). True when this tick was used.
-	 * While a sapling stands, drops closer than {@code margin} to the footprint are left alone.
+	 * While a sapling stands, drops inside the footprint are left alone (the golem must not stand there).
 	 */
-	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable List<BlockPos> growing, int margin, long now) {
+	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable List<BlockPos> growing, long now) {
 		AABB box = new AABB(t.getX() - ITEM_RADIUS, t.getY() - ITEM_BELOW, t.getZ() - ITEM_RADIUS,
 			t.getX() + ITEM_RADIUS + 1, t.getY() + ITEM_ABOVE, t.getZ() + ITEM_RADIUS + 1);
 		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
 			e -> e.isAlive() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem())
-				&& (growing == null || footDist(e.blockPosition(), growing) >= margin));
+				&& (growing == null || footDist(e.blockPosition(), growing) > 0));
 		if (items.isEmpty()) {
 			s.chasing = null;
 			return false;
@@ -1100,17 +1100,42 @@ public final class LumberLogic {
 		}
 		if (--s.chaseRepath <= 0 || golem.getNavigation().isDone()) {
 			Path path = golem.getNavigation().createPath(target, 0);
-			if (path != null && growing != null && crosses(path, t, growing)) { // never walk over a growing sapling
-				s.skip.put(target.getUUID(), now + SKIP_TICKS);
-				s.chasing = null;
-				golem.getNavigation().stop();
-				return true;
+			if (path != null && growing != null && crosses(path, t, growing)) { // never walk over a growing sapling: go round it
+				path = detour(level, golem, target, t, growing);
+				if (path == null) { // no way round: skip this drop for now
+					s.skip.put(target.getUUID(), now + SKIP_TICKS);
+					s.chasing = null;
+					golem.getNavigation().stop();
+					return true;
+				}
 			}
 			// a null path is transient (spawn tick, mid-air): no progress, so the timeout decides
 			if (path != null) golem.getNavigation().moveTo(path, SPEED);
 			s.chaseRepath = REPATH_TICKS;
 		}
 		return true;
+	}
+
+	/**
+	 * A path towards {@code target} that stays out of the sapling volume: the pathfinder walks straight through a sapling
+	 * cell, so a drop on the far side is approached over a waypoint, a standable cell 1..2 blocks from the footprint that
+	 * is closer to the drop than the golem and reachable without crossing; from there the next repath goes on round the ring.
+	 */
+	private static @Nullable Path detour(ServerLevel level, CopperGolem golem, ItemEntity target, BlockPos t, List<BlockPos> f) {
+		List<BlockPos> cands = new ArrayList<>();
+		for (int dx = -(WORK_MAX + 1); dx <= WORK_MAX + 1; dx++) for (int dz = -(WORK_MAX + 1); dz <= WORK_MAX + 1; dz++) {
+			BlockPos p = new BlockPos(t.getX() + dx, golem.getBlockY(), t.getZ() + dz);
+			int d = footDist(p, f);
+			if (d < WORK_MIN || d > WORK_MAX || !Interact.canStand(level, golem, p)) continue;
+			if (target.distanceToSqr(Vec3.atBottomCenterOf(p)) >= golem.distanceToSqr(target) - 1 || p.equals(golem.blockPosition())) continue;
+			cands.add(p);
+		}
+		cands.sort(Comparator.comparingDouble(p -> target.distanceToSqr(Vec3.atBottomCenterOf(p))));
+		for (int i = 0; i < Math.min(8, cands.size()); i++) {
+			Path path = golem.getNavigation().createPath(cands.get(i), 0);
+			if (path != null && path.canReach() && !crosses(path, t, f)) return path;
+		}
+		return null;
 	}
 
 	/** Does the path pass through the sapling / trunk volume of the footprint {@code f}? */

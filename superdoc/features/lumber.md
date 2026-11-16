@@ -142,10 +142,13 @@ Why collect while waiting: leaves decay for a long time after the felling, so th
 during the growth wait anyway; the walk to the chests is not delayed. Items collected while waiting stay in the carry
 and go out at the next DELIVER (after the next felling); a full carry just stops the collecting (`fitsSome`), nothing is lost
 (FELL delivers mid-tree when needed). Rule while a sapling stands (`LumberLogic:collect` with the footprint): an item is
-ignored when it lies closer than `WAIT_MIN` (2) blocks to the footprint (picked up later), and an item whose path
-(`LumberLogic:crosses`) passes the sapling volume (`inVolume`) is skipped for `SKIP_TICKS`. Why: pathing over a sapling cell
-is possible (no collision) and the trunk growing around the golem would suffocate it; a skipped item costs nothing, it is
-retried after the skip or the next cycle. After a pickup the golem walks back to its waiting spot (`standOutside`), so the growth logic is unchanged.
+ignored only when it lies inside the footprint itself (one block beside it is collected), and an item whose path
+(`LumberLogic:crosses`) passes the sapling volume (`inVolume`) is first re-routed over a waypoint on the ring 1..2 blocks from the footprint (`LumberLogic:detour`, repeated per repath until the drop is reached) and skipped for `SKIP_TICKS` only when no such waypoint exists. Why: pathing over a sapling cell
+is possible (no collision) and the trunk growing around the golem would suffocate it; the pathfinder walks straight through a sapling cell, so without the detour a drop on the far side
+of the sapling (now in range, one block from it) would always be skipped; a skipped item costs nothing, it is
+retried after the skip or the next cycle. Why no margin around the footprint (user decision: "if he's not standing directly in
+the sapling, it is fine, a single block next to it is fine"): only the trunk cells suffocate, and the old 2-block margin made
+the golem ignore player-dropped saplings and random apples lying next to the sapling. After a pickup the golem walks back to its waiting spot (`standOutside`), so the growth logic is unchanged.
 Test: `LumberTest:collectsDropsWhileWaitingForGrowth`.
 
 ### Bone meal must not out-run the leaves (sapling loss, 2026-11)
@@ -155,12 +158,10 @@ by tests that failed before the fix: with bone meal the tree is up in a few appl
 apply bone meal first and collect only when it did not (`done` cooldown between applications returns from the tick, so the
 "collect between applications" never ran). Saplings from decaying leaves therefore lay on the ground until they despawned
 after 5 minutes, while every tree cost 1 sapling (4 for 2x2): the stock drained and the input chest ran dry. A second leak: items
-within `WAIT_MIN` of the footprint were never collected while a sapling stood (they stay there for the whole next growth).
+within the old 2-block margin of the footprint were never collected while a sapling stood (the margin is gone, see "Why no margin").
 Rules now, in order, every tick of BONEMEAL:
 1. **Collect first**: every collectable drop in the box (same rules: never enter the footprint, skip paths crossing the sapling)
    before any bone meal. The pickup-delay filter is gone (leaf drops carry a 10-tick delay and bone meal would otherwise run in it).
-   With bone meal in hand the margin to the footprint is `WORK_MIN` (1, the golem stands that close to apply it anyway), without
-   bone meal it stays `WAIT_MIN` (natural growth can come any tick).
 2. **Low stock waits**: when saplings in supply slots + carry + input chest are at most what the next planting needs (1, or 4
    for a 2x2 footprint), no bone meal is applied until a spare sapling is in hand, no drop was seen for `PICKUP_QUIET` (150
    ticks, counted from entering BONEMEAL or the last drop) or `PICKUP_MAX` passed. The golem waits (Mending, standing outside).
@@ -177,7 +178,7 @@ the wait is free time. Details in [mending.md](mending.md). Test: `LumberTest:re
 PICKUP still exists, but only as the cleanup phase: a fresh state with no tree, PLANT that cannot plant (no saplings, a 2x2 site
 waiting for four) and a vanished sapling go through it, the same collection and end rule as below. Picking up around T:
 
-The box: the golem picks up item entities in a box around T (horizontal radius 6, from 1 below to 4 above T):
+The box: the golem picks up item entities in a box around T (horizontal radius 8 (`ITEM_RADIUS`, equal to `TREE_RADIUS` so large oak and 2x2 jungle canopies are covered), from 1 below to 4 above T):
 nearest first, `createPath` + `moveTo` like the Cleaner (see [cleaner.md](cleaner.md)), pickup within 1.5 blocks, same
 give-up rule (no progress for 200 ticks: that item entity is ignored for 1200 ticks, a null path is no progress). Any
 item is taken if at least part of it fits (`LumberLogic:fitsSome`). A sapling goes to the sapling slot when the same item
@@ -228,12 +229,11 @@ every single bone meal.
 The golem never stands in the grow footprint (T for 1x1, the 2x2 square for 2x2) while planting, bone-meal or waiting:
 a growing trunk would suffocate it. `LumberLogic:standOutside` picks a standable, path-reachable ground cell by the
 horizontal (Chebyshev) distance to the footprint (`LumberLogic:pickSpot`; `Interact.approach` cannot exclude cells and
-also offers "standing on top"): 1..2 blocks (`WORK_MIN`/`WORK_MAX`) to plant and bone-meal (adjacent, so the reach rule
-holds), 2..3 (`WAIT_*`) to wait for natural growth and during PICKUP while a sapling stands. A golem inside the footprint
+also offers "standing on top"): 1..2 blocks (`WORK_MIN`/`WORK_MAX`) to plant, bone-meal, wait for natural growth and during PICKUP while a sapling
+stands (adjacent is fine, so the reach rule holds). A golem inside the footprint
 steps out first. With no such cell it widens the range; if it stands outside already it stays, if it is inside and
-cannot leave it gives the tree up after 200 ticks. Why 2..3 for waiting: leaves do not suffocate in vanilla, only trunk
-logs do, so adjacent is safe while bone-mealing, but natural growth can come at any tick, so a long wait keeps a margin
-for branch logs. Known limit: while chasing drops the pathfinder may cross a sapling cell (saplings do not collide).
+cannot leave it gives the tree up after 200 ticks. Why 1..2 also for waiting: leaves do not suffocate in vanilla, only trunk
+cells do, and the user decided that standing one block beside a sapling is safe (the former 2..3 waiting margin is gone). Known limit: while chasing drops the pathfinder may cross a sapling cell (saplings do not collide).
 
 ## Walking back reliably
 
@@ -289,7 +289,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
 - `collectsDropsWhileWaitingForGrowth`: sapling, no bone meal; drops spawned once in BONEMEAL (2 sticks, 2 apples, a sapling, plus a stick next to T that is left alone) end in the carry while it is still a sapling; never in the sapling volume.
 - `twoByTwoSiteWaitsForFourSaplings`: marked 2x2 site, 3 spruce saplings plant nothing, a 4th plants all four.
 - `neverStandsInTheSapling` (bone meal run: never in T's column while a sapling stands, health unchanged) and
-  `stepsOutOfTheSapling` (spawned inside, waits >= 2 blocks away).
+  `stepsOutOfTheSapling` (spawned inside, waits 1..2 blocks away).
 - `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped` (iron axe about to break swapped for a
   diamond axe, the old one lands in the chest).
 - `walledInTrunkIsFelledFromTwoBlocks`: all T neighbours stone: the 2-block fallback still fells it.

@@ -593,7 +593,7 @@ public class LumberTest {
 
 	/**
 	 * Waiting for natural growth (BONEMEAL, no bone meal anywhere): drops that appear around the sapling (2 sticks,
-	 * 2 apples, 1 sapling, all at least 2 blocks from T; one stick in the ring next to T that must be left alone) are picked up
+	 * 2 apples, 1 sapling, all at least 2 blocks from T; one stick in the ring next to T, picked up as well) are picked up
 	 * into the carry while the sapling is still a sapling; the golem is never in the sapling's volume, and the phase stays BONEMEAL.
 	 */
 	@GameTest(maxTicks = 1500)
@@ -613,7 +613,7 @@ public class LumberTest {
 				helper.spawnItem(Items.APPLE, new Vec3(5.5, 1.0, 6.5));
 				helper.spawnItem(Items.APPLE, new Vec3(1.5, 1.0, 6.5));
 				helper.spawnItem(Items.OAK_SAPLING, new Vec3(6.5, 1.0, 6.5));
-				helper.spawnItem(Items.STICK, new Vec3(4.5, 1.0, 3.5)); // right next to T: left for later
+				helper.spawnItem(Items.STICK, new Vec3(4.5, 1.0, 3.5)); // right next to T: collected too
 			}
 		});
 		helper.succeedWhen(() -> {
@@ -626,7 +626,7 @@ public class LumberTest {
 				if (st.is(Items.APPLE)) n[1] += st.getCount();
 				if (st.is(Items.OAK_SAPLING)) n[2] += st.getCount();
 			}
-			helper.assertTrue(n[0] == 2 && n[1] == 2 && n[2] == 1, "carried sticks/apples/saplings: " + n[0] + "/" + n[1] + "/" + n[2]);
+			helper.assertTrue(n[0] == 3 && n[1] == 2 && n[2] == 1, "carried sticks/apples/saplings: " + n[0] + "/" + n[1] + "/" + n[2]);
 		});
 	}
 
@@ -651,7 +651,39 @@ public class LumberTest {
 		});
 	}
 
-	/** A golem that starts inside the sapling steps out and waits at least 2 blocks from it (no bone meal: natural growth). */
+	/**
+	 * A sapling of the golem's own kind stands at T (no bone meal): a sapling and an apple lying exactly one block from the
+	 * footprint are picked up while the sapling still stands (the old 2-block margin ignored them).
+	 */
+	@GameTest(maxTicks = 1500)
+	public void collectsDropsOneBlockFromTheSapling(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		CopperGolem golem = lumber(helper);
+		BlockPos at = helper.absolutePos(T);
+		boolean[] spawned = {false};
+		helper.onEachTick(() -> {
+			if (!helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS)) return;
+			helper.assertTrue(!LumberLogic.inVolume(golem.blockPosition(), at, List.of(at)), "golem is in the sapling volume at " + golem.blockPosition());
+			if (!spawned[0] && LumberLogic.phaseOf(golem) == LumberLogic.Phase.BONEMEAL) {
+				spawned[0] = true;
+				helper.spawnItem(Items.OAK_SAPLING, new Vec3(4.5, 1.0, 3.5));
+				helper.spawnItem(Items.APPLE, new Vec3(2.5, 1.0, 3.5));
+			}
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(spawned[0], "still waiting for the BONEMEAL phase");
+			helper.assertTrue(helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS), "the sapling grew before the check");
+			int apples = 0, saplings = 0;
+			for (ItemStack st : GolemData.get(golem).items) {
+				if (st.is(Items.APPLE)) apples += st.getCount();
+				if (st.is(Items.OAK_SAPLING)) saplings += st.getCount();
+			}
+			helper.assertTrue(apples == 1 && saplings >= 1, "carried apples/saplings: " + apples + "/" + saplings);
+		});
+	}
+
+	/** A golem that starts inside the sapling steps out and waits 1..2 blocks from it (no bone meal: natural growth). */
 	@GameTest(maxTicks = 600)
 	public void stepsOutOfTheSapling(GameTestHelper helper) {
 		world(helper);
@@ -660,7 +692,7 @@ public class LumberTest {
 		BlockPos at = helper.absolutePos(T);
 		helper.runAfterDelay(300, () -> {
 			int d = Math.max(Math.abs(golem.getBlockX() - at.getX()), Math.abs(golem.getBlockZ() - at.getZ()));
-			helper.assertTrue(d >= 2, "golem waits " + d + " blocks from the sapling at " + golem.blockPosition());
+			helper.assertTrue(d >= 1 && d <= 2, "golem waits " + d + " blocks from the sapling at " + golem.blockPosition());
 			helper.succeed();
 		});
 	}
