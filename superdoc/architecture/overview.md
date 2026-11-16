@@ -93,6 +93,7 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change stored XP, the 7-XP bottle conversion or where XP is earned and delivered: `core/GolemXp`, `GolemData:xp`, `SmelterLogic:takeFurnaceXp`, `ButcherLogic:takeBreedingXp`, see [xp-bottles.md](../features/xp-bottles.md).
 - Change Mending repair or the "never break a Mending tool" rule for Lumber, Farmer and Butcher: `core/GolemMending`, see [mending.md](../features/mending.md).
 - Change the Smelter furnace scan, split or never-block rules: `profession/smelter/SmelterLogic:rescan`, `SmelterLogic:planFetch`, `SmelterLogic:pick`, see [smelter.md](../features/smelter.md).
+- Change the Keep layout rule (leave 1 per slot, never fill empty slots): `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`, `TransporterLogic:layoutRule`, Chest Sorter in `mixin/TransportItemsBetweenContainersMixin`, see [keep-layout.md](../features/keep-layout.md).
 - Change the Chest Sorter chest limit: `profession/chest_sorter/ChestSorterProfession:visitedLimit`, mixin `mixin/TransportItemsBetweenContainersMixin`.
 - Change death/statue drops: `core/GolemService:dropAll`, hooks in `mixin/CopperGolemMixin`.
 - Write a GameTest: `src/gametest/java/com/coppergolemsrevamped/test/TransporterTest`, notes in [testing.md](testing.md).

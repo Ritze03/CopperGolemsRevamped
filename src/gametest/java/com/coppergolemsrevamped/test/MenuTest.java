@@ -393,6 +393,28 @@ public class MenuTest {
 		helper.succeed();
 	}
 
+	/** Keep layout: toggle at (2,4) for every profession, default off, flips, allowed while frozen, kept over a profession change. */
+	@GameTest
+	public void settingsKeepLayoutToggle(GameTestHelper helper) {
+		for (Identifier id : new Identifier[] {null, SORTER, TRANSPORTER}) {
+			CopperGolem g = golem(helper, id);
+			ServerPlayer player = player(helper, g);
+			GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
+			helper.assertTrue(at(menu, 2, 4).is(Items.ITEM_FRAME) && !glint(at(menu, 2, 4)) && name(at(menu, 2, 4)).equals("Keep layout: off")
+				&& lore(at(menu, 2, 4)).contains("Leaves 1 item in every slot; never fills empty slots") && !GolemData.get(g).keepLayout,
+				id + " keep layout off " + at(menu, 2, 4));
+			click(menu, player, 2, 4);
+			helper.assertTrue(GolemData.get(g).keepLayout && glint(at(menu, 2, 4)) && name(at(menu, 2, 4)).equals("Keep layout: on"), id + " on");
+			click(menu, player, 2, 5); // freeze: the setting is not refused while frozen
+			click(menu, player, 2, 4);
+			helper.assertTrue(!GolemData.get(g).keepLayout && GolemData.get(g).frozen, id + " toggles while frozen");
+			click(menu, player, 2, 4);
+			GolemService.changeProfession(helper.getLevel(), g, id == null ? TRANSPORTER : null);
+			helper.assertTrue(GolemData.get(g).keepLayout, id + " a profession change keeps keep layout");
+		}
+		helper.succeed();
+	}
+
 	/** The "Strip logs" toggle exists for the Lumber only (Settings 4,4), default off, flips and persists. */
 	@GameTest
 	public void settingsStripLogsToggleIsLumberOnly(GameTestHelper helper) {

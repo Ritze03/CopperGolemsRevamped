@@ -65,14 +65,24 @@ public final class TransferBudget {
 
 	/** Budgeted take of only the stacks {@code accept} passes (Transporter filter). */
 	public static int take(ServerLevel level, CopperGolem golem, Container src, List<ItemStack> carry, Predicate<ItemStack> accept) {
-		int n = TransporterLogic.takeAll(src, carry, remaining(level, golem), accept);
+		return take(level, golem, src, carry, accept, false);
+	}
+
+	/** Budgeted take with the keep layout rule ({@link TransporterLogic#takeAll(Container, List, int, Predicate, boolean)}). */
+	public static int take(ServerLevel level, CopperGolem golem, Container src, List<ItemStack> carry, Predicate<ItemStack> accept, boolean keepLayout) {
+		int n = TransporterLogic.takeAll(src, carry, remaining(level, golem), accept, keepLayout);
 		spend(level, golem, n);
 		return n;
 	}
 
 	/** Budgeted {@link TransporterLogic#insertAll}: returns the number of items moved. */
 	public static int insert(ServerLevel level, CopperGolem golem, List<ItemStack> carry, Container dst) {
-		int n = TransporterLogic.insertAll(carry, dst, remaining(level, golem));
+		return insert(level, golem, carry, dst, false);
+	}
+
+	/** Budgeted insert with the keep layout rule ({@link TransporterLogic#insertAll(List, Container, int, boolean)}). */
+	public static int insert(ServerLevel level, CopperGolem golem, List<ItemStack> carry, Container dst, boolean keepLayout) {
+		int n = TransporterLogic.insertAll(carry, dst, remaining(level, golem), keepLayout);
 		spend(level, golem, n);
 		return n;
 	}

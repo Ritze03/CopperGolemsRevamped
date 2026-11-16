@@ -23,7 +23,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   (`walkToStopsNextToBlock`, `areaAssignWalksOutline`, `unreachableWaypointIsSkipped`), area clamp
   (`areaCornerIsCappedNotRejected`), `everyProfessionHasHelp`. See [gui.md](../features/gui.md),
   [assign-mode.md](../features/assign-mode.md).
-- `MenuTest` (24, incl. `settingsStripLogsToggleIsLumberOnly`, incl. `professionTabIsCentredAndWraps`): the tabbed menu. `opensOnStatusWithTabBar`, `noBackButtonAndCrafterBarHasRecipe` (no Back cell on any tab of any profession, Crafter bar has 6 tabs with Recipe before Inventory), `tabSwitchKeepsTheMenuInstance` (sets
+- `MenuTest` (25, incl. `settingsKeepLayoutToggle`, `settingsStripLogsToggleIsLumberOnly`, incl. `professionTabIsCentredAndWraps`): the tabbed menu. `opensOnStatusWithTabBar`, `noBackButtonAndCrafterBarHasRecipe` (no Back cell on any tab of any profession, Crafter bar has 6 tabs with Recipe before Inventory), `tabSwitchKeepsTheMenuInstance` (sets
   `player.containerMenu`, clicks tabs and checks it is still the same menu), `controlCellsSwallowEveryOtherClick`,
   `noneSwitchesWithoutConfirm`, `confirmFlowAndCancel`, `targetsShowAndClear`, `targetsAreaClearAndColumns`,
   `lumberAndFarmerLayouts` (cell positions of every profession's Inventory tab), `settingsFollowToggle`, `settingsFreezeToggle`,
@@ -69,11 +69,12 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `FreezeTest` (5): `frozenTransporterMovesNothing` (200 ticks, chests unchanged, golem within 0.5 blocks),
   `unfreezingResumesTheWork`, `freezingClosesAnOpenLidAndStops`, `frozenSurvivesSaveLoad`, `frozenChestSorterDoesNotSort`
   ([freeze.md](../features/freeze.md)).
+- `KeepLayoutTest` (6): Keep layout for the Transporter (A keeps 1 per slot, B's empty slots stay empty), the plain-container rule incl. the unstackable and furnace exemptions, off-case, and the Chest Sorter mixin ([keep-layout.md](../features/keep-layout.md)).
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 215 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 219 required tests passed` (see Gotchas). Update the numbers here when
+Total: 227 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 228 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

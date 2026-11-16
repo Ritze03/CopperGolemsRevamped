@@ -19,6 +19,7 @@ import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -60,7 +61,7 @@ public final class TransporterLogic {
 		if (!Interact.approach(level, golem, target, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
 		if (loading || carryEmpty) {
-			boolean moved = TransferBudget.take(level, golem, ca, carry, accepts(data)) > 0;
+			boolean moved = TransferBudget.take(level, golem, ca, carry, accepts(data), data.keepLayout) > 0;
 			if (moved) Interact.openChest(level, golem, target, Interact.Action.TAKE);
 			if (TransferBudget.exhausted(level, golem)) {
 				// budget used up, not "chest empty": stay, keep the lid open and go on next window
@@ -73,7 +74,7 @@ public final class TransporterLogic {
 				s.loading = false;
 			}
 		} else {
-			if (TransferBudget.insert(level, golem, carry, cb) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
+			if (TransferBudget.insert(level, golem, carry, cb, data.keepLayout) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
 			boolean empty = isEmpty(carry);
 			if (empty) s.walk.reset();
 			if (empty) s.cooldown = Interact.OPEN_TICKS;
@@ -147,15 +148,26 @@ public final class TransporterLogic {
 
 	/** Like {@link #takeAll(Container, List, int)} but only stacks {@code accept} passes move; the rest stay in {@code src}. */
 	public static int takeAll(Container src, List<ItemStack> carry, int limit, Predicate<ItemStack> accept) {
+		return takeAll(src, carry, limit, accept, false);
+	}
+
+	/**
+	 * Like {@link #takeAll(Container, List, int, Predicate)}; with {@code keepLayout} a stackable slot is never taken below
+	 * 1 item (see {@link #takeable}).
+	 */
+	public static int takeAll(Container src, List<ItemStack> carry, int limit, Predicate<ItemStack> accept, boolean keepLayout) {
 		int total = 0;
 		for (int i = 0; i < src.getContainerSize() && total < limit; i++) {
 			ItemStack in = src.getItem(i);
 			if (in.isEmpty() || !accept.test(in)) continue;
 			int before = in.getCount();
-			ItemStack rest = addTo(carry, in.copy(), null, limit - total);
-			if (rest.getCount() != before) {
-				total += before - rest.getCount();
-				src.setItem(i, rest.isEmpty() ? ItemStack.EMPTY : rest);
+			int avail = takeable(src, in, keepLayout);
+			if (avail <= 0) continue;
+			ItemStack rest = addTo(carry, in.copyWithCount(avail), null, limit - total, false);
+			int moved = avail - rest.getCount();
+			if (moved > 0) {
+				total += moved;
+				src.setItem(i, before == moved ? ItemStack.EMPTY : in.copyWithCount(before - moved));
 			}
 		}
 		if (total > 0) src.setChanged();
@@ -169,12 +181,17 @@ public final class TransporterLogic {
 
 	/** Like {@link #insertAll(List, Container)} but moves at most {@code limit} items; returns how many moved. */
 	public static int insertAll(List<ItemStack> carry, Container dst, int limit) {
+		return insertAll(carry, dst, limit, false);
+	}
+
+	/** Like {@link #insertAll(List, Container, int)}; with {@code keepLayout} a stackable item only merges into non-empty slots. */
+	public static int insertAll(List<ItemStack> carry, Container dst, int limit, boolean keepLayout) {
 		int total = 0;
 		for (int i = 0; i < carry.size() && total < limit; i++) {
 			ItemStack s = carry.get(i);
 			if (s.isEmpty()) continue;
 			int before = s.getCount();
-			ItemStack rest = addTo(null, s.copy(), dst, limit - total);
+			ItemStack rest = addTo(null, s.copy(), dst, limit - total, keepLayout);
 			total += before - rest.getCount();
 			carry.set(i, rest);
 		}
@@ -182,11 +199,44 @@ public final class TransporterLogic {
 		return total;
 	}
 
-	/** Adds at most {@code limit} items of stack to a list or a container (exactly one non-null); returns the remainder. */
-	private static ItemStack addTo(@Nullable List<ItemStack> list, ItemStack stack, @Nullable Container cont, int limit) {
+	/**
+	 * Keep layout (superdoc/features/keep-layout.md): true when the rule applies to {@code stack} in {@code c}. Unstackable
+	 * items are exempt (a one-axe tool slot could otherwise never be used) and so are furnace slots (machine slots, not a
+	 * human layout).
+	 */
+	private static boolean layoutRule(boolean keepLayout, Container c, ItemStack stack) {
+		return keepLayout && stack.getMaxStackSize() > 1 && !(c instanceof AbstractFurnaceBlockEntity);
+	}
+
+	/** Items that may be taken from the slot holding {@code in}: all but 1 under keep layout, else all. */
+	public static int takeable(Container src, ItemStack in, boolean keepLayout) {
+		return layoutRule(keepLayout, src, in) ? in.getCount() - 1 : in.getCount();
+	}
+
+	/** Keep layout insert of one stack (Chest Sorter mixin): adds into {@code dst}, returns the remainder. */
+	public static ItemStack insertStack(ItemStack stack, Container dst, boolean keepLayout) {
+		return addTo(null, stack, dst, Integer.MAX_VALUE, keepLayout);
+	}
+
+	/** True when {@code stack} would at least partly fit into {@code dst} under the keep layout rule (no change made). */
+	public static boolean canInsert(Container dst, ItemStack stack, boolean keepLayout) {
+		boolean layout = layoutRule(keepLayout, dst, stack);
+		for (int i = 0; i < dst.getContainerSize(); i++) {
+			ItemStack cur = dst.getItem(i);
+			if (cur.isEmpty() ? !layout : ItemStack.isSameItemSameComponents(cur, stack) && cur.getCount() < Math.min(stack.getMaxStackSize(), dst.getMaxStackSize())) return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Adds at most {@code limit} items of stack to a list or a container (exactly one non-null); returns the remainder.
+	 * {@code keepLayout} applies to containers only: merge into non-empty slots, skip the empty-slot pass.
+	 */
+	private static ItemStack addTo(@Nullable List<ItemStack> list, ItemStack stack, @Nullable Container cont, int limit, boolean keepLayout) {
+		int passes = cont != null && layoutRule(keepLayout, cont, stack) ? 1 : 2;
 		int size = list != null ? list.size() : cont.getContainerSize();
 		int left = limit;
-		for (int pass = 0; pass < 2 && !stack.isEmpty() && left > 0; pass++) {
+		for (int pass = 0; pass < passes && !stack.isEmpty() && left > 0; pass++) {
 			for (int i = 0; i < size && !stack.isEmpty() && left > 0; i++) {
 				ItemStack cur = list != null ? list.get(i) : cont.getItem(i);
 				if (pass == 0 ? cur.isEmpty() || !ItemStack.isSameItemSameComponents(cur, stack) : !cur.isEmpty()) continue;

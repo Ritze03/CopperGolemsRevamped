@@ -188,6 +188,14 @@ public class GolemMenu extends AbstractContainerMenu {
 		rebuild();
 	}
 
+	/** Settings tab Keep layout: never empty a stack, never fill an empty slot (see keep-layout.md). Not refused while frozen. */
+	void toggleKeepLayout() {
+		GolemData data = GolemData.get(golem);
+		data.keepLayout = !data.keepLayout;
+		GolemData.save(golem, data);
+		rebuild();
+	}
+
 	/** Settings tab "Strip logs" (Lumber only, see lumber.md). */
 	void toggleStripLogs() {
 		GolemData data = GolemData.get(golem);

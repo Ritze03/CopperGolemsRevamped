@@ -38,6 +38,7 @@ public enum Tab {
 	SETTINGS("Settings", "Follow, Freeze and other options", GolemIcon.SETTINGS, List.of(
 		"Follow: when on, the golem walks along with you instead of working.",
 		"Freeze: the golem stops all work and stands still, so you can safely change its inventory. Turning it on turns Follow off.",
+		"Keep layout: the golem never empties a stack (it leaves 1 item in every slot it takes from) and never puts items into empty slots, so a chest you laid out by hand stays as it is.",
 		"Click a toggle to switch it; it glows while on.")),
 	PROFESSION("Profession", "Choose what the golem does", null, List.of(
 		"Pick what this golem does.",

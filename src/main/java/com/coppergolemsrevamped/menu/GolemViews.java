@@ -344,6 +344,10 @@ final class GolemViews {
 		set(cells, 2, 5, icon(GolemIcon.plain(Items.BLUE_ICE, Component.literal("Freeze: " + (frozen ? "on" : "off")),
 			lore("Golem stops all work and stands still", "Use it to safely change its inventory"), frozen),
 			(p, b) -> m.toggleFreeze()));
+		boolean keep = data.keepLayout;
+		set(cells, 2, 4, icon(GolemIcon.plain(Items.ITEM_FRAME, Component.literal("Keep layout: " + (keep ? "on" : "off")),
+			lore("Leaves 1 item in every slot; never fills empty slots"), keep),
+			(p, b) -> m.toggleKeepLayout()));
 		if (LumberProfession.ID.equals(m.currentId())) {
 			boolean strip = data.stripLogs;
 			set(cells, 4, 4, icon(GolemIcon.plain(strip ? Items.STRIPPED_OAK_LOG : Items.OAK_LOG,Component.literal("Strip logs: " + (strip ? "on" : "off")),
