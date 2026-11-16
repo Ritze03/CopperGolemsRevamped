@@ -522,4 +522,35 @@ public class ButcherTest {
 		helper.assertTrue(other.getDeltaMovement().lengthSqr() > 0, "a golem without the Butcher profession is not pushed as in vanilla");
 		helper.succeed();
 	}
+
+	/** Keep layout: the food chest's carrots are fetched but the slot never drops below 1. */
+	@GameTest(maxTicks = 3000)
+	public void keepLayoutFoodFetchLeavesOne(GameTestHelper helper) {
+		Pen p = pen(helper, true);
+		p.data.keepLayout = true;
+		GolemData.save(p.golem, p.data);
+		p.food.setItem(0, new ItemStack(Items.CARROT, 8));
+		for (int i = 0; i < 4; i++) animal(helper, p, EntityTypes.PIG, false);
+		boolean[] taken = {false};
+		helper.onEachTick(() -> {
+			helper.assertTrue(p.food.getItem(0).getCount() >= 1, "the food slot was emptied");
+			if (p.food.getItem(0).getCount() < 8) taken[0] = true;
+		});
+		helper.succeedWhen(() -> helper.assertTrue(taken[0], "no food was fetched"));
+	}
+
+	/** Keep layout: a food slot holding a single carrot offers nothing, so nothing is fetched and the golem does not loop. */
+	@GameTest(maxTicks = 700)
+	public void keepLayoutSingleFoodItemIsNotTaken(GameTestHelper helper) {
+		Pen p = pen(helper, true);
+		p.data.keepLayout = true;
+		GolemData.save(p.golem, p.data);
+		p.food.setItem(0, new ItemStack(Items.CARROT, 1));
+		for (int i = 0; i < 4; i++) animal(helper, p, EntityTypes.PIG, false);
+		helper.runAfterDelay(400, () -> {
+			helper.assertTrue(count(p.food, Items.CARROT) == 1, "the last carrot was taken");
+			helper.assertTrue(GolemData.get(p.golem).items.stream().noneMatch(s -> s.is(Items.CARROT)), "the golem holds carrots");
+			helper.succeed();
+		});
+	}
 }
