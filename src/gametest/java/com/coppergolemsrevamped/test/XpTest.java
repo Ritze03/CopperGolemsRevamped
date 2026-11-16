@@ -202,4 +202,34 @@ public class XpTest {
 		helper.assertTrue(GolemData.get(copy).xp == 13, "xp after load: " + GolemData.get(copy).xp);
 		helper.succeed();
 	}
+
+	/** Keep layout: bottles merge into the output chest's 1-stack of bottles, empty slots stay empty. */
+	@GameTest(maxTicks = 900)
+	public void keepLayoutBottlesMergeOnly(GameTestHelper helper) {
+		Pen p = ButcherTest.pen(helper, false);
+		p.data.keepLayout = true;
+		p.data.xp = 20;
+		GolemData.save(p.golem, p.data);
+		p.out.setItem(0, new ItemStack(Items.EXPERIENCE_BOTTLE, 1));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(p.out.getItem(0).getCount() == 3, "merged bottles: " + p.out.getItem(0).getCount());
+			helper.assertTrue(ButcherTest.total(p.out) == 3, "an empty slot was used: " + ButcherTest.total(p.out));
+			helper.assertTrue(GolemData.get(p.golem).xp == 6, "remainder: " + GolemData.get(p.golem).xp);
+		});
+	}
+
+	/** Keep layout, no bottle stack in the output chest: nothing is delivered, the XP stays stored. */
+	@GameTest(maxTicks = 600)
+	public void keepLayoutNoMatchingStackKeepsTheXp(GameTestHelper helper) {
+		Pen p = ButcherTest.pen(helper, false);
+		p.data.keepLayout = true;
+		p.data.xp = 20;
+		GolemData.save(p.golem, p.data);
+		p.out.setItem(0, new ItemStack(Items.DIRT, 1));
+		helper.runAfterDelay(300, () -> {
+			helper.assertTrue(GolemData.get(p.golem).xp == 20, "stored XP: " + GolemData.get(p.golem).xp);
+			helper.assertTrue(ButcherTest.total(p.out) == 1, "the chest changed");
+			helper.succeed();
+		});
+	}
 }

@@ -618,4 +618,47 @@ public class SmelterTest {
 			helper.assertTrue(heldTotal(golem) == 0, "golem still holds " + heldTotal(golem));
 		});
 	}
+
+	/** Keep layout: ore slots 5 and 1 give 4 ore (both slots end at 1), the fuel chest keeps 1 coal, results only merge into the output chest's 1-stack. */
+	@GameTest(maxTicks = 3800)
+	public void keepLayoutLeavesOneAndNeverFillsEmptyOutputSlots(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		GolemData d = GolemData.get(golem);
+		d.keepLayout = true;
+		GolemData.save(golem, d);
+		furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE);
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 5));
+		c[0].setItem(1, new ItemStack(Items.IRON_ORE, 1));
+		addFuel(c[1], 16);
+		c[2].setItem(0, new ItemStack(Items.IRON_INGOT, 1));
+		helper.onEachTick(() -> {
+			helper.assertTrue(c[0].getItem(0).getCount() >= 1 && c[0].getItem(1).getCount() >= 1, "an input slot was emptied");
+			helper.assertTrue(c[1].getItem(0).getCount() >= 1, "the fuel slot was emptied");
+			for (int i = 1; i < c[2].getContainerSize(); i++) helper.assertTrue(c[2].getItem(i).isEmpty(), "an empty output slot was filled: " + i);
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(c[2].getItem(0).is(Items.IRON_INGOT) && c[2].getItem(0).getCount() == 5, "ingots merged into the 1-stack: " + c[2].getItem(0));
+			helper.assertTrue(c[0].getItem(0).getCount() == 1 && c[0].getItem(1).getCount() == 1, "input slots end at 1");
+			helper.assertTrue(heldTotal(golem) == 0, "golem holds " + heldTotal(golem));
+		});
+	}
+
+	/** Keep layout, output chest has no matching stack: results stay with the golem (output counts as full), nothing is put into empty slots. */
+	@GameTest(maxTicks = 3000)
+	public void keepLayoutOutputWithoutMatchingStackCountsAsFull(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[3];
+		CopperGolem golem = base(helper, 1, c);
+		GolemData d = GolemData.get(golem);
+		d.keepLayout = true;
+		GolemData.save(golem, d);
+		furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE);
+		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 5));
+		addFuel(c[1], 16);
+		helper.runAfterDelay(2000, () -> {
+			helper.assertTrue(total(c[2]) == 0, "the output chest got items: " + total(c[2]));
+			helper.assertTrue(c[0].getItem(0).getCount() == 1, "input slot ends at 1: " + c[0].getItem(0).getCount());
+			helper.succeed();
+		});
+	}
 }

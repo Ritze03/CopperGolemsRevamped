@@ -50,6 +50,10 @@ Butchers and Smelters keep the experience they earn in a per-golem store and pay
 
 Bottle delivery to a chest is part of the golem's transfer budget (`GolemXp:deliver` has a `limit`); creating the bottles is not. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
 
+## Keep layout
+
+With [keep-layout.md](keep-layout.md) on, `GolemXp:deliver` passes the flag to `TransporterLogic:insertAll`: bottles only merge into non-empty bottle stacks of the output chest. With none, the chest counts as full and the XP stays stored.
+
 ## Status tab
 
 When `xp > 0` the Status tab shows an `experience_bottle` icon "Stored XP: N" (`menu/GolemViews:status`), one more generic

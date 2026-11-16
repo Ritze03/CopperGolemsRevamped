@@ -309,15 +309,16 @@ public final class SmelterLogic {
 
 	// ---- plans ----
 
-	private static void addType(List<ItemStack> types, List<Integer> totals, ItemStack c) {
+	private static void addType(List<ItemStack> types, List<Integer> totals, ItemStack c, int n) {
+		if (n <= 0) return; // keep layout: a slot holding 1 offers nothing
 		for (int k = 0; k < types.size(); k++) {
 			if (same(types.get(k), c)) {
-				totals.set(k, totals.get(k) + c.getCount());
+				totals.set(k, totals.get(k) + n);
 				return;
 			}
 		}
 		types.add(c.copyWithCount(1));
-		totals.add(c.getCount());
+		totals.add(n);
 	}
 
 	/**
@@ -335,7 +336,7 @@ public final class SmelterLogic {
 		List<Integer> totals = new ArrayList<>();
 		for (int j = 0; j < e.in.getContainerSize(); j++) {
 			ItemStack c = e.in.getItem(j);
-			if (!c.isEmpty()) addType(types, totals, c);
+			if (!c.isEmpty()) addType(types, totals, c, TransporterLogic.takeable(e.in, c, e.data.keepLayout));
 		}
 		List<Move> moves = new ArrayList<>();
 		for (int t = 0; t < types.size() && !free.isEmpty(); t++) {
@@ -387,7 +388,7 @@ public final class SmelterLogic {
 		List<Integer> totals = new ArrayList<>();
 		for (int j = 0; j < e.fuel.getContainerSize(); j++) {
 			ItemStack c = e.fuel.getItem(j);
-			if (isFuel(c)) addType(types, totals, c);
+			if (isFuel(c)) addType(types, totals, c, TransporterLogic.takeable(e.fuel, c, e.data.keepLayout));
 		}
 		if (types.isEmpty()) return List.of();
 		List<Integer> needy = new ArrayList<>();
@@ -439,11 +440,12 @@ public final class SmelterLogic {
 		return moves;
 	}
 
-	private static void removeFrom(Container c, ItemStack like, int n) {
+	private static void removeFrom(Container c, ItemStack like, int n, boolean keepLayout) {
 		for (int j = 0; j < c.getContainerSize() && n > 0; j++) {
 			ItemStack s = c.getItem(j);
 			if (!same(s, like)) continue;
-			int t = Math.min(n, s.getCount());
+			int t = Math.min(n, TransporterLogic.takeable(c, s, keepLayout));
+			if (t <= 0) continue;
 			s.shrink(t);
 			if (s.isEmpty()) c.setItem(j, ItemStack.EMPTY);
 			n -= t;
@@ -755,12 +757,12 @@ public final class SmelterLogic {
 		for (Move m : moves) {
 			int want = m.stack().getCount();
 			int avail = 0;
-			for (int j = 0; j < chest.getContainerSize(); j++) if (same(chest.getItem(j), m.stack())) avail += chest.getItem(j).getCount();
+			for (int j = 0; j < chest.getContainerSize(); j++) if (same(chest.getItem(j), m.stack())) avail += TransporterLogic.takeable(chest, chest.getItem(j), e.data.keepLayout);
 			int budget = TransferBudget.remaining(e.level, e.golem);
 			int n = Math.min(Math.min(want, avail), budget);
 			ItemStack cur = e.data.items.get(m.slot());
 			if (n > 0 && (cur.isEmpty() || same(cur, m.stack()))) {
-				removeFrom(chest, m.stack(), n);
+				removeFrom(chest, m.stack(), n, e.data.keepLayout);
 				if (cur.isEmpty()) e.data.items.set(m.slot(), m.stack().copyWithCount(n)); else cur.grow(n);
 				e.s.kind[m.slot()] = kind;
 				TransferBudget.spend(e.level, e.golem, n);
@@ -843,7 +845,7 @@ public final class SmelterLogic {
 	private static boolean moveOut(Env e, List<Integer> idxs, Container dst) {
 		NonNullList<ItemStack> carry = NonNullList.create();
 		for (int idx : idxs) carry.add(e.data.items.get(idx));
-		boolean moved = TransferBudget.insert(e.level, e.golem, carry, dst) > 0;
+		boolean moved = TransferBudget.insert(e.level, e.golem, carry, dst, e.data.keepLayout) > 0;
 		for (int k = 0; k < idxs.size(); k++) e.data.items.set(idxs.get(k), carry.get(k));
 		return moved;
 	}

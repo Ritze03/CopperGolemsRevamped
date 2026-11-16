@@ -305,7 +305,7 @@ public final class ButcherLogic {
 		s.doing = "Delivering to the output chest";
 		if (!Interact.approach(level, golem, outPos, s.walk, SPEED)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
-		boolean moved = TransferBudget.insert(level, golem, carry, out) > 0;
+		boolean moved = TransferBudget.insert(level, golem, carry, out, data.keepLayout) > 0;
 		int bottles = GolemXp.deliver(data, out, TransferBudget.remaining(level, golem));
 		TransferBudget.spend(level, golem, bottles);
 		moved |= bottles > 0;
@@ -651,10 +651,10 @@ public final class ButcherLogic {
 	}
 
 	/** Chest slot holding food {@code a} eats, or -1. */
-	private static int chestFood(Container chest, Animal a) {
+	private static int chestFood(Container chest, Animal a, boolean keepLayout) {
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (!st.isEmpty() && a.isFood(st)) return i;
+			if (!st.isEmpty() && a.isFood(st) && TransporterLogic.takeable(chest, st, keepLayout) > 0) return i;
 		}
 		return -1;
 	}
@@ -667,27 +667,27 @@ public final class ButcherLogic {
 	private static boolean fetchFood(ServerLevel level, CopperGolem golem, GolemData data, State s, Animal a) {
 		BlockPos pos = data.assignments.get(ButcherProfession.FOOD);
 		Container chest = pos == null ? null : TransporterLogic.containerAt(level, pos);
-		if (chest == null || chestFood(chest, a) < 0 || !canMakeRoom(chest, data, chest.getItem(chestFood(chest, a)))) return false;
+		if (chest == null || chestFood(chest, a, data.keepLayout) < 0 || !canMakeRoom(chest, data, chest.getItem(chestFood(chest, a, data.keepLayout)))) return false;
 		s.doing = "Fetching breeding food";
 		if (!Interact.approach(level, golem, pos, s.walk, SPEED)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(pos));
-		int src = chestFood(chest, a);
+		int src = chestFood(chest, a, data.keepLayout);
 		ItemStack wanted = chest.getItem(src);
 		int dst = foodTarget(data, wanted);
 		ItemStack cur = data.items.get(dst);
 		if (!cur.isEmpty() && !ItemStack.isSameItemSameComponents(cur, wanted)) {
 			NonNullList<ItemStack> one = NonNullList.withSize(1, cur);
-			TransferBudget.insert(level, golem, one, chest);
+			TransferBudget.insert(level, golem, one, chest, data.keepLayout);
 			data.items.set(dst, one.get(0));
 			cur = data.items.get(dst);
 			if (!cur.isEmpty() && TransferBudget.exhausted(level, golem)) return atChest(level, golem, data, s, pos, Interact.Action.INSERT);
 			if (!cur.isEmpty()) return false; // chest refused it: canMakeRoom is a prediction, never lose the stack
-			src = chestFood(chest, a);
+			src = chestFood(chest, a, data.keepLayout);
 			if (src < 0) return false;
 			wanted = chest.getItem(src);
 		}
 		int room = Math.min(FOOD_FETCH, wanted.getMaxStackSize() - cur.getCount());
-		int n = Math.min(room, wanted.getCount());
+		int n = Math.min(room, TransporterLogic.takeable(chest, wanted, data.keepLayout));
 		if (n <= 0) return false;
 		int budget = TransferBudget.remaining(level, golem);
 		if (budget <= 0) return atChest(level, golem, data, s, pos, Interact.Action.TAKE);
@@ -728,6 +728,7 @@ public final class ButcherLogic {
 		int dst = foodTarget(data, wanted);
 		ItemStack cur = data.items.get(dst);
 		if (cur.isEmpty() || ItemStack.isSameItemSameComponents(cur, wanted)) return cur.getCount() < wanted.getMaxStackSize();
+		if (data.keepLayout) return TransporterLogic.canInsert(chest, cur, true);
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
 			if (st.isEmpty()) return true;

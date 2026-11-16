@@ -158,6 +158,10 @@ short chase between hits; a swing already started still lands only if the animal
 Freeze: `core/GolemTicker` never calls the tick of a frozen golem ([freeze.md](freeze.md)); `ButcherTest:frozenButcherDoesNothing`.
 D9 (no loss or duplication): items only move between slots, chests and carry (kill drops: captured, then stored or, on overflow, dropped); food is shrunk by exactly one per fed animal.
 
+## Keep layout
+
+With [keep-layout.md](keep-layout.md) on: the food fetch (`ButcherLogic:fetchFood`) only picks a food slot with more than 1 item and takes at most `count - 1`; food handed back (`TransferBudget:insert`, `canMakeRoom`) only merges into non-empty same-item slots; the output delivery (loot, XP bottles) merges only. Weapons are unstackable, so fetch and return stay unchanged. A food chest with only single items counts as having no food.
+
 ## Tests
 
 `ButcherTest`, see [../architecture/testing.md](../architecture/testing.md). The test pen is 6x6 inside a 2-high stone wall
