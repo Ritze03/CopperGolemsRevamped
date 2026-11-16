@@ -22,6 +22,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/butcher.md](features/butcher.md): Butcher profession, keeps 8 adults per kind in an area (max 16x16): culls the surplus with a sword or axe (Looting applies), breeds with food from a chest, delivers the drops.
 - [features/lumber.md](features/lumber.md): Lumber profession, fells a whole assigned tree from the ground (flood fill, 2x2 and branches), collects drops, replants, bone meal, axe wear.
 - [features/smelter.md](features/smelter.md): Smelter profession, feeds up to 8 furnaces of an area (even split, fuel, collect, XP), never blocks on a full chest, foreign input or unreachable furnace.
+- [features/distributor.md](features/distributor.md): Distributor profession, splits the input chest evenly over all inventories of an area (a multiple of N per item type), returns what does not fit.
 - [features/xp-bottles.md](features/xp-bottles.md): golems keep the XP they earn (Smelter furnaces, Butcher kills and breeding) and pay it out as XP bottles (7 XP each), no orbs.
 - [features/mending.md](features/mending.md): Lumber, Farmer and Butcher repair Mending tools with XP bottles from the tool chest (7 XP each) and never use a Mending tool below 10 durability (rest in the chest, bare hands or another tool).
 - [features/freeze.md](features/freeze.md): Settings-tab Freeze toggle, a frozen golem does nothing and stands still so its inventory can be changed.

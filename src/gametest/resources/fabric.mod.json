@@ -21,6 +21,7 @@
 			"com.coppergolemsrevamped.test.FreezeTest",
 			"com.coppergolemsrevamped.test.KeepLayoutTest",
 			"com.coppergolemsrevamped.test.SmelterTest",
+			"com.coppergolemsrevamped.test.DistributorTest",
 			"com.coppergolemsrevamped.test.XpTest",
 			"com.coppergolemsrevamped.test.TransferLimitTest",
 			"com.coppergolemsrevamped.test.MendingTest"

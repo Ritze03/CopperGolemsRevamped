@@ -7,6 +7,7 @@ import com.coppergolemsrevamped.profession.butcher.ButcherProfession;
 import com.coppergolemsrevamped.profession.chest_sorter.ChestSorterProfession;
 import com.coppergolemsrevamped.profession.cleaner.CleanerProfession;
 import com.coppergolemsrevamped.profession.crafter.CrafterProfession;
+import com.coppergolemsrevamped.profession.distributor.DistributorProfession;
 import com.coppergolemsrevamped.profession.farmer.FarmerProfession;
 import com.coppergolemsrevamped.profession.lumber.LumberProfession;
 import com.coppergolemsrevamped.profession.smelter.SmelterProfession;
@@ -35,6 +36,7 @@ public class CopperGolemsRevamped implements ModInitializer {
 		LumberProfession.init();
 		SmelterProfession.init();
 		ButcherProfession.init();
+		DistributorProfession.init();
 		AssignMode.init();
 		LOGGER.info("Copper Golems Revamped initialized");
 	}

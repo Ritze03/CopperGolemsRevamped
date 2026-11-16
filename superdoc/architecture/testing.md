@@ -73,8 +73,10 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `ChunkLoadTest` (6): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad` ([chunk-loading.md](../features/chunk-loading.md)).
 
-Total: 238 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 239 required tests passed` (see Gotchas). Update the numbers here when
+- `DistributorTest` (6): `eightTargetsTakeMultipleOfEight`, `sevenTargetsTakeMultipleOfSeven`, `doubleChestCountsAsOne`, `fewerThanNTakesNothing`, `fullTargetReturnsItsShare`, `keepLayoutRespectedOnBothSides` ([distributor.md](../features/distributor.md)).
+
+Total: 244 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` has none), so the log says `All 245 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

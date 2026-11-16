@@ -35,6 +35,7 @@ public enum GolemIcon {
 	PROFESSION_LUMBER("profession_lumber", Items.IRON_AXE),
 	PROFESSION_SMELTER("profession_smelter", Items.FURNACE),
 	PROFESSION_BUTCHER("profession_butcher", Items.IRON_SWORD),
+	PROFESSION_DISTRIBUTOR("profession_distributor", Items.DROPPER),
 	FOLLOW_ON("follow_on", Items.LEAD),
 	FOLLOW_OFF("follow_off", Items.LEAD),
 	ASSIGN_CHEST("assign_chest", Items.CHEST),

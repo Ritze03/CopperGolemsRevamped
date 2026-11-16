@@ -18,7 +18,7 @@ instant; a 256-item haul takes seconds, like a hopper line.
 ## What counts
 
 Counted (spend budget): every item moved between a golem and a container block, both directions:
-Transporter take/insert, Cleaner insert, Crafter fetch/deliver, Lumber and Farmer fetch (axe, tool, saplings, seeds,
+Transporter take/insert, Cleaner insert, Distributor fetch/distribute/return, Crafter fetch/deliver, Lumber and Farmer fetch (axe, tool, saplings, seeds,
 bone meal) and delivery (including surplus to the input/seed chest), Smelter chest fetch/fuel fetch/deliver/return **and**
 the moves between its buffers and the furnaces (feed, fuel, collect), Butcher delivery (carry and XP bottles), food and
 weapon fetch. A tool swap counts as one item.
@@ -52,6 +52,7 @@ Per profession:
 - **Smelter**: the current `Work` stays (`State.pending`) and is not marked `served`; the FETCH / FUEL_FETCH plan is kept
   in `State.moves` so the even split over the furnaces survives the cut; `collect` pays the furnace XP with the last part;
   full-chest blocks (`outBlockedUntil` etc.) are not set for a cut visit.
+- **Distributor**: `DistributorLogic` takes and inserts with an explicit per-call limit (`TransporterLogic.takeAll` / `insertAll` + `TransferBudget.spend`, so a single item type or share can be capped); the FETCH plan (`State.plan`) and the current inventory's quota (`State.quota`) survive a cut, the visit repeats next window and a cut visit never counts as "target full".
 - **Butcher**: `deliver` stays in the DELIVER phase; `fetchFood` / `fetchWeapon` return busy (`atChest`) instead of false,
   because false means "nothing to fetch, move on".
 

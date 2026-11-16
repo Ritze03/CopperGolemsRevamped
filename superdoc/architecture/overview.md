@@ -8,7 +8,7 @@ duplicating them. Index of all pages: [../README.md](../README.md).
 Copper Golems Revamped is a Fabric mod for Minecraft 26.3 (Mojang names, unobfuscated; mod id
 `coppergolemsrevamped`) that makes Copper Golems useful. Right-clicking a golem with an empty hand opens a
 server-side GUI (works on vanilla clients) where the player picks a profession, assigns its targets (chests, blocks, areas) and toggles follow
-mode. Implemented professions: Chest Sorter, Lumber, Crafter, Transporter, Farmer, Cleaner, Smelter, Butcher.
+mode. Implemented professions: Chest Sorter, Lumber, Crafter, Transporter, Farmer, Cleaner, Smelter, Butcher, Distributor.
 A golem with no profession stands still. A golem with a profession keeps its chunks loaded, see [chunk-loading.md](../features/chunk-loading.md).
 
 ## Data flow
@@ -58,6 +58,7 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | `profession/crafter/` | Crafter declaration and fetch/craft/deliver loop, see [crafter.md](../features/crafter.md) |
 | `profession/farmer/` | Farmer declaration and till/plant/harvest/deliver loop, see [farmer.md](../features/farmer.md) |
 | `profession/smelter/` | Smelter declaration and phase loop (fetch, feed, fuel, collect, deliver), see [smelter.md](../features/smelter.md) |
+| `profession/distributor/` | Distributor declaration and fetch/distribute/return loop, see [distributor.md](../features/distributor.md) |
 | `profession/lumber/` | Lumber declaration and fell/replant/deliver loop, see [lumber.md](../features/lumber.md) |
 | `ai/` | `FollowMode`; `WalkTo` (walk to an assigned block or area outline); `Interact`: stand position / reach and chest lids, see [interaction.md](interaction.md); `TransferBudget`: the 16 items per 5 ticks golem transfer limit, see [transfer-limit.md](transfer-limit.md); `ToolSwing`: visible chopping/hoeing motion for Lumber and Farmer, see [lumber.md](../features/lumber.md) |
 | `assign/` | `AssignMode`: armed next-click target assignment, area capping (`clampCorner`), walk-to trigger |
@@ -93,6 +94,7 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change stored XP, the 7-XP bottle conversion or where XP is earned and delivered: `core/GolemXp`, `GolemData:xp`, `SmelterLogic:takeFurnaceXp`, `ButcherLogic:takeBreedingXp`, see [xp-bottles.md](../features/xp-bottles.md).
 - Change Mending repair or the "never break a Mending tool" rule for Lumber, Farmer and Butcher: `core/GolemMending`, see [mending.md](../features/mending.md).
 - Change the Smelter furnace scan, split or never-block rules: `profession/smelter/SmelterLogic:rescan`, `SmelterLogic:planFetch`, `SmelterLogic:pick`, see [smelter.md](../features/smelter.md).
+- Change the Distributor area scan, the multiple-of-N fetch plan or the share split: `profession/distributor/DistributorLogic:rescan`, `DistributorLogic:planFetch`, `DistributorLogic:sharesOf`, `DistributorLogic:distribute`, see [distributor.md](../features/distributor.md).
 - Change the Keep layout rule (leave 1 per slot, never fill empty slots): `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`, `TransporterLogic:layoutRule`, Chest Sorter in `mixin/TransportItemsBetweenContainersMixin`, see [keep-layout.md](../features/keep-layout.md).
 - Change the Chest Sorter chest limit: `profession/chest_sorter/ChestSorterProfession:visitedLimit`, mixin `mixin/TransportItemsBetweenContainersMixin`.
 - Change death/statue drops: `core/GolemService:dropAll`, hooks in `mixin/CopperGolemMixin`.
