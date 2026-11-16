@@ -117,7 +117,7 @@ public final class CleanerLogic {
 		}
 		if (!Interact.approach(level, golem, out, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(out));
-		if (TransferBudget.insert(level, golem, data.items, chest) > 0) Interact.openChest(level, golem, out, Interact.Action.INSERT);
+		if (TransferBudget.insert(level, golem, data.items, chest, data.keepLayout) > 0) Interact.openChest(level, golem, out, Interact.Action.INSERT);
 		if (TransporterLogic.isEmpty(data.items)) {
 			s.cooldown = Interact.OPEN_TICKS;
 			s.walk.reset();

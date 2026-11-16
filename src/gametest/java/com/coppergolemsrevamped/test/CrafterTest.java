@@ -419,4 +419,41 @@ public class CrafterTest {
 			helper.succeed();
 		});
 	}
+
+	/**
+	 * Keep layout: input slots of 5 and 1 planks give 4 (the 1 stays), enough for 2 crafts = 8 sticks; they merge onto the
+	 * output chest's single stick, its empty slots stay empty.
+	 */
+	@GameTest(maxTicks = 1600)
+	public void keepLayoutUsesOnlyTakeablesAndMerges(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[2];
+		CopperGolem golem = setup(helper, true, 5, c);
+		c[0].setItem(1, new ItemStack(Items.OAK_PLANKS, 1));
+		c[1].setItem(5, new ItemStack(Items.STICK, 1));
+		GolemData data = GolemData.get(golem);
+		data.keepLayout = true;
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(c[1].getItem(5).is(Items.STICK) && c[1].getItem(5).getCount() == 9, "merged stick stack: " + c[1].getItem(5));
+			helper.assertTrue(total(c[1]) == 9, "sticks went into empty slots: " + total(c[1]));
+			helper.assertTrue(c[0].getItem(0).getCount() == 1 && c[0].getItem(1).getCount() == 1, "input slots: " + c[0].getItem(0) + ", " + c[0].getItem(1));
+			helper.assertTrue(heldTotal(GolemData.get(golem)) == 0, "golem still holds " + heldTotal(GolemData.get(golem)));
+		});
+	}
+
+	/** Keep layout, output chest with no stick stack: the product stays in the golem (counts as full), the input keeps its last plank. */
+	@GameTest(maxTicks = 400)
+	public void keepLayoutOutputWithoutMatchingStackCountsAsFull(GameTestHelper helper) {
+		ChestBlockEntity[] c = new ChestBlockEntity[2];
+		CopperGolem golem = setup(helper, true, 3, c);
+		GolemData data = GolemData.get(golem);
+		data.keepLayout = true;
+		GolemData.save(golem, data);
+		helper.runAfterDelay(300, () -> {
+			helper.assertTrue(total(c[1]) == 0, "output chest got " + total(c[1]));
+			helper.assertTrue(count(c[0], Items.OAK_PLANKS) == 1, "input planks: " + count(c[0], Items.OAK_PLANKS));
+			helper.assertTrue(held(GolemData.get(golem), Items.STICK) == 4, "golem sticks: " + held(GolemData.get(golem), Items.STICK));
+			helper.succeed();
+		});
+	}
 }

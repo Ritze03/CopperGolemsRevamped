@@ -102,6 +102,18 @@ fallback to the 2-block reach.
 Known limits: two template cells of the same item each need their own stack, so a scarce item is split evenly and the
 craft count is the smallest slot; a recipe with 9 cells needs all 9 input slots.
 
+## Keep layout
+
+With the per-golem Keep layout setting on ([keep-layout.md](keep-layout.md)): 
+## Keep layout
+
+With the per-golem Keep layout setting on ([keep-layout.md](keep-layout.md)): `fetch` and `canFetch` only count and take what the input chest can spare (`TransporterLogic:takeable`, slots of 1 are skipped, so
+the craft decision never waits on an input it cannot take); `deliver` merges into matching stacks of the output chest only. An
+output chest without a matching stack counts as full: the products stay in the golem and the delivery retries every `RETRY_TICKS`.
+Tests: `keepLayoutUsesOnlyTakeablesAndMerges`, `keepLayoutOutputWithoutMatchingStackCountsAsFull`.
+
+
+
 ## Tests (`CrafterTest`)
 
 - `craftsSticksUntilOutputFull`: 40 planks, sticks template; the output reaches 64 sticks, is delivered, then 16 more;

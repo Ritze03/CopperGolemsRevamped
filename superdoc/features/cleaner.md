@@ -66,6 +66,13 @@ Why: the scan used to pick the nearest candidate forever, so one item on a ledge
 kept the golem walking and it never delivered. ponytail: a no-progress timeout stands in for a real reachability
 check; the cost is up to 10 s wasted per unreachable item (then 1 min ignored).
 
+## Keep layout
+
+With the per-golem Keep layout setting on ([keep-layout.md](keep-layout.md)): the delivery (`TransferBudget:insert`) merges into matching stacks of the output chest only, never into empty slots. Items with no
+matching stack stay with the golem and the full-chest handling (retry every `RETRY_TICKS`) applies. Picking up ground drops is not
+a chest transfer and is unaffected. Test: `keepLayoutDeliversOnlyOntoMatchingStacks`.
+
+
 ## Tests (`CleanerTest`)
 
 - `cleansItemsInsideArea`: 4x4 area in one half of the floor, 4 stacks inside (cobblestone 64+20, logs 10,

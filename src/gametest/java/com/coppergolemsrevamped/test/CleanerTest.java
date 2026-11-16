@@ -284,4 +284,38 @@ public class CleanerTest {
 			helper.assertTrue(ChestBlockEntity.getOpenCount(helper.getLevel(), helper.absolutePos(chestPos)) == 0, "lid still open");
 		});
 	}
+
+	/** Keep layout: cobblestone merges onto the chest's cobblestone stack; the diamonds find no matching stack and stay with the golem. */
+	@GameTest(maxTicks = 1200)
+	public void keepLayoutDeliversOnlyOntoMatchingStacks(GameTestHelper helper) {
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		BlockPos chestPos = new BlockPos(5, 1, 1);
+		helper.setBlock(chestPos, Blocks.CHEST);
+		ChestBlockEntity chest = helper.getBlockEntity(chestPos, ChestBlockEntity.class);
+		chest.setItem(3, new ItemStack(Items.COBBLESTONE, 10));
+		drop(helper, Items.COBBLESTONE, 20, 1.5, 2.5);
+		drop(helper, Items.DIAMOND, 5, 3.5, 1.5);
+
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 2));
+		GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
+		GolemData data = GolemData.get(golem);
+		data.keepLayout = true;
+		data.assignments.put("area_a", helper.absolutePos(new BlockPos(0, 0, 0)));
+		data.assignments.put("area_b", helper.absolutePos(new BlockPos(3, 0, 3)));
+		data.assignments.put("output", helper.absolutePos(chestPos));
+		GolemData.save(golem, data);
+
+		helper.succeedWhen(() -> {
+			int stone = 0, other = 0, used = 0;
+			for (int i = 0; i < chest.getContainerSize(); i++) {
+				ItemStack s = chest.getItem(i);
+				if (s.is(Items.COBBLESTONE)) stone += s.getCount(); else other += s.getCount();
+				if (!s.isEmpty()) used++;
+			}
+			helper.assertTrue(stone == 30 && other == 0 && used == 1, "chest: cobble " + stone + ", other " + other + ", slots " + used);
+			boolean heldDiamonds = false;
+			for (ItemStack s : GolemData.get(golem).items) heldDiamonds |= s.is(Items.DIAMOND) && s.getCount() == 5;
+			helper.assertTrue(heldDiamonds, "golem should still hold the diamonds");
+		});
+	}
 }
