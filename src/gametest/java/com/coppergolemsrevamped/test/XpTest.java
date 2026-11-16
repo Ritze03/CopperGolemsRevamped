@@ -43,8 +43,9 @@ public class XpTest {
 		return v;
 	}
 
+	/** The test's own structure only: the old 40-block box reached the neighbouring tests (structures are ~15 blocks apart), so their orbs counted here (flake). */
 	private static AABB around(GameTestHelper helper) {
-		return new AABB(helper.absoluteVec(new Vec3(-16, -4, -16)), helper.absoluteVec(new Vec3(24, 12, 24)));
+		return new AABB(helper.absoluteVec(new Vec3(-1, -2, -1)), helper.absoluteVec(new Vec3(11, 8, 11)));
 	}
 
 	/**
@@ -181,7 +182,10 @@ public class XpTest {
 		for (ItemStack s : player.getInventory().getNonEquipmentItems()) if (s.is(Items.EXPERIENCE_BOTTLE)) n += s.getCount();
 		helper.assertTrue(n == 2, "bottles given: " + n);
 		helper.assertTrue(GolemData.get(p.golem).xp == 0, "store not emptied: " + GolemData.get(p.golem).xp);
-		helper.assertTrue(orbs(helper, around(helper)) == 6, "remainder as orbs: " + orbs(helper, around(helper)));
+		AABB box = around(helper);
+		double remainder = orbs(helper, box);
+		for (ExperienceOrb o : helper.getLevel().getEntitiesOfClass(ExperienceOrb.class, box)) o.discard(); // so they cannot wander into other tests
+		helper.assertTrue(remainder == 6, "remainder as orbs: " + remainder);
 		helper.succeed();
 	}
 
