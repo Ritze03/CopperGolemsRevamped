@@ -182,13 +182,13 @@ public final class FarmerLogic {
 		if (anyPlant && seed.getCount() < (s.seedTopUp ? SEED_TARGET : SEED_LOW)) {
 			BlockPos pos = data.assignments.get(FarmerProfession.SEEDS);
 			Container chest = pos == null || s.skip.containsKey(pos) ? null : TransporterLogic.containerAt(level, pos);
-			if (chest != null && seedSlot(chest, seed) >= 0) {
+			if (chest != null && seedSlot(chest, seed, data.keepLayout) >= 0) {
 				if (walkTo(level, s, golem, pos, now)) {
 					int n = fetchSeeds(chest, data, TransferBudget.remaining(level, golem));
 					TransferBudget.spend(level, golem, n);
 					// budget used up while seeds are still wanted: stay, keep the lid open, go on next window (not "chest empty")
 					s.seedTopUp = TransferBudget.exhausted(level, golem) && data.items.get(FarmerProfession.SEED_SLOT).getCount() < SEED_TARGET
-						&& seedSlot(chest, data.items.get(FarmerProfession.SEED_SLOT)) >= 0;
+						&& seedSlot(chest, data.items.get(FarmerProfession.SEED_SLOT), data.keepLayout) >= 0;
 					Interact.openChest(level, golem, pos, Interact.Action.TAKE);
 					done(s, golem, data, s.seedTopUp ? TransferBudget.waitTicks(level) : Interact.OPEN_TICKS);
 				}
@@ -242,7 +242,7 @@ public final class FarmerLogic {
 				if (walkTo(level, s, golem, seedsPos, now)) {
 					NonNullList<ItemStack> view = carryView(data);
 					for (int i = 0; i < view.size(); i++) if (!isSeed(view.get(i))) view.set(i, ItemStack.EMPTY);
-					boolean moved = TransferBudget.insert(level, golem, view, seedsChest) > 0;
+					boolean moved = TransferBudget.insert(level, golem, view, seedsChest, data.keepLayout) > 0;
 					for (int i = 0; i < view.size(); i++) {
 						if (isSeed(data.items.get(FarmerProfession.CARRY_FROM + i))) data.items.set(FarmerProfession.CARRY_FROM + i, view.get(i));
 					}
@@ -261,7 +261,7 @@ public final class FarmerLogic {
 			if (!s.skip.containsKey(outPos)) {
 				if (walkTo(level, s, golem, outPos, now)) {
 					NonNullList<ItemStack> carry = carryView(data);
-					boolean moved = TransferBudget.insert(level, golem, carry, out) > 0;
+					boolean moved = TransferBudget.insert(level, golem, carry, out, data.keepLayout) > 0;
 					writeCarry(data, carry);
 					if (moved) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
 					if (!carryEmpty(data) && TransferBudget.exhausted(level, golem)) { // budget, not "chest full": stay and go on
@@ -519,10 +519,10 @@ public final class FarmerLogic {
 	}
 
 	/** Slot in {@code chest} to take seeds from: the first slot with the seed slot's item, or (seed slot empty) the first seed. */
-	static int seedSlot(Container chest, ItemStack cur) {
+	static int seedSlot(Container chest, ItemStack cur, boolean keepLayout) {
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (st.isEmpty()) continue;
+			if (st.isEmpty() || TransporterLogic.takeable(chest, st, keepLayout) <= 0) continue;
 			if (cur.isEmpty() ? isSeed(st) : ItemStack.isSameItemSameComponents(cur, st)) return i;
 		}
 		return -1;
@@ -531,7 +531,7 @@ public final class FarmerLogic {
 	/** Takes up to a full stack of the first seed (or tops up the current seed item), at most {@code limit}; returns how many. */
 	static int fetchSeeds(Container chest, GolemData data, int limit) {
 		ItemStack cur = data.items.get(FarmerProfession.SEED_SLOT);
-		int first = seedSlot(chest, cur);
+		int first = seedSlot(chest, cur, data.keepLayout);
 		if (first < 0 || limit <= 0) return 0;
 		ItemStack kind = chest.getItem(first).copyWithCount(1);
 		int have = cur.getCount();
@@ -541,7 +541,8 @@ public final class FarmerLogic {
 			ItemStack st = chest.getItem(i);
 			// an empty stack never compares equal, so compare against the 1-count copy
 			if (st.isEmpty() || !ItemStack.isSameItemSameComponents(kind, st)) continue;
-			int n = Math.min(max - have - took, st.getCount());
+			int n = Math.min(max - have - took, TransporterLogic.takeable(chest, st, data.keepLayout));
+			if (n <= 0) continue;
 			took += n;
 			st.shrink(n);
 			if (st.isEmpty()) chest.setItem(i, ItemStack.EMPTY);

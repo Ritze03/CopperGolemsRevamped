@@ -170,3 +170,10 @@ skips the cell for 1200 ticks. `FarmerLogic:isSkipped` is the test hook.
 A Mending hoe or axe is repaired with XP bottles from the **tools chest** and never used below 10 durability: it is parked
 in the chest (or swapped for a usable same-type tool); without a tool the golem still harvests but does not till or break
 fruit. Parking empties the slot, so the empty-slot rule above decides the next tool. See [mending.md](mending.md).
+
+## Keep layout
+
+With the Keep layout setting on, the golem leaves 1 of every stack in the seed chest and tools chest (seeds, XP
+bottles; slots holding 1 are skipped), and seeds, harvest and surplus only merge into non-empty slots of the same item in
+the seed and output chest. Tools are exempt (unstackable). A seed chest with no spare seed counts as empty, and a chest
+with no matching stack counts as full (the usual full handling applies). See [keep-layout.md](keep-layout.md).
