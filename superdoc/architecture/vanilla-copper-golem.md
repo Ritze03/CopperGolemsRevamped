@@ -159,10 +159,14 @@ Statue conversion (oxidised golem -> statue block), all in `CopperGolem`:
   then if `level.getBlockEntity(pos) instanceof CopperGolemStatueBlockEntity be`:
   `be.createStatue(this)` (stores only custom name), **`this.dropPreservedEquipment(level)`** (the held item), `this.discard()`,
   `playSound(COPPER_GOLEM_BECOME_STATUE)`, drop or remove the leash.
-- Only the *held item* (main hand) and other preserved slots drop; the statue keeps nothing else, and no
-  attachment data survives (`discard`, not `die`, so `dropEquipment`/death hooks do NOT run).
+- In vanilla only the *held item* (main hand) and other preserved slots drop; the statue keeps nothing else, and the
+  golem's attachments are gone with it (`discard`, not `die`, so `dropEquipment`/death hooks do NOT run). The mod moves
+  its `GolemData` and a real held item onto the statue block entity before that drop (block entity attachments persist
+  with the block entity), so nothing drops and a revival restores them: see
+  [../features/oxidation.md](../features/oxidation.md).
 - Reverse: `WeatheringCopperGolemStatueBlock#useItemOn(ItemStack, BlockState, Level, BlockPos, Player, InteractionHand, BlockHitResult)`
-  with an axe on an UNAFFECTED statue -> `CopperGolemStatueBlockEntity#removeStatue(BlockState): CopperGolem` (fresh golem, only custom name restored).
+  with an axe on an UNAFFECTED statue -> `CopperGolemStatueBlockEntity#removeStatue(BlockState): CopperGolem` (fresh golem, only custom name restored;
+  the mod hooks its RETURN to hand the stored data back, `mixin/oxidation/CopperGolemStatueBlockEntityMixin`).
 - Other golem creation: `CarvedPumpkinBlock` (build pattern) via `EntityTypes.COPPER_GOLEM.create(level, EntitySpawnReason.TRIGGERED)`.
   `CarvedPumpkinBlock#trySpawnGolem` (private) matches `copperGolemFull` (pumpkin = pattern cell 0,0,0, copper block =
   0,1,0 below it), `spawnGolemInWorld` clears the pattern and adds the golem at the pumpkin, then
@@ -280,7 +284,7 @@ public void sortsItems(GameTestHelper h) {
 | Gate the vanilla transport brain | `CopperGolem#customServerAiStep(ServerLevel)` | `@WrapOperation` on the `Brain#tick(ServerLevel, LivingEntity)` call (skip when the golem has a non-Chest-Sorter profession; run profession tick instead), (an `@Inject(HEAD, cancellable)` cannot skip only the brain tick and still run `super.customServerAiStep`; prefer wrapping). `Mob#serverAiStep` is final, do not target it. Alternative: `@Inject` into `CopperGolem#tick()` for profession ticking (runs also when AI is off). |
 | Chest limit override | `TransportItemsBetweenContainers#setVisitedBlockPos(PathfinderMob, Level, BlockPos)` (protected) | `@ModifyConstant(method="setVisitedBlockPos", constant=@Constant(intValue=10))` (or MixinExtras `@ModifyExpressionValue` on the `Set#size()` result). Read the limit from the `body` (`body.getAttached(DATA)`) via a `@Redirect`/wrap of the size comparison since the constant has no golem access. The same literal `10` appears nowhere else in that method; `50` in `markVisitedBlockPosAsUnreachable` is separate. |
 | Death drops | `CopperGolem#dropEquipment(ServerLevel)` (protected) | `@Inject(at=@At("TAIL"))`: spawn stored items with `spawnAtLocation(level, stack)`. Runs on every `die()` path. |
-| Statue conversion drops | `CopperGolem#turnToStatue(ServerLevel)` (private) | `@Inject(method="turnToStatue", at=@At(value="INVOKE", target="Lnet/minecraft/world/entity/animal/golem/CopperGolem;dropPreservedEquipment(Lnet/minecraft/server/level/ServerLevel;)V"))` so it only fires after the block entity was created; drop stored items there. `discard()` follows, `die` hooks are skipped. |
+| Statue conversion keeps the data | `CopperGolem#turnToStatue(ServerLevel)` (private) | `@Inject(method="turnToStatue", at=@At(value="INVOKE", target="Lnet/minecraft/world/entity/animal/golem/CopperGolem;dropPreservedEquipment(Lnet/minecraft/server/level/ServerLevel;)V"))` so it only fires after the block entity was created; `mixin/CopperGolemMixin:cgr$intoStatue` moves `GolemData` and the held item onto the statue block entity there (nothing drops). `discard()` follows, `die` hooks are skipped. Revival: RETURN of `CopperGolemStatueBlockEntity#removeStatue`; a removed statue: HEAD of `BlockEntity#preRemoveSideEffects` (`mixin/oxidation/`). See [../features/oxidation.md](../features/oxidation.md). |
 
 Verify each descriptor against the compiled class (`javap -p`) when writing the mixin; the targets above
 come from decompiled source (names exact, synthetic details unverified).

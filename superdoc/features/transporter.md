@@ -15,7 +15,10 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
 ## Work loop (`TransporterLogic:tick`, one call per server tick)
 
 1. Cooldown running: decrement, return.
-2. Either assignment missing, or either block no longer a container: stop navigation, retry in 40 ticks.
+2. Either assignment missing, or either block no longer a container: stop navigation, retry in 40 ticks. A chest whose
+   chunk is not loaded is not "missing": when it is the next target the golem walks towards it without reading it
+   (`Interact:approach`), and a take while B is unloaded skips the "B can take it" check (a type B refuses then comes
+   back to A). See [chunk-loading.md](chunk-loading.md), "Unloaded targets".
 3. Target = A when carry is empty (or a take is still loading), B when B accepts at least one carried stack
    (`TransporterLogic:acceptsAny`), else A (return trip, below).
 4. Not in reach: `Interact:approach` walks to a stand position within 1 block of the chest (2 blocks as
@@ -90,7 +93,8 @@ Migration: old saves have 9 items and no `filter_mode`. `TransporterProfession:m
 
 - Persistent: `data.items` (carry 0..8, filter 9..17, survive reload), `data.filterMode` and `data.assignments`.
 - Transient: cooldown and re-path timers in `TransporterLogic`'s `WeakHashMap<CopperGolem, State>`.
-  After a reload the golem simply recomputes from carry and assignments.
+  After a reload the golem simply recomputes from carry and assignments. A profession change drops the entry
+  (`TransporterLogic:forget`, the `Profession.Forget` hook every logic class with a `STATES` map has).
 
 ## Item helpers (static, usable from a GameTest)
 

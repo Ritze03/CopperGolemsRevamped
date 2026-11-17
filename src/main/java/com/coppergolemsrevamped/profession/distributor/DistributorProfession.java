@@ -38,6 +38,7 @@ public final class DistributorProfession {
 			List.of(
 				"Takes items from the input chest and splits them evenly between all inventories in the area (chests, barrels, hoppers, droppers, shulker boxes and so on).",
 				"With 8 inventories it takes a multiple of 8 of an item and gives each one the same amount. Items with fewer than that stay in the input chest. A double chest counts as one inventory; furnaces, brewing stands and other machines are skipped.",
-				"What an inventory has no room for goes back to the input chest. The 9 slots are what it carries.")));
+				"What an inventory has no room for goes back to the input chest. The 9 slots are what it carries."),
+			DistributorLogic::forget));
 	}
 }

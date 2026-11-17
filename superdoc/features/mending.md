@@ -68,8 +68,10 @@ off and they just break their tools." and "Lets do non-enchanted = let it break.
 - On: every **enchanted** tool (`ItemStack:isEnchanted`, any enchantment, not only Mending) is protected: `GolemMending:protects`
   is true at `GolemMending:SAFE_DURABILITY` = **10** points or fewer; plain tools are never protected and break as before.
   `GolemMending:canUse(tool, saveTools)` is false for a protected tool.
-- Off: nothing is protected, every tool is used until it breaks (the existing "worn" swap one hit before the break still
-  applies to all tools, as it always did for plain ones).
+- Off: nothing is protected; Lumber and Butcher use a tool until it breaks (the existing "worn" swap one hit before the
+  break still applies to all tools, as it always did for plain ones). The **Farmer is the exception**: it never uses a
+  tool's last durability point, setting on or off (`FarmerLogic:usable` checks `nextDamageWillBreak` first), because an
+  empty tool slot would lose the hoe/axe type the slot stands for (see [farmer.md](farmer.md)); a worn tool is swapped or kept.
 - Repair is unchanged and Mending-only: XP bottles repair Mending tools. An enchanted tool **without** Mending that reaches
   the threshold is parked and simply stays in the chest, nothing can repair it; the golem uses another tool or bare hands.
 - No fetch loop: every fetch/selection path (`fetchAxe`/`fetchableAxe`, `FarmerLogic:findTool`/`usable`,
@@ -84,18 +86,19 @@ off and they just break their tools." and "Lets do non-enchanted = let it break.
 - Last line of defence: every wear call goes through `GolemMending:damage`, which refuses (with Save tools on) a hit that would take an enchanted tool
   to 0 (Lumber `breakBlock`, Butcher `strike`, Farmer till and fruit). The decision functions use `canUse` first, so the
   refusal only matters if a caller is ever wrong.
-- Lumber's `axeSlot` and Farmer's `usable` return a resting Mending tool as "not a tool", so no path can pick it up.
+- Lumber's `axeSlot` and Farmer's `usable` return a resting (protected) enchanted tool as "not a tool", so no path can pick it up.
 
 ## Fallback per profession (no usable tool)
 
 | Profession | Without a usable tool |
 |---|---|
 | Lumber | chops by hand: destroy speed 1 (`breakTicks(hardness, 1)`, 60 ticks per oak log), no wear |
-| Butcher | hits by hand for 1 damage (`ButcherLogic:attackDamage` base), status gets ", bare-handed (Mending tool needs repair)" |
+| Butcher | hits by hand for 1 damage (`ButcherLogic:attackDamage` base), status gets ", bare-handed (enchanted weapon put away to save it)" |
 | Farmer | harvests mature crops (never needed a tool); does **not** till or break fruit blocks (no hoe/axe) |
 
-Bare-handed work happens **only because of a Mending tool** (`LumberLogic:mendingBlocked`, `ButcherLogic:mendingBlocked`): a
-resting Mending tool in the slot, or an empty slot with an unusable Mending tool lying in the tool chest. Why: a golem that
+Bare-handed work happens **only because of a protected enchanted tool** (Save tools on; `LumberLogic:mendingBlocked`,
+`ButcherLogic:mendingBlocked`, names kept from when only Mending tools were protected): a resting enchanted tool in the slot,
+or an empty slot with an unusable enchanted tool lying in the tool chest. Why: a golem that
 never had a tool still does no tool work, as before ([lumber.md](lumber.md), [butcher.md](butcher.md)); this feature must
 not change that.
 

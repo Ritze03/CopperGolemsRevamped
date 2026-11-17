@@ -144,6 +144,11 @@ public final class SmelterLogic {
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
+
 	/** Everything one tick needs; containers are null when the chest is unassigned, gone or given up on. */
 	private record Env(ServerLevel level, CopperGolem golem, GolemData data, State s, long now,
 		@Nullable BlockPos inPos, @Nullable Container in,

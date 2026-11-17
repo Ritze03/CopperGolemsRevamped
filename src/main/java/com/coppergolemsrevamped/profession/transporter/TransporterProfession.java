@@ -49,6 +49,7 @@ public final class TransporterProfession {
 				new AssignSpec("input", Component.literal("Assign Chest A"), Kind.CHEST, 0),
 				new AssignSpec("output", Component.literal("Assign Chest B"), Kind.CHEST, 0)),
 			false,
-			TransporterLogic::tick));
+			TransporterLogic::tick,
+			TransporterLogic::forget));
 	}
 }

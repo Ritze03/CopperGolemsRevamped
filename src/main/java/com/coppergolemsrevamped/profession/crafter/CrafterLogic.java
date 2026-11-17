@@ -63,9 +63,19 @@ public final class CrafterLogic {
 		/** Where the fetch round-robin continues after a cut (see {@link #fetch}). */
 		final int[] cursor = new int[1];
 		final Interact.Approach walk = new Interact.Approach();
+		/** The last {@link #plan} and the template and recipe manager it was made for (see {@link #cachedPlan}). */
+		@Nullable Plan plan;
+		final ItemStack[] planFor = new ItemStack[CrafterProfession.TEMPLATE_SLOTS];
+		@Nullable Object planRecipes;
+		long plannedAt;
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
+
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
 
 	// ---- recipe ----
 
@@ -94,6 +104,30 @@ public final class CrafterLogic {
 			if (c >= 0 && c < leftover.length) leftover[c] = rem.get(j).copy();
 		}
 		return new Plan(result, cell, leftover);
+	}
+
+	/** A cached {@link #plan} is reused at most this long even when the template is unchanged (a datapack reload safety net). */
+	static final int REPLAN_TICKS = 100;
+
+	/**
+	 * {@link #plan} for the tick loop, reused while the template cells and the server's recipe manager are the same.
+	 * Why: the recipe lookup, assemble and remaining-items calls ran on every walking tick (perf review), but the plan
+	 * depends only on the template. {@link Plan} stacks are never mutated by the loop (it copies them), so sharing is safe.
+	 */
+	private static @Nullable Plan cachedPlan(ServerLevel level, GolemData data, State s) {
+		Object recipes = level.getServer().getRecipeManager();
+		long now = level.getGameTime();
+		boolean same = recipes == s.planRecipes && now - s.plannedAt < REPLAN_TICKS;
+		for (int i = 0; i < s.planFor.length && same; i++) {
+			ItemStack t = at(data, i), c = s.planFor[i];
+			same = c != null && (t.isEmpty() ? c.isEmpty() : !c.isEmpty() && ItemStack.isSameItemSameComponents(t, c));
+		}
+		if (same) return s.plan;
+		s.plan = plan(level, data);
+		for (int i = 0; i < s.planFor.length; i++) s.planFor[i] = at(data, i).copyWithCount(1);
+		s.planRecipes = recipes;
+		s.plannedAt = now;
+		return s.plan;
 	}
 
 	/** What the template would craft right now (one craft's result), or EMPTY: the Inventory tab's ghost output. */
@@ -304,12 +338,12 @@ public final class CrafterLogic {
 		BlockPos out = data.assignments.get(CrafterProfession.OUTPUT);
 		Container cin = in == null ? null : TransporterLogic.containerAt(level, in);
 		Container cout = out == null ? null : TransporterLogic.containerAt(level, out);
-		Plan plan = plan(level, data);
+		Plan plan = cachedPlan(level, data, s);
 		Job job;
 		if (plan == null) {
 			// no valid recipe (template empty or invalid): input and output slots would be stranded, so they all go to the output chest
 			job = cout != null && holdsAnything(data) ? Job.DELIVER_ALL : Job.IDLE;
-		} else if (cin == null || cout == null || table == null || !level.getBlockState(table).is(Blocks.CRAFTING_TABLE)) {
+		} else if (cin == null || cout == null || table == null || !Interact.loaded(level, table) || !level.getBlockState(table).is(Blocks.CRAFTING_TABLE)) {
 			job = Job.IDLE;
 		} else {
 			job = decide(data, plan, cin);

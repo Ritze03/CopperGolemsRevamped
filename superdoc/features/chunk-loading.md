@@ -19,6 +19,34 @@ working while no player is near. Code: `chunk/GolemChunkLoader`. Index: [../READ
   never releases.
 - `changeProfession` calls `keep` right away, so the chunks load without waiting for a tick.
 
+## Unloaded targets
+
+A golem never loads a chunk by reading one of its targets. Every read of an assigned position goes through
+`ai/Interact:loaded` (`Level#hasChunkAt`, which does not load): `TransporterLogic:containerAt` returns null for an
+unloaded position (all professions get their chests through it), Lumber checks the tree spot, Farmer the field corners
+(`FarmerLogic:fieldLoaded`), Crafter the crafting table, Smelter (`SmelterLogic:furnaceAt`) and Distributor (`rescan`)
+their area scans; `GolemService:prefillSpawnChest`, `Interact:canStand` and the lid release check too.
+
+- An unloaded target counts as "not available right now": the profession waits (its normal "chest missing" retry) and
+  works again once the chunk is loaded. Nothing is skipped or forgotten.
+- `Interact:approach` never reads an unloaded target: it walks towards it (`Interact:walkTowards`, aims 16 blocks ahead
+  in the target's direction, because `GroundPathNavigation#createPath` returns null for a target in an unloaded chunk) and
+  starts the stand-spot search once the chunk is loaded. The golem's own ticket moves with it, so the target loads as it
+  gets near.
+- The **Transporter** is the one profession that walks to a far chest on purpose: a chest that is unloaded (not missing) is
+  walked to when it is the next target. Taking from A while B is unloaded skips the "B can take it" check; a type B then
+  refuses goes back to A as usual (see [transporter.md](transporter.md)). The other professions wait instead. Why: they work
+  several targets at once (field + chests, area + chests); walking to a far chest would unload the field and walk back,
+  over and over.
+
+Why (perf review #5): reading a block in an unloaded chunk loads it synchronously on the server thread, and the
+professions read their chests on every tick or retry. A golem in Follow mode far from its chests, or chests about 64
+blocks apart (beyond the ticket's loaded ring), loaded distant chunks again and again. `ServerLevel#getBlockState` and
+`#getBlockEntity` load; `hasChunkAt`, entity queries (`getEntitiesOfClass`), `noCollision` and path finding do not.
+
+Which chunks are loaded around a golem: the ticket (level 30) makes chunks up to 3 away from the golem's chunk FULL
+(level 33 = `ChunkLevel#FULL_CHUNK_LEVEL`), i.e. a 7x7 area; targets inside it are always available.
+
 ## Why this API
 
 `TicketType` in 26.3 is a record registered in `BuiltInRegistries.TICKET_TYPE`; its public constructor
@@ -46,8 +74,9 @@ only: after a restart the first golem tick re-adds the ticket, nothing needs sav
 ## Limits
 
 - 9 chunks per working golem are loaded and ticking; many golems in far-apart places add up.
-- Only the golem's own 3x3 area is loaded, not the chunk of every assigned target. A target more than
-  about 16 blocks outside that area relies on the golem walking there, which moves the area with it.
+- Only the golem's own area is loaded (3x3 entity ticking, 7x7 accessible), not the chunk of every assigned target. A
+  target outside the 7x7 area is unavailable until the golem gets near (see "Unloaded targets"): the Transporter walks
+  there, every other profession waits.
 - A golem that moved to another chunk since the last world save leaves a stale saved ticket: it
   expires after 30 s of its chunk being loaded; if the golem's own chunk is not among the loaded ones it
   stays asleep until a player comes near.
@@ -56,7 +85,10 @@ only: after a restart the first golem tick re-adds the ticket, nothing needs sav
 ## Tests
 
 `src/gametest/.../ChunkLoadTest`: ticket present at the golem's chunk (level <= 30), moves to another chunk, released on None and on discard, kept while a second golem still shares it, and a
-`TicketStorage.CODEC` round trip of our ticket type (the restart case; a real restart cannot be a GameTest).
+`TicketStorage.CODEC` round trip of our ticket type (the restart case; a real restart cannot be a GameTest), and
+`unloadedTargetIsNeverLoaded` (a Transporter whose chest B is 4096 blocks away: `containerAt` reports it missing, the far
+chunk is never loaded on any tick, the golem takes from A and heads for B; walled in with glass so it stays inside its
+own test, see the test-bounds note below).
 
 Why `ticketMovesWithGolem` teleports the golem 40 blocks up (no gravity) into the next chunk: GameTest
 structures are packed side by side, so the next chunk lies inside another test's bounds, and that test's

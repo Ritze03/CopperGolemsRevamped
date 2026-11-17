@@ -160,7 +160,10 @@ public class KeepLayoutTest {
 		});
 	}
 
-	/** Chest Sorter with a destination that has no matching stack: nothing is put into the empty slots. */
+	/**
+	 * Chest Sorter with a destination that has no matching stack: nothing is put into the empty slots. Echo shards for the
+	 * same reason as in {@link #chestSorterSkipsTypesNoChestTakes}: no neighbour test's chest can accept them.
+	 */
 	@GameTest(maxTicks = 600)
 	public void chestSorterNeverFillsEmptySlots(GameTestHelper helper) {
 		floor(helper);
@@ -170,12 +173,12 @@ public class KeepLayoutTest {
 		helper.setBlock(dst, Blocks.CHEST);
 		ChestBlockEntity from = helper.getBlockEntity(src, ChestBlockEntity.class);
 		ChestBlockEntity to = helper.getBlockEntity(dst, ChestBlockEntity.class);
-		from.setItem(0, new ItemStack(Items.COBBLESTONE, 10));
+		from.setItem(0, new ItemStack(Items.ECHO_SHARD, 10));
 		to.setItem(0, new ItemStack(Items.STICK, 1));
 		CopperGolem golem = keeper(helper, ChestSorterProfession.ID);
 		helper.runAfterDelay(500, () -> {
-			helper.assertTrue(count(to, Items.COBBLESTONE) == 0 && to.getItem(0).is(Items.STICK), "destination changed: " + to.getItem(1));
-			int total = count(from, Items.COBBLESTONE) + golem.getMainHandItem().getCount();
+			helper.assertTrue(count(to, Items.ECHO_SHARD) == 0 && to.getItem(0).is(Items.STICK), "destination changed: " + to.getItem(1));
+			int total = count(from, Items.ECHO_SHARD) + golem.getMainHandItem().getCount();
 			helper.assertTrue(total == 10 && from.getItem(0).getCount() >= 1, "items lost: src " + from.getItem(0) + ", hand " + golem.getMainHandItem());
 			helper.succeed();
 		});
@@ -210,8 +213,9 @@ public class KeepLayoutTest {
 	}
 
 	/**
-	 * Chest Sorter: a type no destination accepts (cobblestone in slot 0) is skipped, not picked up and held forever; the
-	 * sticks behind it are still sorted.
+	 * Chest Sorter: a type no destination accepts (echo shards in slot 0) is skipped, not picked up and held forever; the
+	 * sticks behind it are still sorted. Why echo shards: the sorter's search area (32 blocks) reaches the neighbour tests'
+	 * chests, and one holding cobblestone accepted it (flaky "hand 9 cobblestone"); no other test uses echo shards.
 	 */
 	@GameTest(maxTicks = 1200)
 	public void chestSorterSkipsTypesNoChestTakes(GameTestHelper helper) {
@@ -222,14 +226,14 @@ public class KeepLayoutTest {
 		helper.setBlock(dst, Blocks.CHEST);
 		ChestBlockEntity from = helper.getBlockEntity(src, ChestBlockEntity.class);
 		ChestBlockEntity to = helper.getBlockEntity(dst, ChestBlockEntity.class);
-		from.setItem(0, new ItemStack(Items.COBBLESTONE, 10));
+		from.setItem(0, new ItemStack(Items.ECHO_SHARD, 10));
 		from.setItem(1, new ItemStack(Items.STICK, 10));
 		to.setItem(0, new ItemStack(Items.STICK, 1));
 		CopperGolem golem = keeper(helper, ChestSorterProfession.ID);
 		helper.succeedWhen(() -> {
 			helper.assertTrue(golem.getMainHandItem().isEmpty() && count(to, Items.STICK) == 10 && from.getItem(1).getCount() == 1,
 				"dst sticks " + count(to, Items.STICK) + ", src " + from.getItem(0) + "/" + from.getItem(1) + ", hand " + golem.getMainHandItem());
-			helper.assertTrue(count(from, Items.COBBLESTONE) == 10 && count(to, Items.COBBLESTONE) == 0, "cobblestone moved");
+			helper.assertTrue(count(from, Items.ECHO_SHARD) == 10 && count(to, Items.ECHO_SHARD) == 0, "echo shards moved");
 		});
 	}
 }

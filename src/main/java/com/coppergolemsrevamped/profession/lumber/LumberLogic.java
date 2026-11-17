@@ -190,6 +190,11 @@ public final class LumberLogic {
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
+
 	// ---- pure rules (public for tests) ----------------------------------------------------------------------------
 
 	/**
@@ -327,7 +332,7 @@ public final class LumberLogic {
 		BlockPos t = data.assignments.get(LumberProfession.TREE);
 		BlockPos outPos = data.assignments.get(LumberProfession.OUTPUT);
 		Container out = outPos == null ? null : TransporterLogic.containerAt(level, outPos);
-		if (t == null || out == null) {
+		if (t == null || out == null || !Interact.loaded(level, t)) { // an unloaded tree spot is not available right now: wait
 			golem.getNavigation().stop();
 			s.cooldown = RETRY_TICKS;
 			return;
@@ -476,7 +481,7 @@ public final class LumberLogic {
 			fetchVisit(s, level, golem, data, in, inPos, now, true, false, false);
 			return;
 		}
-		if (axeSlot(data) < 0 && !bare) { // no axe, no work (a resting Mending axe: bare hands, see mending.md)
+		if (axeSlot(data) < 0 && !bare) { // no axe, no work (a resting enchanted axe: bare hands, see mending.md)
 			idle(s, golem);
 			return;
 		}
@@ -814,7 +819,7 @@ public final class LumberLogic {
 		return breakBlock(level, golem, data, tree, pos, false);
 	}
 
-	/** {@code bare}: no usable axe because a Mending axe is resting; the log is then broken by hand (no tool, no wear). */
+	/** {@code bare}: no usable axe because an enchanted axe is resting (Save tools); the log is then broken by hand (no tool, no wear). */
 	static Result breakBlock(ServerLevel level, CopperGolem golem, GolemData data, Set<BlockPos> tree, BlockPos pos, boolean bare) {
 		if (!breakAllowed(golem.getX(), golem.getZ(), tree, pos)) return Result.DENIED;
 		BlockState st = level.getBlockState(pos);
@@ -828,7 +833,7 @@ public final class LumberLogic {
 		storeAll(data, drops);
 		// breaking empties the stack (vanilla behaviour); the item is gone, never duplicated
 		if (slot >= 0) {
-			GolemMending.damage(level, tool, data.saveTools, 1); // a Mending axe is never broken (axeSlot only offers a usable one)
+			GolemMending.damage(level, tool, data.saveTools, 1); // a protected enchanted axe is never broken (axeSlot only offers a usable one)
 			if (tool.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
 		}
 		return Result.BROKEN;
@@ -1241,11 +1246,11 @@ public final class LumberLogic {
 
 	static int axeSlot(GolemData data) {
 		ItemStack a = data.items.get(LumberProfession.AXE_SLOT);
-		return isAxe(a) && GolemMending.canUse(a, data.saveTools) ? LumberProfession.AXE_SLOT : -1; // a resting Mending axe is not an axe to use
+		return isAxe(a) && GolemMending.canUse(a, data.saveTools) ? LumberProfession.AXE_SLOT : -1; // a resting enchanted axe is not an axe to use
 	}
 
 	/**
-	 * Bare hands are allowed only because of a Mending axe: one resting in the slot, or (empty slot) lying unusable in the
+	 * Bare hands are allowed only because of a protected enchanted axe (Save tools): one resting in the slot, or (empty slot) lying unusable in the
 	 * input chest. Without such an axe a golem with no axe still does no work, as before.
 	 */
 	static boolean mendingBlocked(GolemData data, @Nullable Container in) {

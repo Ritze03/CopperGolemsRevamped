@@ -62,7 +62,7 @@ public final class ProfessionHelp {
 			assigns.add(new AssignSpec(a.key(), a.label(), a.kind(), a.maxSize(), h));
 		}
 		List<String> help = p.help().isEmpty() ? LINES.getOrDefault(path, List.of()) : p.help();
-		return new Profession(p.id(), p.name(), p.slots(), assigns, p.runsVanillaBrain(), p.tick(), help);
+		return new Profession(p.id(), p.name(), p.slots(), assigns, p.runsVanillaBrain(), p.tick(), help, p.forget());
 	}
 
 	/** Chat explanation for the Help button: the profession's lines, then one line per assignment with its size. */

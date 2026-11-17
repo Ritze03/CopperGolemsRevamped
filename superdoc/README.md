@@ -24,7 +24,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/smelter.md](features/smelter.md): Smelter profession, feeds up to 8 furnaces of an area (even split, fuel, collect, XP), never blocks on a full chest, foreign input or unreachable furnace.
 - [features/distributor.md](features/distributor.md): Distributor profession, splits the input chest evenly over all inventories of an area (a multiple of N per item type), returns what does not fit.
 - [features/xp-bottles.md](features/xp-bottles.md): golems keep the XP they earn (Smelter furnaces, Butcher kills and breeding) and pay it out as XP bottles (7 XP each), no orbs.
-- [features/mending.md](features/mending.md): Lumber, Farmer and Butcher repair Mending tools with XP bottles from the tool chest (7 XP each) and never use a Mending tool below 10 durability (rest in the chest, bare hands or another tool).
+- [features/mending.md](features/mending.md): Lumber, Farmer and Butcher repair Mending tools with XP bottles from the tool chest (7 XP each); with the per-golem Save tools setting on (default) they never use any enchanted tool below 10 durability (rest in the chest, bare hands or another tool).
 - [features/freeze.md](features/freeze.md): Settings-tab Freeze toggle, a frozen golem does nothing and stands still so its inventory can be changed.
 - [features/keep-layout.md](features/keep-layout.md): Settings-tab Keep layout toggle for every golem: never empties a stack (leaves 1), never fills empty slots, so hand-laid-out chests stay intact.
 - [features/oxidation.md](features/oxidation.md): an oxidized golem's statue keeps its data, items and held item (block entity attachment), revival restores them, a mined statue drops the items; lenient `GolemData` codec and slot padding.

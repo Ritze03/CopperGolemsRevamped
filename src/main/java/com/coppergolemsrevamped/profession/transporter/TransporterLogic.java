@@ -39,6 +39,11 @@ public final class TransporterLogic {
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
+
 	public static void tick(ServerLevel level, CopperGolem golem, GolemData data) {
 		State s = STATES.computeIfAbsent(golem, g -> new State());
 		if (s.cooldown > 0) {
@@ -49,7 +54,11 @@ public final class TransporterLogic {
 		BlockPos b = data.assignments.get("output");
 		Container ca = a == null ? null : containerAt(level, a);
 		Container cb = b == null ? null : containerAt(level, b);
-		if (ca == null || cb == null) {
+		// A chest in an unloaded chunk (far from the golem) is not missing: the golem walks towards it when it is the
+		// next target (Interact.approach never reads it). A missing or unassigned chest still means "wait".
+		boolean farA = a != null && ca == null && !Interact.loaded(level, a);
+		boolean farB = b != null && cb == null && !Interact.loaded(level, b);
+		if ((ca == null && !farA) || (cb == null && !farB)) {
 			golem.getNavigation().stop();
 			s.cooldown = RETRY_TICKS;
 			return;
@@ -58,13 +67,16 @@ public final class TransporterLogic {
 		boolean loading = s.loading; // a take cut short by the transfer budget goes on before the carry is delivered
 		boolean take = loading || isEmpty(carry);
 		// A carry B refuses entirely (B full, or changed under Keep layout) goes back to A instead of idling at B forever.
-		boolean deliver = !take && acceptsAny(carry, cb, data.keepLayout);
+		// An unloaded B is walked to with the carry; it is checked once it is loaded.
+		boolean deliver = !take && (cb == null || acceptsAny(carry, cb, data.keepLayout));
 		BlockPos target = deliver ? b : a;
-		if (!Interact.approach(level, golem, target, s.walk, SPEED)) return;
+		Container here = deliver ? cb : ca;
+		if (!Interact.approach(level, golem, target, s.walk, SPEED) || here == null) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
 		if (take) {
 			// Only types B can take right now: a type B never accepts (Keep layout, no matching stack) would be carried forever.
-			Predicate<ItemStack> wanted = accepts(data).and(st -> canInsert(cb, st, data.keepLayout));
+			// With B unloaded that check waits for B: a type it refuses then comes back to A (see deliver above).
+			Predicate<ItemStack> wanted = cb == null ? accepts(data) : accepts(data).and(st -> canInsert(cb, st, data.keepLayout));
 			boolean moved = TransferBudget.take(level, golem, ca, carry, wanted, data.keepLayout) > 0;
 			if (moved) Interact.openChest(level, golem, target, Interact.Action.TAKE);
 			if (TransferBudget.exhausted(level, golem)) {
@@ -127,8 +139,12 @@ public final class TransporterLogic {
 		return data.filterMode == FilterMode.OFF ? s -> true : s -> passes(data, s);
 	}
 
-	/** The container at pos (both halves for a double chest), or null when it is not a container. */
+	/**
+	 * The container at pos (both halves for a double chest), or null when it is not a container or its chunk is not
+	 * loaded ({@link Interact#loaded}: never loads a chunk; callers treat null as "not available right now" and retry).
+	 */
 	public static @Nullable Container containerAt(Level level, BlockPos pos) {
+		if (!Interact.loaded(level, pos)) return null;
 		BlockState state = level.getBlockState(pos);
 		if (state.getBlock() instanceof ChestBlock chest) {
 			return ChestBlock.getContainer(chest, state, level, pos, true);

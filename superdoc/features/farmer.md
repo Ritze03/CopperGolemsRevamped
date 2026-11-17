@@ -110,6 +110,13 @@ Transient state (cooldown, walk state, skip map) in a `WeakHashMap` like the Cle
    [mending.md](mending.md). Test: `MendingTest:farmerTopsUpHoeWhileIdle`.
 7. Else idle, rescan every 20 ticks.
 
+The field scan behind steps 2 to 4 (what each cell needs, and the nearest workable cell with its `workable` loot roll) is
+cached for `FarmerLogic:RESCAN_TICKS` (20) ticks while the golem walks or swings, and redone at once after any action
+or give-up (`done`, `giveUp`) or a tool-mode change. A cached cell whose block changed or that got skipped is picked
+again. Why: perf review #11, both passes over all 81 cells (the second rolling loot tables) ran on every walking tick.
+Step 1 also waits while any field corner's chunk is unloaded (`FarmerLogic:fieldLoaded`, see
+[chunk-loading.md](chunk-loading.md), "Unloaded targets").
+
 Why the seed chest is both source and sink (user): "Farmers should drop their seeds into their 'seeds' chest. Not the
 output." Seeds the harvest yields feed the next planting round instead of piling up in the output.
 

@@ -33,6 +33,11 @@ Transient per-golem timers in a `WeakHashMap` (same style as the Transporter); p
    retried every 40 ticks. Item pickup keeps its own 1.5-block range.
 4. Else idle, rescan every 20 ticks.
 
+While chasing an item the full-area entity query runs only every `CleanerLogic:RESCAN_TICKS` (10) ticks; in between
+the chased entity alone is re-checked against the same filter (alive, fits, inside the box, not skipped, Keep layout).
+A pickup or a give-up rescans at once. Why: perf review #11, the area query ran on every walking tick; the cost is that a
+nearer item dropped mid-chase is noticed up to 10 ticks later.
+
 When only skipped items remain, step 3 delivers the carry (see "Unreachable items").
 
 Only entities whose centre is inside the box are ever touched: `getEntitiesOfClass` matches any bbox that

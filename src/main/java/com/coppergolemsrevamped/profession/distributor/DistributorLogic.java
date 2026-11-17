@@ -87,6 +87,11 @@ public final class DistributorLogic {
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
+
 	public static String status(CopperGolem golem) {
 		State s = STATES.get(golem);
 		return s == null ? "Working" : s.status;

@@ -2,7 +2,9 @@ package com.coppergolemsrevamped.test;
 
 import com.coppergolemsrevamped.CopperGolemsRevamped;
 import com.coppergolemsrevamped.chunk.GolemChunkLoader;
+import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
+import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
@@ -15,8 +17,12 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.Ticket;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.TicketStorage;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 /** Chunk loading: a profession golem holds a ticket at its chunk, which follows it and goes with its profession or life. */
 public class ChunkLoadTest {
@@ -145,5 +151,42 @@ public class ChunkLoadTest {
 		}
 		helper.assertTrue(found, "ticket lost in the save/load round trip: " + tag);
 		helper.succeed();
+	}
+
+	/**
+	 * Unloaded targets (chunk-loading.md): a Transporter whose chest B lies in an unloaded chunk far away never loads it.
+	 * It takes from A (B's room is checked once B is loaded) and walks towards B; walled in, it cannot leave the test.
+	 * The old code read B every retry, which loaded its chunk synchronously.
+	 */
+	@GameTest(maxTicks = 200)
+	public void unloadedTargetIsNeverLoaded(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		for (int x = 1; x <= 5; x++) for (int z = 1; z <= 5; z++) {
+			if (x != 1 && x != 5 && z != 1 && z != 5) continue;
+			for (int y = 1; y <= 3; y++) helper.setBlock(new BlockPos(x, y, z), Blocks.GLASS);
+		}
+		BlockPos a = new BlockPos(2, 1, 3);
+		helper.setBlock(a, Blocks.CHEST);
+		ChestBlockEntity chestA = helper.getBlockEntity(a, ChestBlockEntity.class);
+		chestA.setItem(0, new ItemStack(Items.COBBLESTONE, 8));
+		BlockPos far = helper.absolutePos(new BlockPos(3, 1, 3)).offset(4096, 0, 4096);
+		helper.assertFalse(level.hasChunkAt(far), "the far chunk is loaded before the test even starts");
+		helper.assertTrue(TransporterLogic.containerAt(level, far) == null, "containerAt must report an unloaded chest as missing");
+		helper.assertFalse(level.hasChunkAt(far), "containerAt loaded the far chunk");
+
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 3));
+		GolemService.changeProfession(level, golem, TRANSPORTER);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("input", helper.absolutePos(a));
+		data.assignments.put("output", far);
+		GolemData.save(golem, data);
+
+		helper.onEachTick(() -> helper.assertFalse(level.hasChunkAt(far), "the golem loaded the far chunk"));
+		helper.runAfterDelay(120, () -> {
+			helper.assertTrue(TransporterLogic.carry(GolemData.get(golem)).stream().anyMatch(s -> s.is(Items.COBBLESTONE)),
+				"the golem should have taken from A to carry it towards the far chest B");
+			helper.succeed();
+		});
 	}
 }

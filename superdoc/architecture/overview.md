@@ -38,7 +38,13 @@ A golem with no profession stands still. A golem with a profession keeps its chu
    if it keeps failing). Why: a single golem must never take down the server (user-visible crash 2026-11-15, array index
    error in Lumber at a raised tick rate). `GolemTicker.rethrow` (set by `CoreFeedbackTest`) makes GameTests rethrow so
    real bugs still fail them.
-5. Death and statue conversion drop stored items via `core/GolemService:dropAll` (mixin hooks).
+5. Death drops the stored items via `core/GolemService:dropAll` (`mixin/CopperGolemMixin:cgr$dropStored`). Statue
+   conversion (oxidation) drops nothing: the whole `GolemData` and a real held item move onto the statue block entity
+   (`GolemService:toStatue`), a revival gives them back (`GolemService:fromStatue`), a mined statue drops the items at the
+   block (`GolemService:statueRemoved`). See [oxidation.md](../features/oxidation.md).
+6. Assigned positions are read only while their chunk is loaded (`ai/Interact:loaded`, used by
+   `TransporterLogic:containerAt` and the area scans): an unloaded target is "not available right now", never loaded by a
+   golem. See [chunk-loading.md](../features/chunk-loading.md), "Unloaded targets".
 
 ## Module map
 
@@ -47,9 +53,9 @@ Package root: `src/main/java/com/coppergolemsrevamped` (there is no client sourc
 | Path | Role |
 | --- | --- |
 | `CopperGolemsRevamped` | Mod entrypoint; initialises attachments, chunk loader, professions, assign mode |
-| `core/` | `GolemData` attachment, `ModAttachments`, `GolemService` (profession change, spawn chest prefill, auto profession name, item hand-over to the player, drops), `GolemTicker` (brain gate), `GolemMending` (Mending repair and never-break guard for tool professions, see [mending.md](../features/mending.md)) |
+| `core/` | `GolemData` attachment, `ModAttachments`, `GolemService` (profession change, spawn chest prefill, auto profession name, item hand-over to the player, drops), `GolemTicker` (brain gate), `GolemMending` (Mending repair and the Save tools never-break guard for enchanted tools, see [mending.md](../features/mending.md)) |
 | `chunk/` | `GolemChunkLoader`: persistent chunk ticket per profession golem, see [chunk-loading.md](../features/chunk-loading.md) |
-| `mixin/` | `AbstractFurnaceAccessor`: furnace stored-XP map for the Smelter; `AnimalMixin`: Butcher takes the breeding XP; `EntityPushMixin` + `LivingEntityPushMixin`: animals do not push a Butcher; `CopperGolemMixin`: interact, brain gate, death and statue drops; `EntityMixin`: lets the Butcher take a struck animal's death loot into its carry; `GolemSpawnMixin`: records the spawn copper chest (build pattern); `TransportItemsBetweenContainersMixin`: Chest Sorter visited-chest limit |
+| `mixin/` | `AbstractFurnaceAccessor`: furnace stored-XP map for the Smelter; `AnimalMixin`: Butcher takes the breeding XP; `EntityPushMixin` + `LivingEntityPushMixin`: animals do not push a Butcher; `CopperGolemMixin`: interact, brain gate, death drops, data into the statue (`cgr$intoStatue`); `EntityMixin`: lets the Butcher take a struck animal's death loot into its carry; `GolemSpawnMixin`: records the spawn copper chest (build pattern); `TransportItemsBetweenContainersMixin`: Chest Sorter visited-chest limit plus the Keep layout injections (`cgr$accepts`, `cgr$pickSlot`, `cgr$destinations`, see [keep-layout.md](../features/keep-layout.md)); `oxidation/`: `CopperGolemStatueBlockEntityMixin` (revival gives the data back) and `StatueRemovalMixin` (a removed statue drops the items), see [oxidation.md](../features/oxidation.md) |
 | `profession/` | `Profession` declaration record, `Professions` registry, `ProfessionHelp` (help texts) |
 | `profession/transporter/` | Transporter declaration and work loop |
 | `profession/chest_sorter/` | Chest Sorter declaration and visited-chest limit, see [chest-sorter.md](../features/chest-sorter.md) |
@@ -72,6 +78,9 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 
 - Add a profession: declare a `profession/Profession` and register it with `profession/Professions:register`
   (example: `profession/transporter/TransporterProfession:init`); call its init from `CopperGolemsRevamped:onInitialize`.
+  A profession with transient per-golem state (a `STATES` map in its logic class) passes a `Profession.Forget`
+  (`XLogic::forget`, removes the entry); `core/GolemService:changeProfession` calls it for the old and the new profession,
+  so switching away and back never resumes a stale phase, skip list or plan.
 - Change what a golem remembers: `core/GolemData:CODEC` (and the fields next to it).
 - Change a profession's slot layout in the Inventory tab: its `SlotGroup` declaration (`at`, `labeled`), `profession/Profession:validateLayout`.
 - Change a tab or add a GUI control or icon: `menu/GolemViews`, `menu/Tab`, `menu/GolemIcon`, see [gui.md](../features/gui.md).
@@ -92,12 +101,13 @@ Vanilla 26.3 and Fabric API signatures used throughout: [vanilla-copper-golem.md
 - Change the Butcher animal rules, the 8-adult / breeding caps or how Looting is applied: `profession/butcher/ButcherLogic:FARM_ANIMALS`, `ButcherLogic:isProtected`, `ButcherLogic:surplus`, `ButcherLogic:breedAllowed`, `ButcherLogic:strike`, `ButcherLogic:Phase` (the cycle), `ButcherLogic:capture` + `mixin/EntityMixin` (drops into the carry), see [butcher.md](../features/butcher.md).
 - Change the Crafter recipe matching or loop: `profession/crafter/CrafterLogic:plan`, `CrafterLogic:decide`, see [crafter.md](../features/crafter.md).
 - Change stored XP, the 7-XP bottle conversion or where XP is earned and delivered: `core/GolemXp`, `GolemData:xp`, `SmelterLogic:takeFurnaceXp`, `ButcherLogic:takeBreedingXp`, see [xp-bottles.md](../features/xp-bottles.md).
-- Change Mending repair or the "never break a Mending tool" rule for Lumber, Farmer and Butcher: `core/GolemMending`, see [mending.md](../features/mending.md).
+- Change Mending repair or the Save tools rule (never break an enchanted tool) for Lumber, Farmer and Butcher: `core/GolemMending`, see [mending.md](../features/mending.md).
 - Change the Smelter furnace scan, split or never-block rules: `profession/smelter/SmelterLogic:rescan`, `SmelterLogic:planFetch`, `SmelterLogic:pick`, see [smelter.md](../features/smelter.md).
 - Change the Distributor area scan, the multiple-of-N fetch plan or the share split: `profession/distributor/DistributorLogic:rescan`, `DistributorLogic:planFetch`, `DistributorLogic:sharesOf`, `DistributorLogic:distribute`, see [distributor.md](../features/distributor.md).
 - Change the Keep layout rule (leave 1 per slot, never fill empty slots): `profession/transporter/TransporterLogic:takeAll`, `TransporterLogic:insertAll`, `TransporterLogic:layoutRule`, Chest Sorter in `mixin/TransportItemsBetweenContainersMixin`, see [keep-layout.md](../features/keep-layout.md).
 - Change the Chest Sorter chest limit: `profession/chest_sorter/ChestSorterProfession:visitedLimit`, mixin `mixin/TransportItemsBetweenContainersMixin`.
-- Change death/statue drops: `core/GolemService:dropAll`, hooks in `mixin/CopperGolemMixin`.
+- Change death drops: `core/GolemService:dropAll`, hook `mixin/CopperGolemMixin:cgr$dropStored`. Statue conversion, revival and a mined statue: `GolemService:toStatue`, `GolemService:fromStatue`, `GolemService:statueRemoved`, `mixin/oxidation/`, see [oxidation.md](../features/oxidation.md).
+- Change what counts as an unavailable (unloaded) target, or how a golem walks towards one: `ai/Interact:loaded`, `Interact:walkTowards`, `TransporterLogic:containerAt`, see [chunk-loading.md](../features/chunk-loading.md).
 - Write a GameTest: `src/gametest/java/com/coppergolemsrevamped/test/TransporterTest`, notes in [testing.md](testing.md).
 
 ## Build and test

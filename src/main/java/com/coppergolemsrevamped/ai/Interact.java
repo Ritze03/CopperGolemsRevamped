@@ -18,6 +18,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.entity.animal.golem.CopperGolemState;
+import net.minecraft.world.entity.ai.util.LandRandomPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
@@ -41,6 +43,10 @@ public final class Interact {
 	/** Ticks without getting closer to the stand spot before it is abandoned (3 s). */
 	static final int STUCK_TICKS = 60;
 	static final double PROGRESS_EPS = 0.05;
+	/** Legacy (2-block) walk without getting closer to the target for this long: drop the fallback and search spots again (10 s). */
+	static final int LEGACY_STUCK_TICKS = 200;
+	/** How far ahead a walk towards an unloaded target aims (inside the golem's own loaded chunks). */
+	static final int TOWARDS_STEP = 16;
 	/** Fallback reach: horizontal distance (to the block centre) and vertical window, the pre-1-block rule. */
 	static final double NEAR_HORIZONTAL = 2.0;
 	static final int NEAR_DOWN = 2;
@@ -94,8 +100,19 @@ public final class Interact {
 		return dy >= -NEAR_DOWN && dy <= NEAR_UP;
 	}
 
+	/**
+	 * The chunk at {@code pos} is loaded right now. Every profession reads its assigned positions only through this
+	 * guard (or a helper that uses it, such as {@code TransporterLogic:containerAt}): a block read in an unloaded chunk
+	 * would load it synchronously, every tick or retry. An unloaded target is "not available right now". Why: see
+	 * superdoc/features/chunk-loading.md, "Unloaded targets".
+	 */
+	public static boolean loaded(Level level, BlockPos pos) {
+		return level.hasChunkAt(pos);
+	}
+
 	/** Feet block {@code pos} is somewhere the golem fits: body space free and a collidable block below. */
 	public static boolean canStand(ServerLevel level, CopperGolem golem, BlockPos pos) {
+		if (!loaded(level, pos) || !loaded(level, pos.below())) return false;
 		double w = golem.getBbWidth() / 2.0;
 		AABB box = new AABB(pos.getX() + 0.5 - w, pos.getY(), pos.getZ() + 0.5 - w,
 			pos.getX() + 0.5 + w, pos.getY() + golem.getBbHeight(), pos.getZ() + 0.5 + w);
@@ -126,11 +143,42 @@ public final class Interact {
 			cands.add(new Cand(p, golem.distanceToSqr(Vec3.atBottomCenterOf(p)) + penalty));
 		}
 		cands.sort((a, b) -> Double.compare(a.score, b.score));
-		for (Cand c : cands) {
-			Path path = golem.getNavigation().createPath(c.pos, 0);
-			if (path != null && path.canReach()) return c.pos;
+		for (int i = 0; i < cands.size(); i++) {
+			Path path = golem.getNavigation().createPath(cands.get(i).pos, 0);
+			if (path != null && path.canReach()) return cands.get(i).pos;
+			if (i == 0 && cands.size() > 2 && !anyReachable(golem, cands.subList(1, cands.size()).stream().map(Cand::pos).toList())) return null;
 		}
 		return null;
+	}
+
+	/**
+	 * One multi-target path search: can the golem finish a path to at least one of {@code spots}? Why: when the best spot
+	 * fails, the rest usually fail too (target walled off, or out of path range), and that used to cost one full search
+	 * per spot, up to 13 per repath. The ordered per-spot loop still decides which spot is taken, so the choice is
+	 * unchanged; this only skips it when nothing can be reached.
+	 */
+	private static boolean anyReachable(CopperGolem golem, List<BlockPos> spots) {
+		Path path = golem.getNavigation().createPath(new HashSet<>(spots), 0);
+		return path != null && path.canReach();
+	}
+
+	/**
+	 * Walks towards a target whose chunk is not loaded, without reading it: navigation cannot path into an unloaded
+	 * chunk ({@code GroundPathNavigation#createPath} returns null there), so it aims {@link #TOWARDS_STEP} blocks ahead
+	 * in the target's direction. The golem's chunk ticket moves with it, so the target loads once it is near.
+	 */
+	public static void walkTowards(CopperGolem golem, BlockPos target, double speed) {
+		Vec3 here = golem.position();
+		Vec3 dir = new Vec3(target.getX() + 0.5 - here.x, 0, target.getZ() + 0.5 - here.z);
+		double len = dir.length();
+		if (len < 1.0E-3) return;
+		Vec3 aim = here.add(dir.scale(Math.min(TOWARDS_STEP, len) / len));
+		Path path = golem.getNavigation().createPath(BlockPos.containing(aim), 1);
+		if (path == null) {
+			Vec3 r = LandRandomPos.getPosTowards(golem, TOWARDS_STEP, 7, Vec3.atBottomCenterOf(target));
+			if (r != null) path = golem.getNavigation().createPath(BlockPos.containing(r), 1);
+		}
+		if (path != null) golem.getNavigation().moveTo(path, speed);
 	}
 
 	/**
@@ -141,6 +189,9 @@ public final class Interact {
 		@Nullable BlockPos target;
 		@Nullable BlockPos goal;
 		boolean legacy;
+		/** Legacy walk: closest squared distance to the target so far, and ticks without beating it. */
+		double legacyBest = Double.MAX_VALUE;
+		int legacyStuck;
 		int repath;
 		int noSpot;
 		int stuck;
@@ -151,6 +202,8 @@ public final class Interact {
 			target = null;
 			goal = null;
 			legacy = false;
+			legacyBest = Double.MAX_VALUE;
+			legacyStuck = 0;
 			repath = 0;
 			noSpot = 0;
 			stuck = 0;
@@ -172,7 +225,9 @@ public final class Interact {
 	 * One tick of "walk to the target". Returns true when the golem is within reach and standing (navigation
 	 * stopped): do the interaction now. Otherwise it steers navigation and returns false.
 	 * Prefers a 1-block stand spot; with none reachable (or none progressing) it falls back to the 2-block reach and
-	 * the old walk-to-the-block behaviour. It never sets a look target, callers do that.
+	 * the old walk-to-the-block behaviour; a legacy walk that gets no closer for {@link #LEGACY_STUCK_TICKS} starts over
+	 * with the spot search. A target in an unloaded chunk is never read: the golem walks towards it
+	 * ({@link #walkTowards}) and the spot search starts once it is loaded. It never sets a look target, callers do that.
 	 */
 	public static boolean approach(ServerLevel level, CopperGolem golem, BlockPos target, Approach st, double speed) {
 		if (!target.equals(st.target)) {
@@ -184,7 +239,24 @@ public final class Interact {
 			st.repath = 0;
 			return true;
 		}
+		if (!loaded(level, target)) {
+			if (--st.repath <= 0 || golem.getNavigation().isDone()) {
+				walkTowards(golem, target, speed);
+				st.repath = REPATH_TICKS;
+			}
+			return false;
+		}
 		if (st.legacy) {
+			double d = golem.distanceToSqr(Vec3.atCenterOf(target));
+			if (d < st.legacyBest - PROGRESS_EPS) {
+				st.legacyBest = d;
+				st.legacyStuck = 0;
+			} else if (golem.onGround() && ++st.legacyStuck >= LEGACY_STUCK_TICKS) {
+				// walled off for good, or blocked by something that may have moved: forget the fallback and search spots again
+				st.reset();
+				st.target = target.immutable();
+				return false;
+			}
 			if (--st.repath <= 0 || golem.getNavigation().isDone()) {
 				golem.getNavigation().moveTo(target.getX() + 0.5, target.getY(), target.getZ() + 0.5, speed);
 				st.repath = REPATH_TICKS;
@@ -294,7 +366,7 @@ public final class Interact {
 	 * (removed, far away). Only a golem it still counts is stopped; the rest self-heals.
 	 */
 	private static void release(CopperGolem golem, Open o) {
-		BlockEntity be = o.level.getBlockEntity(o.pos);
+		BlockEntity be = loaded(o.level, o.pos) ? o.level.getBlockEntity(o.pos) : null;
 		if (be instanceof Container c && c.getEntitiesWithContainerOpen().contains(golem)) c.stopOpen(golem);
 		golem.clearOpenedChestPos();
 		if (golem.getState() != CopperGolemState.IDLE) golem.setState(CopperGolemState.IDLE);

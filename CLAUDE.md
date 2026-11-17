@@ -1,6 +1,6 @@
 # CopperGolemsRevamped
 
-Fabric mod for Minecraft 26.3 that makes Copper Golems useful: right-click a golem with empty hands to pick a profession (Chest Sorter, Lumber, Crafter, Transporter, Farmer, Cleaner) and assign its targets.
+Fabric mod for Minecraft 26.3 that makes Copper Golems useful: right-click a golem with empty hands to pick a profession (Chest Sorter, Lumber, Crafter, Transporter, Farmer, Cleaner, Smelter, Butcher, Distributor) and assign its targets.
 
 <!-- superdoc:start v4 -->
 ## Docs: read before you touch, update after you change

@@ -1,5 +1,6 @@
 package com.coppergolemsrevamped.test;
 
+import com.coppergolemsrevamped.CopperGolemsRevamped;
 import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
@@ -95,6 +96,24 @@ public class LumberTest {
 	private static void give(ChestBlockEntity in, Item axe, Item sapling, int saplings) {
 		in.setItem(0, new ItemStack(axe));
 		in.setItem(1, new ItemStack(sapling, saplings));
+	}
+
+	/**
+	 * Profession.Forget: switching Lumber -> Transporter -> Lumber mid-phase starts with fresh transient state (no phase),
+	 * instead of resuming the old phase, skips and walk progress.
+	 */
+	@GameTest(maxTicks = 400)
+	public void professionChangeForgetsTransientState(GameTestHelper helper) {
+		world(helper);
+		tree(helper, 3, 1);
+		give(chest(helper, IN), Items.IRON_AXE, Items.OAK_SAPLING, 4);
+		CopperGolem golem = lumber(helper);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(LumberLogic.phaseOf(golem) != null, "no phase yet");
+			GolemService.changeProfession(helper.getLevel(), golem, CopperGolemsRevamped.id("transporter"));
+			GolemService.changeProfession(helper.getLevel(), golem, LumberProfession.ID);
+			helper.assertTrue(LumberLogic.phaseOf(golem) == null, "stale phase after switching back: " + LumberLogic.phaseOf(golem));
+		});
 	}
 
 	/**

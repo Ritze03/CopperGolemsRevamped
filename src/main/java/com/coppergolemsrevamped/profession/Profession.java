@@ -25,12 +25,37 @@ public record Profession(
 	List<AssignSpec> assigns,
 	boolean runsVanillaBrain,
 	Tick tick,
-	List<String> help
+	List<String> help,
+	Forget forget
 ) {
 	/** Declaration without help text; {@link Professions#register} fills it in from {@link ProfessionHelp}. */
 	public Profession(Identifier id, Component name, List<SlotGroup> slots, List<AssignSpec> assigns,
 		boolean runsVanillaBrain, Tick tick) {
-		this(id, name, slots, assigns, runsVanillaBrain, tick, List.of());
+		this(id, name, slots, assigns, runsVanillaBrain, tick, List.of(), Forget.NONE);
+	}
+
+	/** Declaration without help text, with a {@link Forget} hook. */
+	public Profession(Identifier id, Component name, List<SlotGroup> slots, List<AssignSpec> assigns,
+		boolean runsVanillaBrain, Tick tick, Forget forget) {
+		this(id, name, slots, assigns, runsVanillaBrain, tick, List.of(), forget);
+	}
+
+	/** Declaration with help text and no transient state to forget. */
+	public Profession(Identifier id, Component name, List<SlotGroup> slots, List<AssignSpec> assigns,
+		boolean runsVanillaBrain, Tick tick, List<String> help) {
+		this(id, name, slots, assigns, runsVanillaBrain, tick, help, Forget.NONE);
+	}
+
+	/**
+	 * Drops a golem's transient per-profession state (the logic class's {@code STATES} entry: phase, skip list, plan,
+	 * timers). {@code core/GolemService:changeProfession} calls it for the old and the new profession. Why: the state is
+	 * keyed by the golem only, so switching away and back would otherwise resume a stale phase or skip list.
+	 */
+	@FunctionalInterface
+	public interface Forget {
+		Forget NONE = golem -> {};
+
+		void forget(CopperGolem golem);
 	}
 
 	/** Computes what a profession would produce right now ({@link ItemStack#EMPTY} for nothing); drives {@link SlotGroup#previewing}. */

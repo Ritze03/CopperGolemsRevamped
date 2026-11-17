@@ -44,6 +44,12 @@ anywhere in the grid matches. The recipe comes from `RecipeManager.createCheck(R
 gives the result, `getRemainingItems` the leftovers, mapped back to template cells through `Positioned:left/top`. The
 `Plan` carries the result, the 9 template stacks and the 9 per-cell leftovers. No recipe = see "No recipe" below.
 
+The tick loop reuses its last plan (`CrafterLogic:cachedPlan`) while the 9 template cells and the server's recipe manager
+instance are unchanged, at most `REPLAN_TICKS` (100) ticks. Why: perf review #11, the lookup, `assemble` and
+`getRemainingItems` ran on every walking tick although the plan depends only on the template; the loop never mutates
+plan stacks (it copies them), so sharing is safe. The time bound is a safety net for a data pack reload. `preview` (Status,
+ghost output) still plans fresh.
+
 ## Loop
 
 Stateless decision each tick (`CrafterLogic:decide`) from the slots, the input chest and the plan; only the cooldown and

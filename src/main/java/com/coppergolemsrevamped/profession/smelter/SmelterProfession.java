@@ -54,6 +54,7 @@ public final class SmelterProfession {
 			List.of(
 				"Feeds up to 8 furnaces (furnace, blast furnace, smoker) in the area, the 8 nearest to the input chest, and splits the items evenly between them.",
 				"It keeps their fuel topped from the fuel chest, collects the results and delivers them to the output chest. The furnaces' experience is kept and made into XP bottles.",
-				"The 8 slots in the furnace row are one input buffer per furnace; the 3 slots below are the shared results and the slot at the right holds the XP bottles (you can take both out). Items nothing can use go back to the input chest, a furnace holding something else is left alone.")));
+				"The 8 slots in the furnace row are one input buffer per furnace; the 3 slots below are the shared results and the slot at the right holds the XP bottles (you can take both out). Items nothing can use go back to the input chest, a furnace holding something else is left alone."),
+			SmelterLogic::forget));
 	}
 }

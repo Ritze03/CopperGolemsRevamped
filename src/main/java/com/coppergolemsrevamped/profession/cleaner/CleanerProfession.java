@@ -31,6 +31,7 @@ public final class CleanerProfession {
 				new AssignSpec(AREA, Component.literal("Assign Area"), Kind.AREA, MAX_AREA),
 				new AssignSpec(OUTPUT, Component.literal("Assign Output Chest"), Kind.CHEST, 0)),
 			false,
-			CleanerLogic::tick));
+			CleanerLogic::tick,
+			CleanerLogic::forget));
 	}
 }

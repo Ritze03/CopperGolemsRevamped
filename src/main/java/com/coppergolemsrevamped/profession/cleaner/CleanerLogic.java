@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.WeakHashMap;
+import java.util.function.Predicate;
 
 import org.jspecify.annotations.Nullable;
 
@@ -41,6 +42,11 @@ public final class CleanerLogic {
 	/** How long a given-up item is ignored (1 min). */
 	static final int SKIP_TICKS = 1200;
 	static final double PROGRESS_EPS = 0.1;
+	/**
+	 * While chasing an item the area is scanned again only this often; in between the chased entity is re-checked alone.
+	 * Why: the full-area entity query ran on every walking tick (perf review); a nearer item is now noticed within 10 ticks.
+	 */
+	static final int RESCAN_TICKS = 10;
 
 	private static final class State {
 		int cooldown;
@@ -51,9 +57,17 @@ public final class CleanerLogic {
 		int stuck;
 		/** Given-up item entity -> game time until which the scan ignores it. */
 		final Map<UUID, Long> skip = new HashMap<>();
+		/** The item chased since the last full scan, and the game time of that scan ({@link #RESCAN_TICKS}). */
+		@Nullable ItemEntity chasing;
+		long scannedAt;
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
+
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
 
 	/** Block-inclusive box of the area: x/z min..max, y min..max+2 (two blocks of headroom). Null when unset. */
 	public static @Nullable AABB box(GolemData data) {
@@ -83,14 +97,22 @@ public final class CleanerLogic {
 		long now = level.getGameTime();
 		s.skip.values().removeIf(until -> until <= now);
 		// Keep layout: leave on the ground what the chest cannot take (no matching stack), or it piles up in the carry forever.
-		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !e.hasPickUpDelay() && fits(data.items, e.getItem()) && box.contains(e.position()) && !s.skip.containsKey(e.getUUID())
-				&& (!data.keepLayout || TransporterLogic.canInsert(chest, e.getItem(), true)));
-		if (!items.isEmpty()) {
-			ItemEntity target = items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
+		Predicate<ItemEntity> wanted = e -> e.isAlive() && !e.hasPickUpDelay() && fits(data.items, e.getItem()) && box.contains(e.position())
+			&& !s.skip.containsKey(e.getUUID()) && (!data.keepLayout || TransporterLogic.canInsert(chest, e.getItem(), true));
+		ItemEntity target;
+		if (s.chasing != null && now - s.scannedAt < RESCAN_TICKS && wanted.test(s.chasing)) {
+			target = s.chasing; // mid-chase: reuse the last scan's pick
+		} else {
+			List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box, wanted);
+			target = items.isEmpty() ? null : items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
+			s.chasing = target;
+			s.scannedAt = now;
+		}
+		if (target != null) {
 			if (golem.distanceToSqr(target) > PICKUP_RANGE_SQR) {
 				if (!chase(s, target.getUUID(), golem.distanceToSqr(target))) {
 					skip(s, target.getUUID(), now);
+					s.chasing = null;
 					golem.getNavigation().stop();
 					s.repath = 0;
 					return;
@@ -106,6 +128,7 @@ public final class CleanerLogic {
 			golem.getNavigation().stop();
 			s.repath = 0;
 			s.target = null;
+			s.chasing = null;
 			pickUp(target, data.items);
 			s.cooldown = AFTER_ACTION_TICKS;
 			GolemData.save(golem, data);

@@ -54,6 +54,7 @@ public final class ButcherProfession {
 			List.of(
 				"Keeps the animals in the area (max 16x16) at 8 adults per kind: the surplus adults are killed with the golem's sword or axe, Looting on it works.",
 				"It also feeds pairs of adults with food from the food chest so they breed, until the pen holds 8 babies or 24 animals of a kind. Babies are never touched.",
-				"Named, tamed and leashed animals are left alone. Drops go to the output chest.")));
+				"Named, tamed and leashed animals are left alone. Drops go to the output chest."),
+			ButcherLogic::forget));
 	}
 }

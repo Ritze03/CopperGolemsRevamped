@@ -51,6 +51,7 @@ public final class LumberProfession {
 				new AssignSpec(INPUT, Component.literal("Assign Input Chest"), Kind.CHEST, 0),
 				new AssignSpec(OUTPUT, Component.literal("Assign Output Chest"), Kind.CHEST, 0)),
 			false,
-			LumberLogic::tick));
+			LumberLogic::tick,
+			LumberLogic::forget));
 	}
 }

@@ -14,8 +14,10 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 /**
- * Mending for the tool professions (Lumber, Farmer, Butcher): XP bottles in the tool chest repair the tools, and a Mending
- * tool is never used down to its last points (it goes back into the chest instead). See superdoc/features/mending.md.
+ * Mending and Save tools for the tool professions (Lumber, Farmer, Butcher): XP bottles in the tool chest repair Mending
+ * tools, and with the per-golem "Save tools" setting on (default) any enchanted tool (not only Mending) is never used down
+ * to its last points (it goes back into the chest instead); plain tools, and every tool with the setting off, are used until
+ * they break. See superdoc/features/mending.md.
  */
 public final class GolemMending {
 	private GolemMending() {}

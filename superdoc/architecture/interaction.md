@@ -39,10 +39,23 @@ All static, `com.coppergolemsrevamped.ai.Interact`.
     towards the chosen spot for 60 ticks (that spot is blacklisted, the next one is tried), `approach` switches to the
     legacy behaviour for that target: walk to the block centre and accept `nearReach` (horizontal <= 2.0 to the
     centre, target 2 below to 1 above the feet). `st.isLegacy()` reports it.
+  - Legacy give-up: a legacy walk that gets no closer to the target for `LEGACY_STUCK_TICKS` (200, airborne ticks do
+    not count) resets the `Approach` and starts over with the spot search. Why: the legacy walk had no limit, so a golem
+    blocked for good walked against the wall forever; a reset also notices a path that has opened since. Callers with
+    their own give-up (Farmer, Crafter, Smelter, Lumber skip lists) are unaffected: they act on the distance, not the mode.
+  - Unloaded target: `approach` never reads it (no `standPos`, no fallback counting); it calls `walkTowards` at repath
+    rate and returns false until the chunk is loaded. See [../features/chunk-loading.md](../features/chunk-loading.md),
+    "Unloaded targets".
 - `boolean inReach(CopperGolem, BlockPos target)`: strict 1-block rule (feet on one of the spots above).
 - `boolean nearReach(CopperGolem, BlockPos target)`: the 2-block fallback rule.
 - `@Nullable BlockPos standPos(ServerLevel, CopperGolem, BlockPos target)`: best reachable 1-block spot, nearest to
-  the golem first; null if none. One path search per candidate, so call at repath rate (`approach` does).
+  the golem first; null if none. One path search per candidate, so call at repath rate (`approach` does). When the
+  best spot fails and more than one is left, one multi-target search (`PathNavigation#createPath(Set, int)`) asks whether
+  any of the rest is reachable; if not, it returns null at once. Why: the unreachable case (walled off, out of path range)
+  cost up to 13 full searches per repath (perf review #11); the per-spot order still picks the spot, so the choice is the same.
+- `boolean loaded(Level, BlockPos)`: the chunk guard every assigned-position read goes through.
+- `void walkTowards(CopperGolem, BlockPos target, double speed)`: walk in the direction of a target whose chunk is not
+  loaded (16 blocks ahead, `LandRandomPos` as a fallback).
 - `boolean canStand(ServerLevel, CopperGolem, BlockPos feet)`.
 - `void openChest(ServerLevel, CopperGolem, BlockPos chest, Interact.Action)`: open the lid now, close it later
   (below). `Action.TAKE` sets state `GETTING_ITEM`, `Action.INSERT` sets `DROPPING_ITEM`. No-op if the block is not a

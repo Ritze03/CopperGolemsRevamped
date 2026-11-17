@@ -32,8 +32,8 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 /**
  * Mending for the tool professions (superdoc/features/mending.md): XP bottles in the tool chest repair the tools (7 XP
- * each, vanilla conversion), and a Mending tool at or below {@link GolemMending#SAFE_DURABILITY} is never used
- * (it goes back into the chest, the golem works bare-handed or with another tool).
+ * each, vanilla conversion), and with Save tools on any enchanted tool at or below {@link GolemMending#SAFE_DURABILITY} is
+ * never used (it goes back into the chest, the golem works bare-handed or with another tool).
  */
 public class MendingTest {
 	private static final int SAFE = GolemMending.SAFE_DURABILITY;

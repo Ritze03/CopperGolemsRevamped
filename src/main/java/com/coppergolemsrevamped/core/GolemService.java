@@ -43,6 +43,7 @@ public final class GolemService {
 	 */
 	public static void changeProfession(ServerLevel level, CopperGolem golem, @Nullable Identifier id, @Nullable ServerPlayer player) {
 		GolemData data = GolemData.get(golem);
+		Profession old = Professions.get(data.profession);
 		releaseHand(level, golem, player);
 		drop(level, golem, data, player);
 		data.assignments.clear();
@@ -50,6 +51,9 @@ public final class GolemService {
 		data.filterMode = FilterMode.OFF; // the filter items are dropped with the other items
 		data.profession = id;
 		Profession p = Professions.get(id);
+		// transient phase/skip/plan state starts fresh: switching away and back must not resume it (Profession.Forget)
+		if (old != null) old.forget().forget(golem);
+		if (p != null) p.forget().forget(golem);
 		data.items = NonNullList.withSize(p == null ? 0 : p.inventorySize(), ItemStack.EMPTY);
 		prefillSpawnChest(level, data, p);
 		updateName(golem, data, p);
@@ -84,7 +88,7 @@ public final class GolemService {
 	/** The first CHEST assign (declaration order) starts as the chest the golem was built next to, if it still is a chest. */
 	private static void prefillSpawnChest(ServerLevel level, GolemData data, @Nullable Profession p) {
 		if (p == null || data.spawnChest == null) return;
-		if (!(level.getBlockState(data.spawnChest).getBlock() instanceof ChestBlock)) return;
+		if (!level.hasChunkAt(data.spawnChest) || !(level.getBlockState(data.spawnChest).getBlock() instanceof ChestBlock)) return;
 		for (AssignSpec a : p.assigns()) {
 			if (a.kind() != Kind.CHEST) continue;
 			data.assignments.putIfAbsent(a.key(), data.spawnChest);

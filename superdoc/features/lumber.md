@@ -286,7 +286,9 @@ Chests: `Interact.openChest` (lid visible) after every fetch or delivery; cooldo
 
 Transient state (phase, cooldown, walk state, break progress, known logs, footprint, skip map, unreach set, stand spot)
 in a `WeakHashMap` like the Farmer; persistent state is only `GolemData`, saved after every mutation. A different
-assigned tree spot starts a fresh state. `tree` or `output` missing/invalid: stop, retry in 40 ticks (`input` is
+assigned tree spot starts a fresh state, and so does a profession change (`LumberLogic:forget`, see `Profession.Forget`
+in [../architecture/overview.md](../architecture/overview.md)). `tree` or `output` missing/invalid, or the tree spot's
+chunk unloaded (see [chunk-loading.md](chunk-loading.md), "Unloaded targets"): stop, retry in 40 ticks (`input` is
 optional). `LumberLogic:tick` detects the tree and runs the current `LumberLogic.Phase` (test hooks
 `LumberLogic:phaseOf`, `LumberLogic:phaseListener`):
 

@@ -56,6 +56,12 @@ public final class FarmerLogic {
 	static final int SEED_LOW = 16;
 	/** A seed fetch tops the seed slot up to this (a full stack). */
 	static final int SEED_TARGET = 64;
+	/**
+	 * The field scan (what the cells need, and the nearest workable cell) is reused for this many ticks while the golem
+	 * walks or swings; any finished action or give-up rescans at once. Why: both passes over all cells (the second one
+	 * rolls loot tables for the fits check) ran on every walking tick (perf review).
+	 */
+	static final int RESCAN_TICKS = 20;
 
 	public enum Act { HARVEST, FRUIT, PLANT, TILL }
 
@@ -75,9 +81,23 @@ public final class FarmerLogic {
 		int stuck;
 		/** Given-up cell or chest position -> game time until which it is ignored. */
 		final Map<BlockPos, Long> skip = new HashMap<>();
+		/** The cached field scan ({@link #RESCAN_TICKS}); {@code rescan} forces a new one on the next tick. */
+		boolean rescan = true;
+		long scannedAt;
+		@Nullable Mode scanMode;
+		boolean anyTill, anyPlant, anyFruit;
+		/** The nearest-cell pick of this scan, once made ({@code picked}); {@code best} null = no workable cell. */
+		boolean picked;
+		@Nullable BlockPos best;
+		@Nullable Act bestAct;
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
+
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
 
 	/**
 	 * A seed plants a harvestable crop: a {@link BlockItem} whose block is a {@link CropBlock}. Stems (fruit is never
@@ -114,6 +134,13 @@ public final class FarmerLogic {
 		return tillable(s) ? Act.TILL : null;
 	}
 
+	/** Every chunk of the field is loaded (its first and last cell are opposite corners; a 9x9 field spans at most 2x2 chunks). */
+	static boolean fieldLoaded(ServerLevel level, List<BlockPos> cells) {
+		BlockPos lo = cells.getFirst(), hi = cells.getLast();
+		return Interact.loaded(level, lo) && Interact.loaded(level, hi)
+			&& Interact.loaded(level, new BlockPos(lo.getX(), lo.getY(), hi.getZ())) && Interact.loaded(level, new BlockPos(hi.getX(), lo.getY(), lo.getZ()));
+	}
+
 	/** What the tool slot makes the golem: no tool, hoe (crops) or axe (only melon/pumpkin blocks). */
 	public enum Mode { NONE, HOE, AXE }
 
@@ -140,7 +167,7 @@ public final class FarmerLogic {
 		List<BlockPos> cells = cells(data);
 		BlockPos outPos = data.assignments.get(FarmerProfession.OUTPUT);
 		Container out = outPos == null ? null : TransporterLogic.containerAt(level, outPos);
-		if (cells.isEmpty() || out == null) {
+		if (cells.isEmpty() || out == null || !fieldLoaded(level, cells)) {
 			golem.getNavigation().stop();
 			s.cooldown = RETRY_TICKS;
 			return;
@@ -151,19 +178,29 @@ public final class FarmerLogic {
 		ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
 		ItemStack seed = data.items.get(FarmerProfession.SEED_SLOT);
 		Mode mode = modeOf(tool);
-		boolean anyTill = false, anyPlant = false, anyFruit = false;
-		for (BlockPos c : cells) {
-			anyFruit |= actForAxe(level, c) != null;
-			Act a = actFor(level, c);
-			anyTill |= a == Act.TILL;
-			anyPlant |= a == Act.PLANT || a == Act.TILL;
+		if (s.rescan || now - s.scannedAt >= RESCAN_TICKS || s.scanMode != mode) {
+			boolean anyTill = false, anyPlant = false, anyFruit = false;
+			for (BlockPos c : cells) {
+				anyFruit |= actForAxe(level, c) != null;
+				Act a = actFor(level, c);
+				anyTill |= a == Act.TILL;
+				anyPlant |= a == Act.PLANT || a == Act.TILL;
+			}
+			s.anyTill = anyTill;
+			s.anyPlant = anyPlant;
+			s.anyFruit = anyFruit;
+			s.scanMode = mode;
+			s.scannedAt = now;
+			s.rescan = false;
+			s.picked = false;
 		}
+		boolean anyTill = s.anyTill, anyFruit = s.anyFruit;
 		// the axe does only the fruit work: it never tills or plants, so it needs no seeds
-		if (mode == Mode.AXE) anyPlant = false;
+		boolean anyPlant = mode != Mode.AXE && s.anyPlant;
 
 		// 1. tool: fill an empty slot (any hoe/axe: that sets the type) or swap a tool that breaks on its next use
 		//    (same type only). Nothing is fetched when this tool type has no work in the field.
-		boolean worn = tool.nextDamageWillBreak() || !GolemMending.canUse(tool, data.saveTools); // a Mending tool near its end counts as worn
+		boolean worn = tool.nextDamageWillBreak() || !GolemMending.canUse(tool, data.saveTools); // a protected enchanted tool near its end (Save tools) counts as worn
 		boolean toolWork = mode == Mode.NONE ? anyTill || anyFruit : mode == Mode.HOE ? anyTill : anyFruit;
 		if (toolWork) {
 			BlockPos pos = data.assignments.get(FarmerProfession.TOOLS);
@@ -195,21 +232,30 @@ public final class FarmerLogic {
 				return;
 			}
 		}
-		// 3. nearest workable cell
-		BlockPos best = null;
-		Act bestAct = null;
-		double bestD = Double.MAX_VALUE;
-		for (BlockPos c : cells) {
-			if (s.skip.containsKey(c)) continue;
-			Act a = mode == Mode.AXE ? actForAxe(level, c) : actFor(level, c);
-			if (a == null || !workable(level, data, c, a)) continue;
-			double d = golem.distanceToSqr(c.getX() + 0.5, c.getY() + 1, c.getZ() + 0.5);
-			if (d < bestD) {
-				bestD = d;
-				best = c;
-				bestAct = a;
+		// 3. nearest workable cell (picked once per scan; a cached pick whose cell changed picks again)
+		if (s.picked && s.best != null && (s.skip.containsKey(s.best)
+			|| (mode == Mode.AXE ? actForAxe(level, s.best) : actFor(level, s.best)) != s.bestAct)) s.picked = false;
+		if (!s.picked) {
+			BlockPos best = null;
+			Act bestAct = null;
+			double bestD = Double.MAX_VALUE;
+			for (BlockPos c : cells) {
+				if (s.skip.containsKey(c)) continue;
+				Act a = mode == Mode.AXE ? actForAxe(level, c) : actFor(level, c);
+				if (a == null || !workable(level, data, c, a)) continue;
+				double d = golem.distanceToSqr(c.getX() + 0.5, c.getY() + 1, c.getZ() + 0.5);
+				if (d < bestD) {
+					bestD = d;
+					best = c;
+					bestAct = a;
+				}
 			}
+			s.best = best;
+			s.bestAct = bestAct;
+			s.picked = true;
 		}
+		BlockPos best = s.best;
+		Act bestAct = s.bestAct;
 		if (best != null) {
 			// the crop block (soil + 1) is the target: the golem stands beside it (or diagonally below), not on it
 			if (!walkTo(level, s, golem, best.above(), now)) return;
@@ -307,6 +353,7 @@ public final class FarmerLogic {
 	}
 
 	private static void done(State s, CopperGolem golem, GolemData data, int cooldown) {
+		s.rescan = true; // the field or the inventory changed: scan again
 		s.swingCell = null;
 		golem.getNavigation().stop();
 		s.walk.reset();
@@ -431,6 +478,7 @@ public final class FarmerLogic {
 		// the cell is keyed by its soil block, the walk target is the crop block above it
 		s.skip.put(pos, now + SKIP_TICKS);
 		s.skip.put(pos.below(), now + SKIP_TICKS);
+		s.rescan = true;
 		s.target = null;
 		s.stuck = 0;
 		s.repath = 0;
@@ -451,7 +499,7 @@ public final class FarmerLogic {
 		return modeOf(s) != Mode.NONE;
 	}
 
-	/** A tool the golem may use now: not on its last durability point, and a Mending tool not near its end. */
+	/** A tool the golem may use now: never its last durability point (whatever Save tools says), and not a protected enchanted tool. */
 	static boolean usable(ItemStack tool, GolemData data) {
 		return !tool.nextDamageWillBreak() && GolemMending.canUse(tool, data.saveTools);
 	}
@@ -459,7 +507,7 @@ public final class FarmerLogic {
 	/**
 	 * One visit to the tool chest: repair Mending tools with the chest's XP bottles (held one first, then those lying in
 	 * the chest), then swap a worn tool for a usable one (same type; the worn one goes into the chest slot), or park a
-	 * resting Mending tool when nothing replaces it (the golem then works without a tool: it harvests but does not till).
+	 * resting enchanted tool when nothing replaces it (the golem then works without a tool: it harvests but does not till).
 	 */
 	private static void toolVisit(ServerLevel level, CopperGolem golem, GolemData data, State s, Container chest, BlockPos pos) {
 		int used = GolemMending.repair(level, data, data.items.get(FarmerProfession.TOOL_SLOT), chest, FarmerLogic::isTool, TransferBudget.remaining(level, golem));

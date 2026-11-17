@@ -135,6 +135,11 @@ public final class ButcherLogic {
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
 
+	/** Drops this golem's transient state ({@link com.coppergolemsrevamped.profession.Profession.Forget}). */
+	public static void forget(CopperGolem golem) {
+		STATES.remove(golem);
+	}
+
 	/** A kind's animals in the area: unprotected adults (the cullable herd), all adults, babies. */
 	private static final class Herd {
 		final EntityType<?> type;
@@ -289,9 +294,9 @@ public final class ButcherLogic {
 		if (toolVisit(level, golem, data, s)) return true;
 		ItemStack tool = data.items.get(ButcherProfession.TOOL_SLOT);
 		boolean armed = isWeapon(tool) && GolemMending.canUse(tool, data.saveTools);
-		if (!armed && !mendingBlocked(level, data)) return false; // no weapon and no Mending tool in the way: does not kill
+		if (!armed && !mendingBlocked(level, data)) return false; // no weapon and no saved enchanted weapon in the way: does not kill
 		if (freeCarry(data) < MIN_FREE_CARRY || !cull(level, golem, data, s, herds, now)) return false;
-		if (!armed) s.doing += ", bare-handed (Mending tool needs repair)";
+		if (!armed) s.doing += ", bare-handed (enchanted weapon put away to save it)";
 		return true;
 	}
 
@@ -470,7 +475,7 @@ public final class ButcherLogic {
 	 */
 	static void strike(ServerLevel level, CopperGolem golem, GolemData data, State s, Animal target) {
 		ItemStack real = data.items.get(ButcherProfession.TOOL_SLOT);
-		// a Mending tool near its end stays in the slot unused: the golem hits with its hands (1 damage)
+		// a protected enchanted tool near its end (Save tools) stays in the slot unused: the golem hits with its hands (1 damage)
 		ItemStack tool = isWeapon(real) && GolemMending.canUse(real, data.saveTools) ? real : ItemStack.EMPTY;
 		ItemStack prev = golem.getMainHandItem();
 		golem.setItemSlot(EquipmentSlot.MAINHAND, tool);
@@ -491,7 +496,7 @@ public final class ButcherLogic {
 		s.strikes++;
 		if (!tool.isEmpty()) {
 			Weapon weapon = tool.get(DataComponents.WEAPON);
-			GolemMending.damage(level, tool, data.saveTools, weapon == null ? 1 : weapon.itemDamagePerAttack()); // never breaks a Mending tool
+			GolemMending.damage(level, tool, data.saveTools, weapon == null ? 1 : weapon.itemDamagePerAttack()); // never breaks a protected enchanted tool
 			if (tool.isEmpty()) data.items.set(ButcherProfession.TOOL_SLOT, ItemStack.EMPTY);
 		}
 		GolemData.save(golem, data);
@@ -753,7 +758,7 @@ public final class ButcherLogic {
 		return -1;
 	}
 
-	/** True when a Mending weapon is why there is no usable one: held and resting, or (empty slot) lying unusable in the tool chest. */
+	/** True when a protected enchanted weapon (Save tools) is why there is no usable one: held and resting, or (empty slot) lying unusable in the tool chest. */
 	static boolean mendingBlocked(ServerLevel level, GolemData data) {
 		ItemStack cur = data.items.get(ButcherProfession.TOOL_SLOT);
 		if (GolemMending.mustPark(cur, data.saveTools)) return true;
@@ -770,7 +775,7 @@ public final class ButcherLogic {
 
 	/**
 	 * One visit to the tool chest: repair Mending weapons with the chest's XP bottles, then swap in a usable weapon (a worn
-	 * or resting one goes into the freed chest slot: nothing lost), or park a resting Mending weapon when there is no
+	 * or resting one goes into the freed chest slot: nothing lost), or park a resting enchanted weapon when there is no
 	 * replacement. False when there is no reason to go (nothing to repair, fetch or park); true while busy.
 	 */
 	private static boolean toolVisit(ServerLevel level, CopperGolem golem, GolemData data, State s) {

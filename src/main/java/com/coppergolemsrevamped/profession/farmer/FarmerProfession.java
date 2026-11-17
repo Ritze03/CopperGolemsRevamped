@@ -46,6 +46,7 @@ public final class FarmerProfession {
 				new AssignSpec(SEEDS, Component.literal("Assign Seed Chest"), Kind.CHEST, 0),
 				new AssignSpec(OUTPUT, Component.literal("Assign Output Chest"), Kind.CHEST, 0)),
 			false,
-			FarmerLogic::tick));
+			FarmerLogic::tick,
+			FarmerLogic::forget));
 	}
 }

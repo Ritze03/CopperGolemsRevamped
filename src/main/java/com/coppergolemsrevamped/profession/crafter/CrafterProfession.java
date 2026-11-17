@@ -45,6 +45,7 @@ public final class CrafterProfession {
 				new AssignSpec(TABLE, Component.literal("Assign Crafting Table"), Kind.CRAFTING_TABLE, 0),
 				new AssignSpec(OUTPUT, Component.literal("Assign Output Chest"), Kind.CHEST, 0)),
 			false,
-			CrafterLogic::tick));
+			CrafterLogic::tick,
+			CrafterLogic::forget));
 	}
 }
