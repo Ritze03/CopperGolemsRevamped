@@ -65,11 +65,19 @@ that is permanently full costs trips but never items.
 All moves are budgeted (16 per 5 ticks, see [../architecture/transfer-limit.md](../architecture/transfer-limit.md)). The take
 and the per-type insert use `TransporterLogic.takeAll` / `insertAll` with a limit plus `TransferBudget.spend`, because the
 plain `TransferBudget.take` / `insert` wrappers cannot cap a single type. A budget-cut visit stays at the container
-(lid refreshed, wait to the next window) and never counts as "full". Keep layout: input slots keep 1, targets and the
+(lid refreshed, wait to the next window) and never counts as "full": the golem keeps the target's remaining `State.quota`
+and resumes it next window until every type's full share is in, then moves on. A type ends early only when the target
+takes less than offered (physically full / no matching stack under keep layout) or the carry has no more of it, so a
+full target can never hold the golem forever. The insert loop re-finds the carry slot each pass (`slotOf`) instead of
+stepping to the next slot. Why: stepping past a slot that a budget-limited insert left non-empty used to end the type
+with quota left, silently truncating the share (2 targets x 32 iron got 16 each per visit) and sending the rest back
+to the input for extra rounds. Keep layout: input slots keep 1, targets and the
 return only merge into non-empty same-item slots; no matching stack means that target gets nothing and its share returns.
 Freeze and Follow work through `GolemTicker` (nothing here).
 
 ## Tests (`DistributorTest`)
 
 `eightTargetsTakeMultipleOfEight`, `sevenTargetsTakeMultipleOfSeven`, `doubleChestCountsAsOne`, `fewerThanNTakesNothing`,
-`fullTargetReturnsItsShare`, `keepLayoutRespectedOnBothSides`.
+`fullTargetReturnsItsShare`, `keepLayoutRespectedOnBothSides`, `shareLargerThanBudgetDeliveredInOneVisit` and
+`severalTypesOverBudgetDeliveredInOneVisit` (a per-visit share over the budget: the input chest must never be refilled
+mid-cycle, `watchNoRefill`).

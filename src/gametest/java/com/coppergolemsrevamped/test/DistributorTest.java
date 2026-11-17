@@ -160,6 +160,67 @@ public class DistributorTest {
 	}
 
 	/**
+	 * Watches the input chest every tick and records whether its count of any of {@code items} ever went up. With an
+	 * input that divides evenly by N and targets that have room, nothing may come back: a rise means a share was cut short.
+	 */
+	private static boolean[] watchNoRefill(GameTestHelper helper, Container in, Item... items) {
+		boolean[] rose = {false};
+		int[] last = new int[items.length];
+		for (int k = 0; k < items.length; k++) last[k] = count(in, items[k]);
+		helper.onEachTick(() -> {
+			for (int k = 0; k < items.length; k++) {
+				int now = count(in, items[k]);
+				if (now > last[k]) rose[0] = true;
+				last[k] = now;
+			}
+		});
+		return rose;
+	}
+
+	/**
+	 * 2 targets, 64 iron: a share of 32 per visit is twice the transfer budget (16 per window). The golem stays at each
+	 * target over budget windows until the full 32 is in; nothing goes back to the input mid-cycle.
+	 */
+	@GameTest(maxTicks = 2000)
+	public void shareLargerThanBudgetDeliveredInOneVisit(GameTestHelper helper) {
+		CopperGolem golem = base(helper, false);
+		place(helper, 2);
+		Container in = at(helper, IN_POS);
+		in.setItem(0, new ItemStack(Items.IRON_INGOT, 64));
+		boolean[] rose = watchNoRefill(helper, in, Items.IRON_INGOT);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(!rose[0], "the input chest was refilled mid-cycle (a budget-cut share was dropped)");
+			for (int i = 0; i < 2; i++) {
+				helper.assertTrue(count(at(helper, SPOTS[i]), Items.IRON_INGOT) == 32, "target " + i + " has " + count(at(helper, SPOTS[i]), Items.IRON_INGOT));
+			}
+			helper.assertTrue(count(in, Items.IRON_INGOT) == 0 && held(golem) == 0, "all 64 distributed");
+		});
+	}
+
+	/**
+	 * 2 targets, 20 iron + 20 gold: each visit delivers 10 + 10 = 20, more than one budget window. The second type is
+	 * not truncated to what was left of the window; nothing goes back to the input mid-cycle.
+	 */
+	@GameTest(maxTicks = 2000)
+	public void severalTypesOverBudgetDeliveredInOneVisit(GameTestHelper helper) {
+		CopperGolem golem = base(helper, false);
+		place(helper, 2);
+		Container in = at(helper, IN_POS);
+		in.setItem(0, new ItemStack(Items.IRON_INGOT, 20));
+		in.setItem(1, new ItemStack(Items.GOLD_INGOT, 20));
+		boolean[] rose = watchNoRefill(helper, in, Items.IRON_INGOT, Items.GOLD_INGOT);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(!rose[0], "the input chest was refilled mid-cycle (a budget-cut share was dropped)");
+			for (int i = 0; i < 2; i++) {
+				Container t = at(helper, SPOTS[i]);
+				helper.assertTrue(count(t, Items.IRON_INGOT) == 10 && count(t, Items.GOLD_INGOT) == 10,
+					"target " + i + " has " + count(t, Items.IRON_INGOT) + " iron, " + count(t, Items.GOLD_INGOT) + " gold");
+			}
+			helper.assertTrue(count(in, Items.IRON_INGOT) == 0 && count(in, Items.GOLD_INGOT) == 0 && held(golem) == 0, "all distributed");
+		});
+	}
+
+	/**
 	 * Keep layout: the input keeps 1 per slot; targets only get items into an existing matching stack. Targets 0 and 1
 	 * hold 1 iron, targets 2 and 3 none: the share of 2 and 3 goes back (merged into the input's iron slot).
 	 */

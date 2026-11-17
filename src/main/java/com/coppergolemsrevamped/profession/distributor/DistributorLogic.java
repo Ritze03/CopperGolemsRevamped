@@ -209,6 +209,12 @@ public final class DistributorLogic {
 		return rest.getCount();
 	}
 
+	/** Index of the first carry slot holding {@code type}, or -1. */
+	private static int slotOf(List<ItemStack> carry, ItemStack type) {
+		for (int i = 0; i < carry.size(); i++) if (same(carry.get(i), type)) return i;
+		return -1;
+	}
+
 	private static List<ItemStack> copyOf(List<ItemStack> list) {
 		List<ItemStack> out = new ArrayList<>();
 		for (ItemStack c : list) out.add(c.copy());
@@ -357,14 +363,17 @@ public final class DistributorLogic {
 		boolean cut = false;
 		outer:
 		for (Amount q : s.quota) {
-			for (int i = 0; i < carry.size() && q.n > 0; i++) {
-				ItemStack st = carry.get(i);
-				if (st.isEmpty() || !same(st, q.type)) continue;
-				int lim = Math.min(q.n, Math.min(st.getCount(), TransferBudget.remaining(level, golem)));
-				if (lim <= 0) {
-					cut = true;
+			// Re-find a carry slot each pass instead of stepping i++: a budget-limited insert leaves the same slot
+			// non-empty, and stepping past it would end the type with q.n > 0 and silently drop the rest of the share.
+			while (q.n > 0) {
+				int budget = TransferBudget.remaining(level, golem);
+				if (budget <= 0) {
+					cut = true; // stay here; the remaining quota goes in next window
 					break outer;
 				}
+				int i = slotOf(carry, q.type);
+				if (i < 0) break; // carry has no more of this type
+				int lim = Math.min(q.n, Math.min(carry.get(i).getCount(), budget));
 				int got = TransporterLogic.insertAll(carry.subList(i, i + 1), c, lim, data.keepLayout);
 				TransferBudget.spend(level, golem, got);
 				moved += got;
