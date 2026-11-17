@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +45,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.BonemealSource;
+import net.minecraft.world.level.block.BonemealableBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.pathfinder.Path;
 import net.minecraft.world.phys.AABB;
@@ -81,6 +84,15 @@ public final class LumberLogic {
 	static final int BONE_TARGET = 16;
 	/** Ticks between two bone meal uses. */
 	static final int BONE_DELAY = 10;
+	/**
+	 * Bone meal uses in a row that leave the sapling unchanged before the golem stops bone-mealing it (an obstructed sapling:
+	 * no room to grow). A free sapling changes on 45% of the uses, so 16 misses in a row happen by chance 0.55^16 = 7e-5.
+	 */
+	static final int BONE_MAX_FAILS = 16;
+	/** While walking during FELL the tree found last is reused for this many ticks instead of a flood fill per tick. */
+	static final int REDETECT_TICKS = 20;
+	/** A drop still under its pickup delay counts as coming (waited for, not taken) only while younger than this. */
+	static final int PENDING_AGE = 60;
 
 	/** Tree detection bounds: horizontal radius around T, height above T, block count. */
 	static final int TREE_RADIUS = 8;
@@ -149,6 +161,10 @@ public final class LumberLogic {
 		/** Logs seen at the last detection: seeds for the next one (T itself may already be gone). */
 		Set<BlockPos> known = new HashSet<>();
 		@Nullable Set<BlockPos> logs;
+		/** Game time of the last {@link #detectTree} flood (reused while walking, see {@link #REDETECT_TICKS}). */
+		long detectedAt;
+		/** Bone meal uses in a row that left the sapling unchanged ({@link #BONE_MAX_FAILS}: it cannot grow, stop). */
+		int boneFails;
 		/** Bottom layer of the felled tree (4 cells for a 2x2 trunk), else empty: where to replant. */
 		List<BlockPos> footprint = List.of();
 		/** Logs this golem could not reach from a spot it tried (tried again once the tree is gone and a new one grows). */
@@ -257,14 +273,35 @@ public final class LumberLogic {
 	 */
 	static Block woodKind(Level level, BlockPos pos) {
 		BlockState st = level.getBlockState(pos);
-		Holder<BlockTransformer> h = Items.IRON_AXE.getDefaultInstance().get(DataComponents.BLOCK_TRANSFORMER);
+		if (defaultAxe == null) defaultAxe = Items.IRON_AXE.getDefaultInstance(); // lazy: item components are bound after mod init
+		Holder<BlockTransformer> h = defaultAxe.get(DataComponents.BLOCK_TRANSFORMER);
 		if (h == null) return st.getBlock();
+		if (h.value() != woodKindOf) { // a data reload replaced the transformer: the cached mapping may be stale
+			WOOD_KIND.clear();
+			woodKindOf = h.value();
+		}
+		Block cached = WOOD_KIND.get(st.getBlock());
+		if (cached != null) return cached;
+		Block kind = st.getBlock();
 		for (BlockTransformer.BlockTransformData t : h.value().transforms()) {
 			BlockState r = t.blockStateProvider().value().getOptionalState(level, level.getRandom(), pos);
-			if (r != null && r.is(BlockTags.LOGS) && r.getBlock() != st.getBlock()) return r.getBlock();
+			if (r != null && r.is(BlockTags.LOGS) && r.getBlock() != st.getBlock()) {
+				kind = r.getBlock();
+				break;
+			}
 		}
-		return st.getBlock();
+		WOOD_KIND.put(st.getBlock(), kind);
+		return kind;
 	}
+
+	/** The axe whose transformer defines the wood kinds, created once (see {@link #woodKind}). */
+	private static @Nullable ItemStack defaultAxe;
+	/**
+	 * {@link #woodKind} per block: the axe mapping is a fixed block-to-block table, so one evaluation per block type is enough
+	 * (detectTree asks for every log of up to 256 per flood). Keyed to the transformer it was computed from.
+	 */
+	private static final Map<Block, Block> WOOD_KIND = new IdentityHashMap<>();
+	private static @Nullable BlockTransformer woodKindOf;
 
 	/** The 2x2 square of {@code logs} at T's level that contains T (its 4 cells), or just T. */
 	static List<BlockPos> bottomSquare(Set<BlockPos> logs, BlockPos t) {
@@ -314,12 +351,17 @@ public final class LumberLogic {
 			logs = Set.of();
 		} else if (s.breakPos != null && s.logs != null && level.getBlockState(s.breakPos).is(BlockTags.LOGS)) {
 			logs = s.logs; // mid break: the tree does not change under us, no need to flood again
+		} else if (s.logs != null && !s.logs.isEmpty() && s.phase == Phase.FELL && now - s.detectedAt < REDETECT_TICKS
+			&& (!s.anchored || s.stripLeft > 0 && s.stripPos != null && level.getBlockState(s.stripPos).is(BlockTags.LOGS))) {
+			logs = s.logs; // walking (or the strip pause): reuse the last flood; arrival (anchored) or REDETECT_TICKS floods again
 		} else {
 			logs = detectTree(level, t, s.known);
+			s.detectedAt = now;
 			if (s.known.isEmpty() && !logs.isEmpty()) { // a tree appears: remember its footprint for replanting
 				s.footprint = bottomSquare(logs, t);
 				s.unreach.clear();
 				s.anchored = false;
+				s.boneFails = 0;
 				if (s.footprint.size() == 4) markSite2x2(data, t); // saved by the next GolemData.save
 			}
 			s.known = new HashSet<>(logs);
@@ -399,7 +441,8 @@ public final class LumberLogic {
 			setPhase(s, golem, Phase.PICKUP, now);
 			return;
 		}
-		if (in != null && wantsFetch(level, data, in, false, false, true, s.topUp)) {
+		boolean bone = boneTarget(level, t, s) != null; // no bone meal fetched for a sapling that cannot grow
+		if (in != null && bone && wantsFetch(level, data, in, false, false, true, s.topUp)) {
 			fetchVisit(s, level, golem, data, in, inPos, now, false, false, true);
 			return;
 		}
@@ -691,6 +734,7 @@ public final class LumberLogic {
 			if (!reach(s, level, golem, spot, t, now)) return;
 			s.walk.reset();
 			s.anchored = true;
+			if (!level.getBlockState(target).is(BlockTags.LOGS)) return; // the walk reused an older flood: the next tick floods again
 			if (hdist(golem, target) > REACH_H) {
 				s.unreach.add(target);
 				s.anchored = false;
@@ -1040,23 +1084,42 @@ public final class LumberLogic {
 		sap.shrink(1);
 		if (sap.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
 		s.footprint = cells.size() == 4 ? cells : List.of(); // a 1x1 sapling is found at T
+		s.boneFails = 0;
 		if (missing.size() == 1) s.walk.reset();
 		done(s, golem, data, AFTER_ACTION_TICKS);
 		return true;
+	}
+
+	/**
+	 * The sapling cell to bone-meal, or null when bone meal is pointless: no sapling, vanilla's
+	 * {@link BonemealableBlock#isValidBonemealTarget} says no (a lone dark oak sapling, no room below the build limit), or the
+	 * last {@link #BONE_MAX_FAILS} uses changed nothing (an obstructed sapling: vanilla still accepts it, consumes the bone meal,
+	 * tries to place the tree and puts the sapling back). See lumber.md "Bone meal".
+	 */
+	private static @Nullable BlockPos boneTarget(ServerLevel level, BlockPos t, State s) {
+		if (s.boneFails >= BONE_MAX_FAILS) return null;
+		BlockPos target = null;
+		for (BlockPos p : footprintCells(level, t, s)) if (isSaplingBlock(level, p)) target = p;
+		if (target == null) return null;
+		BlockState st = level.getBlockState(target);
+		return st.getBlock() instanceof BonemealableBlock b && b.isValidBonemealTarget(level, target, st, BonemealSource.INTERACTION) ? target : null;
 	}
 
 	/** Bone meal on a growing sapling, one use every {@link #BONE_DELAY} ticks. True when this tick was used. */
 	private static boolean boneMeal(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, long now) {
 		int slot = supplySlot(data, LumberLogic::isBone);
 		if (slot < 0) return false;
-		List<BlockPos> fp = footprintCells(level, t, s);
-		BlockPos target = null;
-		for (BlockPos p : fp) if (isSaplingBlock(level, p)) target = p;
+		BlockPos target = boneTarget(level, t, s);
 		if (target == null) return false;
-		if (!standOutside(s, level, golem, t, fp, WORK_MIN, WORK_MAX, now)) return true;
+		if (!standOutside(s, level, golem, t, footprintCells(level, t, s), WORK_MIN, WORK_MAX, now)) return true;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
 		ItemStack bone = data.items.get(slot);
-		if (BoneMealItem.growCrop(bone, level, target)) level.levelEvent(1505, target, 15);
+		BlockState before = level.getBlockState(target);
+		if (BoneMealItem.growCrop(bone, level, target)) {
+			level.levelEvent(1505, target, 15);
+			// unchanged = no progress (failed roll, or a tree that had no room); a stage step or the tree resets the count
+			s.boneFails = level.getBlockState(target) == before ? s.boneFails + 1 : 0;
+		}
 		if (bone.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
 		done(s, golem, data, BONE_DELAY);
 		return true;
@@ -1072,17 +1135,30 @@ public final class LumberLogic {
 	private static boolean collect(State s, ServerLevel level, CopperGolem golem, GolemData data, BlockPos t, @Nullable List<BlockPos> growing, long now) {
 		AABB box = new AABB(t.getX() - ITEM_RADIUS, t.getY() - ITEM_BELOW, t.getZ() - ITEM_RADIUS,
 			t.getX() + ITEM_RADIUS + 1, t.getY() + ITEM_ABOVE, t.getZ() + ITEM_RADIUS + 1);
+		// fresh drops still under their pickup delay (a player's throw, a leaf drop) count as coming: waited for, not taken;
+		// an old one still delayed (never-pickup display items) is ignored
 		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem()));
+			e -> e.isAlive() && (!e.hasPickUpDelay() || e.getAge() >= 0 && e.getAge() < PENDING_AGE)
+				&& !s.skip.containsKey(e.getUUID()) && fitsSome(data, e.getItem()));
 		if (items.isEmpty()) {
 			s.chasing = null;
 			return false;
 		}
 		s.lastSeen = now; // a drop is there: PICKUP does not end yet
-		ItemEntity target = items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
-		boolean safe = growing == null || !inVolume(golem.blockPosition(), t, growing);
+		// a takeable drop first, the nearest of them
+		ItemEntity target = items.stream().min(Comparator.<ItemEntity>comparingInt(e -> e.hasPickUpDelay() ? 1 : 0)
+			.thenComparingDouble(golem::distanceToSqr)).get();
+		if (growing != null && inVolume(golem.blockPosition(), t, growing)) {
+			// in the sapling volume every path starts inside and "crosses" it (no detour, the drop was skipped): step out to the ring first
+			standOutside(s, level, golem, t, growing, WORK_MIN, WORK_MAX, now);
+			return true;
+		}
 		boolean danger = growing != null && footDist(target.blockPosition(), growing) == 0;
-		if (golem.distanceToSqr(target) <= PICKUP_RANGE_SQR && !(danger && !safe) || danger && safe && golem.distanceToSqr(target) <= DANGER_PICKUP_RANGE_SQR) {
+		if (golem.distanceToSqr(target) <= (danger ? DANGER_PICKUP_RANGE_SQR : PICKUP_RANGE_SQR)) {
+			if (target.hasPickUpDelay()) { // close enough: wait for the delay to run out (CleanerLogic never takes it either)
+				golem.getNavigation().stop();
+				return true;
+			}
 			pickUp(s, golem, data, target);
 			return true;
 		}
@@ -1105,8 +1181,9 @@ public final class LumberLogic {
 			Path path = golem.getNavigation().createPath(target, 0);
 			if (path != null && growing != null && crosses(path, t, growing)) { // never walk over a growing sapling: go round it
 				path = detour(level, golem, target, t, growing);
-				if (path == null && safe && golem.distanceToSqr(target) <= DANGER_PICKUP_RANGE_SQR) { // no way round: suck it up from here
-					pickUp(s, golem, data, target);
+				if (path == null && golem.distanceToSqr(target) <= DANGER_PICKUP_RANGE_SQR) { // no way round: suck it up from here
+					if (target.hasPickUpDelay()) golem.getNavigation().stop(); // not yet: wait here for the delay
+					else pickUp(s, golem, data, target);
 					return true;
 				}
 				if (path == null) { // no way round: skip this drop for now
@@ -1139,8 +1216,8 @@ public final class LumberLogic {
 	 */
 	private static @Nullable Path detour(ServerLevel level, CopperGolem golem, ItemEntity target, BlockPos t, List<BlockPos> f) {
 		List<BlockPos> cands = new ArrayList<>();
-		for (int dx = -(WORK_MAX + 1); dx <= WORK_MAX + 1; dx++) for (int dz = -(WORK_MAX + 1); dz <= WORK_MAX + 1; dz++) {
-			BlockPos p = new BlockPos(t.getX() + dx, golem.getBlockY(), t.getZ() + dz);
+		for (int dx = -(WORK_MAX + 1); dx <= WORK_MAX + 1; dx++) for (int dz = -(WORK_MAX + 1); dz <= WORK_MAX + 1; dz++) for (int dy = -1; dy <= 1; dy++) {
+			BlockPos p = new BlockPos(t.getX() + dx, golem.getBlockY() + dy, t.getZ() + dz); // +-1 Y: uneven ground round the sapling
 			int d = footDist(p, f);
 			if (d < WORK_MIN || d > WORK_MAX || !Interact.canStand(level, golem, p)) continue;
 			if (target.distanceToSqr(Vec3.atBottomCenterOf(p)) >= golem.distanceToSqr(target) - 1 || p.equals(golem.blockPosition())) continue;
@@ -1347,11 +1424,23 @@ public final class LumberLogic {
 		return rest.isEmpty();
 	}
 
-	/** Some part of {@code stack} would be taken. */
+	/**
+	 * Some part of {@code stack} would be taken: the {@link #storeInto} rules checked in place, without copying the inventory
+	 * (it runs per item entity in the pickup box every tick).
+	 */
 	private static boolean fitsSome(GolemData data, ItemStack stack) {
-		List<ItemStack> rest = new ArrayList<>(List.of(stack.copy()));
-		storeInto(copyOf(data), rest);
-		return rest.isEmpty() || rest.getFirst().getCount() < stack.getCount();
+		if (stack.isEmpty()) return false;
+		for (int k = LumberProfession.SUPPLY_FROM; k < LumberProfession.SUPPLY_FROM + LumberProfession.SUPPLY_SLOTS; k++) {
+			ItemStack sup = data.items.get(k);
+			if (!sup.isEmpty() && ItemStack.isSameItemSameComponents(sup, stack) && sup.getCount() < Math.min(64, sup.getMaxStackSize())) return true;
+		}
+		if (isSapling(stack) && supplySlot(data, LumberLogic::isSapling) < 0 && emptySupplySlot(data) >= 0) return true;
+		int max = Math.min(64, stack.getMaxStackSize());
+		for (int c = LumberProfession.CARRY_FROM; c < LumberProfession.CARRY_FROM + LumberProfession.CARRY_SLOTS; c++) {
+			ItemStack cur = data.items.get(c);
+			if (cur.isEmpty() || ItemStack.isSameItemSameComponents(cur, stack) && cur.getCount() < max) return true;
+		}
+		return false;
 	}
 
 	private static void storeAll(GolemData data, List<ItemStack> drops) {
