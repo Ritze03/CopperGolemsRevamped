@@ -14,6 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.RandomSource;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -50,6 +51,16 @@ public abstract class CopperGolemMixin {
 	private void cgr$regen(ServerLevel level, CallbackInfo ci) {
 		CopperGolem golem = (CopperGolem) (Object) this;
 		if (golem.tickCount % 600 == 0 && golem.getHealth() < golem.getMaxHealth()) golem.heal(1.0F);
+	}
+
+	/**
+	 * No oxidation for any copper golem: vanilla's weathering tick (stage advance by game time, and the random turn into
+	 * a statue once fully oxidized) never runs. User decision, see superdoc/features/oxidation.md. Scraping and waxing
+	 * keep working because they only touch the stage and nextWeatheringTick, not this method.
+	 */
+	@Inject(method = "updateWeathering", at = @At("HEAD"), cancellable = true)
+	private void cgr$noWeathering(ServerLevel level, RandomSource random, long gameTime, CallbackInfo ci) {
+		ci.cancel();
 	}
 
 	@Inject(method = "dropEquipment", at = @At("TAIL"))

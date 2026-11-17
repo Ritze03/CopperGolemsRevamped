@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.GlobalPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.core.NonNullList;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
@@ -92,6 +93,35 @@ public class ChestSorterTest {
 		int noneSlots = new GolemMenu(2, player.getInventory(), none).slots.size();
 		helper.assertTrue(sorterSlots == noneSlots && sorterSlots == 36 + 54, "slots sorter " + sorterSlots + ", none " + noneSlots);
 		helper.succeed();
+	}
+
+	/**
+	 * A sorter 40 blocks from its home (no chest anywhere) walks toward it instead of strolling off for good
+	 * (superdoc/features/golem-safety.md). Only the test's own 8x8 floor exists (neighbouring tests share the world), so
+	 * the golem can walk to the edge of it; the assertion is that it covered the floor toward home.
+	 */
+	@GameTest(maxTicks = 400)
+	public void sorterWalksBackHome(GameTestHelper helper) {
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		ServerLevel level = helper.getLevel();
+		CopperGolem golem = sorter(helper);
+		golem.snapTo(net.minecraft.world.phys.Vec3.atBottomCenterOf(helper.absolutePos(new BlockPos(1, 1, 3))), 0, 0);
+		double startX = golem.getX();
+		BlockPos home = helper.absolutePos(new BlockPos(41, 1, 3));
+		GolemData data = GolemData.get(golem);
+		data.home = GlobalPos.of(level.dimension(), home);
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> helper.assertTrue(golem.getX() > startX + 4, "moved " + (golem.getX() - startX) + " toward home"));
+	}
+
+	/** Old saves have a sorter without home: its position on the first tick becomes the home. */
+	@GameTest
+	public void sorterWithoutHomeGetsOne(GameTestHelper helper) {
+		CopperGolem golem = sorter(helper);
+		GolemData data = GolemData.get(golem);
+		data.home = null;
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> helper.assertTrue(GolemData.get(golem).home != null, "no home set"));
 	}
 
 	/** Fails without the mixin: vanilla would enter cooldown on the 11th chest. */

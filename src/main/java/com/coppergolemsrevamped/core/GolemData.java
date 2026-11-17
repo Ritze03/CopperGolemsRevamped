@@ -19,6 +19,7 @@ import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.resources.Identifier;
 import net.minecraft.core.UUIDUtil;
@@ -83,8 +84,9 @@ public class GolemData {
 		Codec.INT.lenientOptionalFieldOf("xp", 0).forGetter(d -> d.xp),
 		Codec.STRING.lenientOptionalFieldOf("filter_mode", FilterMode.OFF.id).forGetter(d -> d.filterMode.id),
 		Codec.BOOL.lenientOptionalFieldOf("strip_logs", false).forGetter(d -> d.stripLogs),
-		Codec.BOOL.lenientOptionalFieldOf("keep_layout", false).forGetter(d -> d.keepLayout)
-	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, kl) -> {
+		Codec.BOOL.lenientOptionalFieldOf("keep_layout", false).forGetter(d -> d.keepLayout),
+		GlobalPos.CODEC.lenientOptionalFieldOf("home").forGetter(d -> Optional.ofNullable(d.home))
+	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, kl, hm) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
@@ -98,6 +100,7 @@ public class GolemData {
 		d.filterMode = FilterMode.parse(fm);
 		d.stripLogs = sl;
 		d.keepLayout = kl;
+		d.home = hm.orElse(null);
 		d.fitItems();
 		return d;
 	}));
@@ -120,6 +123,11 @@ public class GolemData {
 	/** Keep layout: never empty a stack, never fill an empty slot in a container (see superdoc/features/keep-layout.md). Default off. */
 	public boolean keepLayout;
 	public @Nullable UUID followPlayer;
+	/**
+	 * Chest Sorter home: where the golem works; it walks back when it strays too far (see superdoc/features/golem-safety.md).
+	 * Null for other professions and for old saves (set on the first tick). Lenient optional in the codec.
+	 */
+	public @Nullable GlobalPos home;
 
 	/** The chest the build pattern left where the copper block was; null for golems spawned any other way. */
 	public @Nullable BlockPos spawnChest;

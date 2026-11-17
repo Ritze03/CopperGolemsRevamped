@@ -26,7 +26,8 @@
 			"com.coppergolemsrevamped.test.TransferLimitTest",
 			"com.coppergolemsrevamped.test.MendingTest",
 			"com.coppergolemsrevamped.test.OxidationTest",
-			"com.coppergolemsrevamped.test.HealthTest"
+			"com.coppergolemsrevamped.test.HealthTest",
+			"com.coppergolemsrevamped.test.GolemSafetyTest"
 		],
 		"fabric-client-gametest": [
 			"com.coppergolemsrevamped.test.GolemGuiClientTest",

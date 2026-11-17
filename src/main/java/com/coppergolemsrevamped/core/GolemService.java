@@ -6,12 +6,14 @@ import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Profession.Kind;
 import com.coppergolemsrevamped.profession.Professions;
+import com.coppergolemsrevamped.profession.chest_sorter.ChestSorterProfession;
 
 import java.util.function.Consumer;
 
 import org.jspecify.annotations.Nullable;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
@@ -50,6 +52,7 @@ public final class GolemService {
 		data.frozen = false; // a new profession starts working (freeze.md)
 		data.filterMode = FilterMode.OFF; // the filter items are dropped with the other items
 		data.profession = id;
+		data.home = ChestSorterProfession.ID.equals(id) ? GlobalPos.of(level.dimension(), golem.blockPosition()) : null;
 		Profession p = Professions.get(id);
 		// transient phase/skip/plan state starts fresh: switching away and back must not resume it (Profession.Forget)
 		if (old != null) old.forget().forget(golem);

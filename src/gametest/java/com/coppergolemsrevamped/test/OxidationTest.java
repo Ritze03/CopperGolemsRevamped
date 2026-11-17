@@ -93,6 +93,50 @@ public class OxidationTest {
 		}
 	}
 
+	private static void setNextWeatheringTick(CopperGolem golem, long value) {
+		try {
+			java.lang.reflect.Field f = CopperGolem.class.getDeclaredField("nextWeatheringTick");
+			f.setAccessible(true);
+			f.setLong(golem, value);
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("cannot set nextWeatheringTick", e);
+		}
+	}
+
+	private static void updateWeathering(CopperGolem golem, ServerLevel level) {
+		try {
+			Method m = CopperGolem.class.getDeclaredMethod("updateWeathering", ServerLevel.class, net.minecraft.util.RandomSource.class, long.class);
+			m.setAccessible(true);
+			m.invoke(golem, level, level.getRandom(), level.getGameTime());
+		} catch (ReflectiveOperationException e) {
+			throw new IllegalStateException("cannot call updateWeathering", e);
+		}
+	}
+
+	/**
+	 * No oxidation: a golem whose next stage is due stays at its stage, and a fully oxidized one never turns into a
+	 * statue (vanilla rolls 0.58% per tick; 3000 rolls make a statue practically certain without the mixin).
+	 */
+	@GameTest
+	public void golemsNeverOxidize(GameTestHelper helper) {
+		floor(helper);
+		ServerLevel level = helper.getLevel();
+		CopperGolem exposed = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, AT);
+		exposed.setWeatherState(net.minecraft.world.level.block.WeatheringCopper.WeatherState.EXPOSED);
+		setNextWeatheringTick(exposed, 1L);
+		CopperGolem oxidized = helper.spawnWithNoFreeWill(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 4));
+		oxidized.setWeatherState(net.minecraft.world.level.block.WeatheringCopper.WeatherState.OXIDIZED);
+		setNextWeatheringTick(oxidized, 0L);
+		for (int i = 0; i < 3000; i++) {
+			updateWeathering(exposed, level);
+			updateWeathering(oxidized, level);
+		}
+		helper.assertTrue(exposed.getWeatherState() == net.minecraft.world.level.block.WeatheringCopper.WeatherState.EXPOSED, "advanced: " + exposed.getWeatherState());
+		helper.assertTrue(!oxidized.isRemoved(), "oxidized golem turned into a statue");
+		helper.assertTrue(level.getBlockState(oxidized.blockPosition()).isAir(), "statue block placed");
+		helper.succeed();
+	}
+
 	private static int itemCount(GameTestHelper helper, Item item) {
 		int n = 0;
 		for (ItemEntity e : helper.getEntities(EntityTypes.ITEM, AT, 4)) if (e.getItem().is(item)) n += e.getItem().getCount();

@@ -15,8 +15,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
+import net.minecraft.world.phys.AABB;
 
 public final class GolemTicker {
 	private static final Logger LOGGER = LoggerFactory.getLogger("coppergolemsrevamped");
@@ -73,10 +75,51 @@ public final class GolemTicker {
 		}
 	}
 
+	/** Ticks between the "is the golem stuck inside a block" checks. */
+	static final int STEP_OUT_PERIOD = 20;
+
+	private static long now(ServerLevel level) {
+		return level.getGameTime();
+	}
+
+	/**
+	 * The golem is inside a block (a tree, melon or pumpkin grew into it; golems take no non-player damage, so it would
+	 * stay hidden there). Moves it to the nearest spot within 2 blocks where a golem-sized box has no collision and the
+	 * floor below is solid: same Y first, then one up, nearest first. Nothing found: stays (checked again later).
+	 */
+	private static void stepOut(ServerLevel level, CopperGolem golem) {
+		BlockPos origin = golem.blockPosition();
+		BlockPos best = null;
+		double bestDist = Double.MAX_VALUE;
+		for (int dy : new int[] {0, 1}) {
+			for (int dx = -2; dx <= 2; dx++) {
+				for (int dz = -2; dz <= 2; dz++) {
+					BlockPos c = origin.offset(dx, dy, dz);
+					BlockPos below = c.below();
+					if (level.getBlockState(below).getCollisionShape(level, below).isEmpty()) continue;
+					AABB box = golem.getDimensions(golem.getPose()).makeBoundingBox(c.getX() + 0.5, c.getY(), c.getZ() + 0.5);
+					if (!level.noCollision(golem, box)) continue;
+					double d = dx * dx + dz * dz;
+					if (d < bestDist) {
+						bestDist = d;
+						best = c;
+					}
+				}
+			}
+			if (best != null) break; // same Y preferred over +1
+		}
+		if (best == null) return;
+		golem.getNavigation().stop();
+		golem.snapTo(best.getX() + 0.5, best.getY(), best.getZ() + 0.5, golem.getYRot(), golem.getXRot());
+	}
+
 	/** Called in place of the vanilla brain tick; runs {@code vanillaBrainTick} only when the vanilla brain should run. */
 	private static void tickUnsafe(ServerLevel level, CopperGolem golem, Runnable vanillaBrainTick) {
 		GolemData data = GolemData.get(golem);
 		Profession p = GolemService.profession(golem);
+		// A minecart or boat picked the golem up: a working golem walks on its own, so it climbs out (golem-safety.md).
+		if (p != null && golem.isPassenger()) golem.stopRiding();
+		if ((now(level) + golem.getId()) % STEP_OUT_PERIOD == 0 && golem.isInWall()) stepOut(level, golem);
 		if (p != null) GolemChunkLoader.keep(level, golem);
 		else GolemChunkLoader.release(level, golem);
 		// old saves kept waxed copper in the sorter's slot; a no-op early return unless a sorter still holds items
@@ -98,6 +141,7 @@ public final class GolemTicker {
 			// No profession: stand still. Why: the vanilla brain wanders and moves items on its own.
 			golem.getNavigation().stop();
 		} else if (p.runsVanillaBrain()) {
+			if (ChestSorterProfession.ID.equals(p.id()) && ChestSorterProfession.walkHome(level, golem, data)) return;
 			vanillaBrainTick.run();
 		} else {
 			p.tick(level, golem, data);

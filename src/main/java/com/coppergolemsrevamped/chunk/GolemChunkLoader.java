@@ -1,6 +1,8 @@
 package com.coppergolemsrevamped.chunk;
 
 import com.coppergolemsrevamped.CopperGolemsRevamped;
+import com.coppergolemsrevamped.core.GolemData;
+import com.coppergolemsrevamped.core.ModAttachments;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -64,9 +66,23 @@ public final class GolemChunkLoader {
 		// A removal that is not a plain chunk unload (killed, discarded, statue, dimension change) releases the ticket.
 		// A chunk unload must not: the golem comes back with the chunk.
 		ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> {
-			if (entity instanceof CopperGolem golem && isGone(golem)) release(level, golem);
+			if (entity instanceof CopperGolem golem && isGone(golem)) {
+				logRemoval(level, golem);
+				release(level, golem);
+			}
 		});
 		ServerLifecycleEvents.SERVER_STOPPED.register(GolemChunkLoader::clear);
+	}
+
+	/**
+	 * INFO line for every golem that leaves the world for good. Why: golems vanished from a live server with no trace;
+	 * this names the cause (RemovalReason) at the next one. See superdoc/features/golem-safety.md.
+	 */
+	private static void logRemoval(ServerLevel level, CopperGolem golem) {
+		GolemData data = golem.getAttached(ModAttachments.GOLEM_DATA);
+		CopperGolemsRevamped.LOGGER.info("Copper golem removed: name={} uuid={} profession={} dimension={} pos={} reason={}",
+			golem.getName().getString(), golem.getUUID(), data == null || data.profession == null ? "none" : data.profession,
+			level.dimension().identifier(), golem.blockPosition().toShortString(), golem.getRemovalReason());
 	}
 
 	private static boolean isGone(Entity e) {
