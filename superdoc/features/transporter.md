@@ -12,9 +12,23 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
 - `profession/transporter/TransporterLogic:tick` is the work loop; static helpers below.
 - `ai/FollowMode:tick` is follow mode.
 
+## Far-walk give-up
+
+A chest in an unloaded chunk is walked to blindly (`Interact:walkTowards`), which needs a way out. `TransporterLogic:farGiveUp`
+gives up when the target is more than 256 blocks away (horizontally), or when the distance has not improved by 2 blocks
+within 200 ticks. It then stops navigation, waits 1200 ticks (walking back to the last position that made progress, so
+it ends up near the loaded chest it came from) and tries again. While waiting, `TransporterLogic:status` feeds the Status
+tab (`ProfessionStatus`): "Can't reach chest B (too far)" or "(no path)". A reachable chest is unaffected: it keeps
+making progress, and the counter resets whenever the target changes or its chunk is loaded.
+
+Why: without a path (river, cliff, other island) the walk never ended, and the golem's chunk ticket moved with it, so a
+golem "randomly disappeared" into the wilderness. The 256 cap stops a typo'd or far-flung assignment from sending it on
+a long trip at all. The cooldown retries because the obstacle (a bridge, a moved chunk) may be gone later.
+
 ## Work loop (`TransporterLogic:tick`, one call per server tick)
 
-1. Cooldown running: decrement, return.
+1. Give-up wait or cooldown running: decrement, return (a give-up wait also walks back to the last position with
+   progress, see "Far-walk give-up").
 2. Either assignment missing, or either block no longer a container: stop navigation, retry in 40 ticks. A chest whose
    chunk is not loaded is not "missing": when it is the next target the golem walks towards it without reading it
    (`Interact:approach`), and a take while B is unloaded skips the "B can take it" check (a type B refuses then comes
@@ -23,6 +37,7 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
    (`TransporterLogic:acceptsAny`), else A (return trip, below).
 4. Not in reach: `Interact:approach` walks to a stand position within 1 block of the chest (2 blocks as
    fallback if none is reachable), see [../architecture/interaction.md](../architecture/interaction.md).
+   For an unloaded target `TransporterLogic:farGiveUp` runs first (see below).
 5. In reach: stop, look at chest, then
    - carry empty: `takeAll(A, carry)` of only the stacks B can take right now (`canInsert(B, stack, keepLayout)`, plus the
      filter); nothing moved (A empty, or nothing B accepts) -> wait 40 ticks; else open A's lid

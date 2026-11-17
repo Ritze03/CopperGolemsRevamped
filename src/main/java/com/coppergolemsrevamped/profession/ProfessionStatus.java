@@ -46,7 +46,7 @@ public final class ProfessionStatus {
 		if (p.runsVanillaBrain()) return "Sorting items between chests";
 		if (missing(p, data) != null) return "Waiting for targets";
 		return switch (p.id().getPath()) {
-			case "transporter" -> transporter(data);
+			case "transporter" -> transporter(golem, data);
 			case "butcher" -> ButcherLogic.status(golem);
 			case "cleaner" -> "Picking up loose items";
 			case "farmer" -> "Farming the field";
@@ -83,7 +83,9 @@ public final class ProfessionStatus {
 		};
 	}
 
-	private static String transporter(GolemData data) {
+	private static String transporter(CopperGolem golem, GolemData data) {
+		String stuck = TransporterLogic.status(golem);
+		if (stuck != null) return stuck;
 		return switch (data.filterMode) {
 			case OFF -> "Moving items from A to B";
 			case WHITELIST -> TransporterLogic.filterHasItems(data)

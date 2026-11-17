@@ -186,6 +186,62 @@ public class ChunkLoadTest {
 		helper.runAfterDelay(120, () -> {
 			helper.assertTrue(TransporterLogic.carry(GolemData.get(golem)).stream().anyMatch(s -> s.is(Items.COBBLESTONE)),
 				"the golem should have taken from A to carry it towards the far chest B");
+			String status = TransporterLogic.status(golem);
+			helper.assertTrue(status != null && status.contains("too far"), "B is 4096 blocks away: expected the give-up status, got: " + status);
+			helper.succeed();
+		});
+	}
+
+	/**
+	 * Far-walk give-up (chunk-loading.md, "Unloaded targets"): chest B lies in an unloaded chunk within the 256-block
+	 * cap but the golem is walled in, so the distance never improves. It stops walking after ~200 ticks, shows the status
+	 * line and waits instead of walking on.
+	 */
+	@GameTest(maxTicks = 500)
+	public void unreachableFarTargetIsGivenUp(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		for (int x = 1; x <= 5; x++) for (int z = 1; z <= 5; z++) {
+			if (x != 1 && x != 5 && z != 1 && z != 5) continue;
+			for (int y = 1; y <= 3; y++) helper.setBlock(new BlockPos(x, y, z), Blocks.GLASS);
+		}
+		BlockPos a = new BlockPos(2, 1, 3);
+		helper.setBlock(a, Blocks.CHEST);
+		helper.getBlockEntity(a, ChestBlockEntity.class).setItem(0, new ItemStack(Items.COBBLESTONE, 8));
+		BlockPos far = helper.absolutePos(new BlockPos(3, 1, 3)).offset(150, 0, 150);
+		helper.assertFalse(level.hasChunkAt(far), "the far chunk is loaded before the test even starts");
+
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 3));
+		GolemService.changeProfession(level, golem, TRANSPORTER);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("input", helper.absolutePos(a));
+		data.assignments.put("output", far);
+		GolemData.save(golem, data);
+
+		helper.runAfterDelay(450, () -> {
+			String status = TransporterLogic.status(golem);
+			helper.assertTrue(status != null && status.contains("no path"), "expected the give-up status, got: " + status);
+			helper.assertFalse(level.hasChunkAt(far), "the golem loaded the far chunk");
+			helper.succeed();
+		});
+	}
+
+	/**
+	 * No portals: a golem standing in an end portal and one in a nether portal for 100 ticks stays in its dimension (a
+	 * Following golem may travel; not tested). The end portal block is stable without a frame, the nether portal block
+	 * may vanish without one, so it only adds to the check.
+	 */
+	@GameTest(maxTicks = 130)
+	public void golemsDoNotUsePortals(GameTestHelper helper) {
+		ServerLevel level = helper.getLevel();
+		for (int x = 0; x < 6; x++) for (int z = 0; z < 3; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		helper.setBlock(new BlockPos(1, 1, 1), Blocks.END_PORTAL);
+		helper.setBlock(new BlockPos(4, 1, 1), Blocks.NETHER_PORTAL);
+		CopperGolem inEnd = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(1, 1, 1));
+		CopperGolem inNether = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 1));
+		helper.runAfterDelay(100, () -> {
+			helper.assertTrue(inEnd.isAlive() && inEnd.level() == level, "the golem in the end portal left the dimension");
+			helper.assertTrue(inNether.isAlive() && inNether.level() == level, "the golem in the nether portal left the dimension");
 			helper.succeed();
 		});
 	}

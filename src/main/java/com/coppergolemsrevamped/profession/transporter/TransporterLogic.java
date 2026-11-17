@@ -35,6 +35,26 @@ public final class TransporterLogic {
 		int cooldown;
 		boolean loading;
 		final Interact.Approach walk = new Interact.Approach();
+		/** Far-walk progress (target in an unloaded chunk): target walked to, closest horizontal distance, ticks without progress. */
+		@Nullable BlockPos farTarget;
+		double farBest;
+		int farStuck;
+		/** Give-up: ticks left of the cooldown, where to wait (last position with progress), and the status text. */
+		int giveUp;
+		@Nullable Vec3 retreat;
+		@Nullable String status;
+	}
+
+	/** Far-walk give-up (superdoc/features/chunk-loading.md, "Unloaded targets"). */
+	static final double FAR_MAX = 256;
+	static final double FAR_PROGRESS = 2;
+	static final int FAR_STUCK_TICKS = 200;
+	static final int FAR_COOLDOWN = 1200;
+
+	/** Status line while the golem has given up on an unreachable far chest, else null. */
+	public static @Nullable String status(CopperGolem golem) {
+		State s = STATES.get(golem);
+		return s != null && s.giveUp > 0 ? s.status : null;
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
@@ -46,6 +66,15 @@ public final class TransporterLogic {
 
 	public static void tick(ServerLevel level, CopperGolem golem, GolemData data) {
 		State s = STATES.computeIfAbsent(golem, g -> new State());
+		if (s.giveUp > 0) {
+			// gave up on a far chest: wait near the last position with progress, then try again
+			s.giveUp--;
+			Vec3 r = s.retreat;
+			if (r != null && golem.position().distanceToSqr(r) > 4 && golem.getNavigation().isDone()) {
+				golem.getNavigation().moveTo(r.x, r.y, r.z, SPEED);
+			}
+			return;
+		}
 		if (s.cooldown > 0) {
 			s.cooldown--;
 			return;
@@ -71,6 +100,8 @@ public final class TransporterLogic {
 		boolean deliver = !take && (cb == null || acceptsAny(carry, cb, data.keepLayout));
 		BlockPos target = deliver ? b : a;
 		Container here = deliver ? cb : ca;
+		if (Interact.loaded(level, target)) s.farTarget = null;
+		else if (farGiveUp(golem, s, target, deliver)) return;
 		if (!Interact.approach(level, golem, target, s.walk, SPEED) || here == null) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
 		if (take) {
@@ -101,6 +132,34 @@ public final class TransporterLogic {
 			} else s.cooldown = RETRY_TICKS;
 		}
 		GolemData.save(golem, data);
+	}
+
+	/**
+	 * Tracks the walk towards a chest in an unloaded chunk and gives up (true) when the target is more than
+	 * {@link #FAR_MAX} blocks away or the horizontal distance has not improved by {@link #FAR_PROGRESS} within
+	 * {@link #FAR_STUCK_TICKS}. Why: with no real path (river, cliff, another continent) the walk never ends and the
+	 * golem's chunk ticket follows it into the wilderness.
+	 */
+	private static boolean farGiveUp(CopperGolem golem, State s, BlockPos target, boolean toB) {
+		Vec3 delta = Vec3.atCenterOf(target).subtract(golem.position());
+		double d = Math.sqrt(delta.x * delta.x + delta.z * delta.z);
+		if (!target.equals(s.farTarget)) {
+			s.farTarget = target.immutable();
+			s.farBest = d;
+			s.farStuck = 0;
+			s.retreat = golem.position();
+		} else if (d < s.farBest - FAR_PROGRESS) {
+			s.farBest = d;
+			s.farStuck = 0;
+			s.retreat = golem.position();
+		} else s.farStuck++;
+		if (d <= FAR_MAX && s.farStuck < FAR_STUCK_TICKS) return false;
+		golem.getNavigation().stop();
+		s.walk.reset();
+		s.farTarget = null;
+		s.giveUp = FAR_COOLDOWN;
+		s.status = "Can't reach chest " + (toB ? "B" : "A") + " (" + (d > FAR_MAX ? "too far" : "no path") + ")";
+		return true;
 	}
 
 	/** The carry slots of a Transporter: a live view of the first {@link TransporterProfession#CARRY_SLOTS} items. */
