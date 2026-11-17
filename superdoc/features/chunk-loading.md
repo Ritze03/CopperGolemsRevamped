@@ -39,6 +39,10 @@ their area scans; `GolemService:prefillSpawnChest`, `Interact:canStand` and the 
   several targets at once (field + chests, area + chests); walking to a far chest would unload the field and walk back,
   over and over.
 
+- The Transporter's far walk gives up: more than 256 blocks away, or no 2-block progress in 200 ticks, then a 1200-tick
+  wait near the last good position and a retry (`TransporterLogic:farGiveUp`, see [transporter.md](transporter.md)). Why:
+  the ticket follows the golem, so an endless walk without a path dragged a golem (and loaded chunks) off into the world.
+
 Why (perf review #5): reading a block in an unloaded chunk loads it synchronously on the server thread, and the
 professions read their chests on every tick or retry. A golem in Follow mode far from its chests, or chests about 64
 blocks apart (beyond the ticket's loaded ring), loaded distant chunks again and again. `ServerLevel#getBlockState` and
@@ -88,7 +92,10 @@ only: after a restart the first golem tick re-adds the ticket, nothing needs sav
 `TicketStorage.CODEC` round trip of our ticket type (the restart case; a real restart cannot be a GameTest), and
 `unloadedTargetIsNeverLoaded` (a Transporter whose chest B is 4096 blocks away: `containerAt` reports it missing, the far
 chunk is never loaded on any tick, the golem takes from A and heads for B; walled in with glass so it stays inside its
-own test, see the test-bounds note below).
+own test, see the test-bounds note below; its status reads "too far"), `unreachableFarTargetIsGivenUp` (B about 212 blocks away,
+golem walled in: after ~200 ticks the status reads "no path" and B's chunk was never loaded) and `golemsDoNotUsePortals`
+(golems in an end and a nether portal block for 100 ticks stay in their dimension; `mixin/EntityMixin` cancels
+`Entity#setAsInsidePortal` for a CopperGolem that is not in Follow mode, so the golem keeps its workplace).
 
 Why `ticketMovesWithGolem` teleports the golem 40 blocks up (no gravity) into the next chunk: GameTest
 structures are packed side by side, so the next chunk lies inside another test's bounds, and that test's
