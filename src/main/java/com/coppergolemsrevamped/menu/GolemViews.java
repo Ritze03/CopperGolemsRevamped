@@ -9,6 +9,8 @@ import com.coppergolemsrevamped.profession.Profession.AssignSpec;
 import com.coppergolemsrevamped.profession.Profession.Kind;
 import com.coppergolemsrevamped.profession.Profession.SlotGroup;
 import com.coppergolemsrevamped.profession.ProfessionStatus;
+import com.coppergolemsrevamped.profession.butcher.ButcherProfession;
+import com.coppergolemsrevamped.profession.farmer.FarmerProfession;
 import com.coppergolemsrevamped.profession.lumber.LumberProfession;
 import com.coppergolemsrevamped.profession.Professions;
 
@@ -348,9 +350,16 @@ final class GolemViews {
 		set(cells, 2, 4, icon(GolemIcon.plain(Items.ITEM_FRAME, Component.literal("Keep layout: " + (keep ? "on" : "off")),
 			lore("Leaves 1 item in every slot; never fills empty slots"), keep),
 			(p, b) -> m.toggleKeepLayout()));
-		if (LumberProfession.ID.equals(m.currentId())) {
+		boolean lumber = LumberProfession.ID.equals(m.currentId());
+		if (lumber || FarmerProfession.ID.equals(m.currentId()) || ButcherProfession.ID.equals(m.currentId())) {
+			boolean save = data.saveTools;
+			set(cells, 4, lumber ? 3 : 4, icon(GolemIcon.plain(Items.ANVIL, Component.literal("Save tools: " + (save ? "on" : "off")),
+				lore("Puts enchanted tools away before they break", "Plain tools are used until they break"), save),
+				(p, b) -> m.toggleSaveTools()));
+		}
+		if (lumber) {
 			boolean strip = data.stripLogs;
-			set(cells, 4, 4, icon(GolemIcon.plain(strip ? Items.STRIPPED_OAK_LOG : Items.OAK_LOG,Component.literal("Strip logs: " + (strip ? "on" : "off")),
+			set(cells, 4, 5, icon(GolemIcon.plain(strip ? Items.STRIPPED_OAK_LOG : Items.OAK_LOG,Component.literal("Strip logs: " + (strip ? "on" : "off")),
 				lore("Strips each log with the axe before breaking it", "The carry then holds stripped logs"), strip),
 				(p, b) -> m.toggleStripLogs()));
 		}

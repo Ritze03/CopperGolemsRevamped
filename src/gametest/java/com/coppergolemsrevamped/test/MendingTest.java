@@ -32,11 +32,11 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 /**
  * Mending for the tool professions (superdoc/features/mending.md): XP bottles in the tool chest repair the tools (7 XP
- * each, vanilla conversion), and a Mending tool at or below {@link GolemMending#MENDING_SAFE_DURABILITY} is never used
+ * each, vanilla conversion), and a Mending tool at or below {@link GolemMending#SAFE_DURABILITY} is never used
  * (it goes back into the chest, the golem works bare-handed or with another tool).
  */
 public class MendingTest {
-	private static final int SAFE = GolemMending.MENDING_SAFE_DURABILITY;
+	private static final int SAFE = GolemMending.SAFE_DURABILITY;
 
 	// Lumber layout (as LumberTest)
 	private static final BlockPos T = new BlockPos(3, 1, 3);
@@ -76,12 +76,12 @@ public class MendingTest {
 	@GameTest
 	public void guardAndConversion(GameTestHelper helper) {
 		ItemStack above = mending(helper, Items.IRON_AXE, SAFE + 1), at = mending(helper, Items.IRON_AXE, SAFE);
-		helper.assertTrue(GolemMending.canUse(above) && !GolemMending.canUse(at), "threshold: " + GolemMending.canUse(above) + " " + GolemMending.canUse(at));
+		helper.assertTrue(GolemMending.canUse(above, true) && !GolemMending.canUse(at, true) && GolemMending.canUse(at, false), "threshold: " + GolemMending.canUse(above, true) + " " + GolemMending.canUse(at, true));
 		ItemStack plain = new ItemStack(Items.IRON_AXE);
 		plain.setDamageValue(plain.getMaxDamage() - 1);
-		helper.assertTrue(GolemMending.canUse(plain), "a plain tool is always usable");
+		helper.assertTrue(GolemMending.canUse(plain, true), "a plain tool is always usable");
 		ItemStack last = mending(helper, Items.IRON_AXE, 1);
-		helper.assertTrue(!GolemMending.damage(helper.getLevel(), last, 1) && !last.isEmpty() && GolemMending.remaining(last) == 1,
+		helper.assertTrue(!GolemMending.damage(helper.getLevel(), last, true, 1) && !last.isEmpty() && GolemMending.remaining(last) == 1,
 			"damage() must refuse the hit that would break a Mending tool");
 		int per = GolemMending.perBottle(helper.getLevel(), at);
 		helper.assertTrue(per == 14, "durability per 7 XP bottle: " + per);
@@ -145,6 +145,41 @@ public class MendingTest {
 			helper.assertTrue(count(out, Items.OAK_LOG) == 5, "logs: " + count(out, Items.OAK_LOG));
 			helper.assertTrue(count(in, Items.IRON_AXE) == 1 && GolemData.get(golem).items.get(LumberProfession.AXE_SLOT).isEmpty(), "the axe is not back in the chest");
 			helper.assertTrue(GolemMending.remaining(in.getItem(firstAxe(in))) == SAFE, "axe remaining: " + in.getItem(firstAxe(in)));
+		});
+	}
+
+	/** The "Save tools" rule covers every enchanted tool, not only Mending: an Efficiency axe rests at the threshold. */
+	@GameTest(maxTicks = 4000)
+	public void saveToolsParksAnyEnchantedAxe(GameTestHelper helper) {
+		lumberWorld(helper, 5);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		ItemStack axe = new ItemStack(Items.IRON_AXE);
+		axe.enchant(helper.getLevel().registryAccess().lookupOrThrow(Registries.ENCHANTMENT).getOrThrow(Enchantments.EFFICIENCY), 1);
+		axe.setDamageValue(axe.getMaxDamage() - (SAFE + 1));
+		CopperGolem golem = lumber(helper, axe);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.OAK_LOG) == 5, "logs: " + count(out, Items.OAK_LOG));
+			helper.assertTrue(count(in, Items.IRON_AXE) == 1 && GolemData.get(golem).items.get(LumberProfession.AXE_SLOT).isEmpty(), "the axe is not back in the chest");
+			helper.assertTrue(GolemMending.remaining(in.getItem(firstAxe(in))) == SAFE, "axe remaining: " + in.getItem(firstAxe(in)));
+		});
+	}
+
+	/** Plain axe breaks as before, and with "Save tools" off a Mending axe breaks too. */
+	@GameTest(maxTicks = 4000)
+	public void plainAndUnsavedToolsBreak(GameTestHelper helper) {
+		lumberWorld(helper, 10); // two golems share the tree, each axe has 3 points
+		ChestBlockEntity in = chest(helper, IN);
+		ItemStack plain = new ItemStack(Items.IRON_AXE);
+		plain.setDamageValue(plain.getMaxDamage() - 3);
+		CopperGolem a = lumber(helper, plain);
+		CopperGolem b = lumber(helper, mending(helper, Items.IRON_AXE, 3));
+		GolemData bd = GolemData.get(b);
+		bd.saveTools = false;
+		GolemData.save(b, bd);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(GolemData.get(a).items.get(LumberProfession.AXE_SLOT).isEmpty(), "plain axe should have broken");
+			helper.assertTrue(GolemData.get(b).items.get(LumberProfession.AXE_SLOT).isEmpty(), "Mending axe should have broken with Save tools off");
+			helper.assertTrue(count(in, Items.IRON_AXE) == 0, "no axe is parked");
 		});
 	}
 

@@ -288,7 +288,7 @@ public final class ButcherLogic {
 		if (!cullNeeded) return false;
 		if (toolVisit(level, golem, data, s)) return true;
 		ItemStack tool = data.items.get(ButcherProfession.TOOL_SLOT);
-		boolean armed = isWeapon(tool) && GolemMending.canUse(tool);
+		boolean armed = isWeapon(tool) && GolemMending.canUse(tool, data.saveTools);
 		if (!armed && !mendingBlocked(level, data)) return false; // no weapon and no Mending tool in the way: does not kill
 		if (freeCarry(data) < MIN_FREE_CARRY || !cull(level, golem, data, s, herds, now)) return false;
 		if (!armed) s.doing += ", bare-handed (Mending tool needs repair)";
@@ -471,7 +471,7 @@ public final class ButcherLogic {
 	static void strike(ServerLevel level, CopperGolem golem, GolemData data, State s, Animal target) {
 		ItemStack real = data.items.get(ButcherProfession.TOOL_SLOT);
 		// a Mending tool near its end stays in the slot unused: the golem hits with its hands (1 damage)
-		ItemStack tool = isWeapon(real) && GolemMending.canUse(real) ? real : ItemStack.EMPTY;
+		ItemStack tool = isWeapon(real) && GolemMending.canUse(real, data.saveTools) ? real : ItemStack.EMPTY;
 		ItemStack prev = golem.getMainHandItem();
 		golem.setItemSlot(EquipmentSlot.MAINHAND, tool);
 		captureVictim = target;
@@ -491,7 +491,7 @@ public final class ButcherLogic {
 		s.strikes++;
 		if (!tool.isEmpty()) {
 			Weapon weapon = tool.get(DataComponents.WEAPON);
-			GolemMending.damage(level, tool, weapon == null ? 1 : weapon.itemDamagePerAttack()); // never breaks a Mending tool
+			GolemMending.damage(level, tool, data.saveTools, weapon == null ? 1 : weapon.itemDamagePerAttack()); // never breaks a Mending tool
 			if (tool.isEmpty()) data.items.set(ButcherProfession.TOOL_SLOT, ItemStack.EMPTY);
 		}
 		GolemData.save(golem, data);
@@ -739,16 +739,16 @@ public final class ButcherLogic {
 
 	// ---- weapon ---------------------------------------------------------------------------------------------------
 
-	/** The slot needs another weapon: empty, about to break, or a Mending tool that must rest. */
-	static boolean needsWeapon(ItemStack cur) {
-		return cur.isEmpty() || cur.nextDamageWillBreak() || GolemMending.mustPark(cur);
+	/** The slot needs another weapon: empty, about to break, or a protected tool that must rest. */
+	static boolean needsWeapon(ItemStack cur, GolemData data) {
+		return cur.isEmpty() || cur.nextDamageWillBreak() || GolemMending.mustPark(cur, data.saveTools);
 	}
 
 	/** Chest slot of a weapon that may be taken: fills the empty slot or replaces a worn one (about to break); -1 if none. */
-	static int fetchableWeapon(Container chest, ItemStack cur) {
+	static int fetchableWeapon(Container chest, ItemStack cur, GolemData data) {
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (isWeapon(st) && st.getCount() == 1 && GolemMending.canUse(st) && (cur.isEmpty() || !st.nextDamageWillBreak())) return i;
+			if (isWeapon(st) && st.getCount() == 1 && GolemMending.canUse(st, data.saveTools) && (cur.isEmpty() || !st.nextDamageWillBreak())) return i;
 		}
 		return -1;
 	}
@@ -756,14 +756,14 @@ public final class ButcherLogic {
 	/** True when a Mending weapon is why there is no usable one: held and resting, or (empty slot) lying unusable in the tool chest. */
 	static boolean mendingBlocked(ServerLevel level, GolemData data) {
 		ItemStack cur = data.items.get(ButcherProfession.TOOL_SLOT);
-		if (GolemMending.mustPark(cur)) return true;
+		if (GolemMending.mustPark(cur, data.saveTools)) return true;
 		if (!cur.isEmpty()) return false;
 		BlockPos pos = data.assignments.get(ButcherProfession.TOOLS);
 		Container chest = pos == null ? null : TransporterLogic.containerAt(level, pos);
 		if (chest == null) return false;
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (isWeapon(st) && GolemMending.mustPark(st)) return true;
+			if (isWeapon(st) && GolemMending.mustPark(st, data.saveTools)) return true;
 		}
 		return false;
 	}
@@ -779,8 +779,8 @@ public final class ButcherLogic {
 		if (chest == null) return false;
 		ItemStack cur = data.items.get(ButcherProfession.TOOL_SLOT);
 		boolean repair = GolemMending.canRepair(level, data, cur, chest, ButcherLogic::isWeapon);
-		boolean swap = needsWeapon(cur) && fetchableWeapon(chest, cur) >= 0;
-		boolean park = GolemMending.mustPark(cur) && GolemMending.canPark(chest, cur);
+		boolean swap = needsWeapon(cur, data) && fetchableWeapon(chest, cur, data) >= 0;
+		boolean park = GolemMending.mustPark(cur, data.saveTools) && GolemMending.canPark(chest, cur);
 		if (!repair && !swap && !park) return false;
 		s.doing = repair ? "Repairing tool with XP bottles" : "Fetching a weapon";
 		endCull(level, golem, s);
@@ -792,8 +792,8 @@ public final class ButcherLogic {
 			TransferBudget.spend(level, golem, used);
 			acted = used > 0;
 		}
-		int i = needsWeapon(cur) ? fetchableWeapon(chest, cur) : -1;
-		boolean parkNow = i < 0 && GolemMending.mustPark(cur) && GolemMending.canPark(chest, cur);
+		int i = needsWeapon(cur, data) ? fetchableWeapon(chest, cur, data) : -1;
+		boolean parkNow = i < 0 && GolemMending.mustPark(cur, data.saveTools) && GolemMending.canPark(chest, cur);
 		if ((i >= 0 || parkNow) && TransferBudget.exhausted(level, golem)) return atChest(level, golem, data, s, pos, Interact.Action.TAKE);
 		if (i >= 0) {
 			TransferBudget.spend(level, golem, 1); // a swap counts as one item

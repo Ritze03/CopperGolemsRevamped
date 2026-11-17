@@ -8,7 +8,9 @@ import com.coppergolemsrevamped.core.GolemHandDisplay;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.menu.GolemMenu;
 import com.coppergolemsrevamped.menu.Tab;
+import com.coppergolemsrevamped.profession.butcher.ButcherProfession;
 import com.coppergolemsrevamped.profession.crafter.CrafterProfession;
+import com.coppergolemsrevamped.profession.farmer.FarmerProfession;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -415,22 +417,48 @@ public class MenuTest {
 		helper.succeed();
 	}
 
-	/** The "Strip logs" toggle exists for the Lumber only (Settings 4,4), default off, flips and persists. */
+	/** The "Strip logs" toggle exists for the Lumber only (Settings 4,5, next to Save tools at 4,3), default off, flips and persists. */
 	@GameTest
 	public void settingsStripLogsToggleIsLumberOnly(GameTestHelper helper) {
 		for (Identifier id : new Identifier[] {null, TRANSPORTER, SORTER}) {
 			CopperGolem g = golem(helper, id);
 			GolemMenu menu = new GolemMenu(1, player(helper, g).getInventory(), g, Tab.SETTINGS);
-			helper.assertTrue(at(menu, 4, 4).isEmpty() || !name(at(menu, 4, 4)).startsWith("Strip logs"), id + " must not offer Strip logs");
+			for (int col = 0; col < 9; col++) helper.assertTrue(!name(at(menu, 4, col)).startsWith("Strip logs"), id + " must not offer Strip logs");
 		}
 		CopperGolem g = golem(helper, LUMBER);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-		helper.assertTrue(at(menu, 4, 4).is(Items.OAK_LOG) && !glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: off"), "off " + at(menu, 4, 4));
-		click(menu, player, 4, 4);
-		helper.assertTrue(GolemData.get(g).stripLogs && at(menu, 4, 4).is(Items.STRIPPED_OAK_LOG) && glint(at(menu, 4, 4)) && name(at(menu, 4, 4)).equals("Strip logs: on"), "on " + name(at(menu, 4, 4)));
-		click(menu, player, 4, 4);
+		helper.assertTrue(at(menu, 4, 5).is(Items.OAK_LOG) && !glint(at(menu, 4, 5)) && name(at(menu, 4, 5)).equals("Strip logs: off"), "off " + at(menu, 4, 5));
+		click(menu, player, 4, 5);
+		helper.assertTrue(GolemData.get(g).stripLogs && at(menu, 4, 5).is(Items.STRIPPED_OAK_LOG) && glint(at(menu, 4, 5)) && name(at(menu, 4, 5)).equals("Strip logs: on"), "on " + name(at(menu, 4, 5)));
+		click(menu, player, 4, 5);
 		helper.assertTrue(!GolemData.get(g).stripLogs, "off again");
+		helper.succeed();
+	}
+
+	/** "Save tools": Lumber (4,3), Farmer and Butcher (4,4), absent otherwise; default on, anvil, flips, allowed while frozen, kept over a profession change. */
+	@GameTest
+	public void settingsSaveToolsToggle(GameTestHelper helper) {
+		for (Identifier id : new Identifier[] {null, TRANSPORTER}) {
+			CopperGolem g = golem(helper, id);
+			GolemMenu menu = new GolemMenu(1, player(helper, g).getInventory(), g, Tab.SETTINGS);
+			for (int col = 0; col < 9; col++) helper.assertTrue(!name(at(menu, 4, col)).startsWith("Save tools"), id + " must not offer Save tools");
+		}
+		Object[][] cases = {{LUMBER, 3}, {FarmerProfession.ID, 4}, {ButcherProfession.ID, 4}};
+		for (Object[] c : cases) {
+			Identifier id = (Identifier) c[0];
+			int col = (Integer) c[1];
+			CopperGolem g = golem(helper, id);
+			ServerPlayer player = player(helper, g);
+			GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
+			helper.assertTrue(at(menu, 4, col).is(Items.ANVIL) && glint(at(menu, 4, col)) && name(at(menu, 4, col)).equals("Save tools: on")
+				&& lore(at(menu, 4, col)).contains("Puts enchanted tools away before they break") && GolemData.get(g).saveTools, id + " default on " + at(menu, 4, col));
+			click(menu, player, 2, 5); // freeze: the setting is not refused while frozen
+			click(menu, player, 4, col);
+			helper.assertTrue(!GolemData.get(g).saveTools && !glint(at(menu, 4, col)) && name(at(menu, 4, col)).equals("Save tools: off"), id + " off");
+			GolemService.changeProfession(helper.getLevel(), g, TRANSPORTER);
+			helper.assertTrue(!GolemData.get(g).saveTools, id + " a profession change keeps Save tools");
+		}
 		helper.succeed();
 	}
 

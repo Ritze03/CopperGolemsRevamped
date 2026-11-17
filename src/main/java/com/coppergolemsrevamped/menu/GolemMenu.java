@@ -196,6 +196,14 @@ public class GolemMenu extends AbstractContainerMenu {
 		rebuild();
 	}
 
+	/** Settings tab "Save tools" (tool professions, see mending.md). Not refused while frozen. */
+	void toggleSaveTools() {
+		GolemData data = GolemData.get(golem);
+		data.saveTools = !data.saveTools;
+		GolemData.save(golem, data);
+		rebuild();
+	}
+
 	/** Settings tab "Strip logs" (Lumber only, see lumber.md). */
 	void toggleStripLogs() {
 		GolemData data = GolemData.get(golem);

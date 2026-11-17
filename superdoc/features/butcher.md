@@ -169,6 +169,8 @@ with the three chests set into the west wall.
 
 ## Mending
 
+The **Save tools** setting (Settings 4,4, default on) applies the same guard to any enchanted weapon; off, weapons are used until they break. See [mending.md](mending.md).
+
 A Mending weapon is repaired with XP bottles from the **tools chest** and never used below 10 durability: it is parked in the
 chest (or swapped for a usable weapon) and the golem culls bare-handed (1 damage per hit) meanwhile. Only a Mending weapon
 enables bare hands; "Without a weapon it does not kill" still holds otherwise. See [mending.md](mending.md).

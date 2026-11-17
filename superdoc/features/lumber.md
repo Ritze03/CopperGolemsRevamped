@@ -100,7 +100,7 @@ ticks (0.8 s) per log over the pure vanilla formula (whole swings). Test: `Lumbe
 
 ## Strip logs (setting)
 
-Lumber-only toggle on the Settings tab (4,4), "Strip logs: on/off", icon `oak_log` off / `stripped_oak_log` on, default **off**, persisted as
+Lumber-only toggle on the Settings tab (4,5, next to Save tools at 4,3), "Strip logs: on/off", icon `oak_log` off / `stripped_oak_log` on, default **off**, persisted as
 `GolemData:stripLogs` (codec field `strip_logs`, old saves load off). With it on the golem strips each log with its axe before
 breaking it, so the carry and the output chest get stripped logs. User request. See [gui.md](gui.md) for the toggle.
 
@@ -321,7 +321,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
 ## Mending
 
 A Mending axe is repaired with XP bottles from the **input chest** and never used below 10 durability: it is parked in the
-input chest (or swapped for a usable axe) and the golem chops by hand meanwhile. Only a Mending axe enables bare hands; a
+input chest (or swapped for a usable axe) and the golem chops by hand meanwhile. The per-golem **Save tools** setting (Settings 4,3, default on) extends this to any enchanted axe and, when off, lets every axe break; Strip logs moved to 4,5. Only a Mending axe enables bare hands; a
 golem that never had an axe still does no work. See [mending.md](mending.md).
 
 ## Keep layout

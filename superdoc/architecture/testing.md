@@ -23,7 +23,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   (`walkToStopsNextToBlock`, `areaAssignWalksOutline`, `unreachableWaypointIsSkipped`), area clamp
   (`areaCornerIsCappedNotRejected`), `everyProfessionHasHelp`. See [gui.md](../features/gui.md),
   [assign-mode.md](../features/assign-mode.md).
-- `MenuTest` (25, incl. `settingsKeepLayoutToggle`, `settingsStripLogsToggleIsLumberOnly`, incl. `professionTabIsCentredAndWraps`): the tabbed menu. `opensOnStatusWithTabBar`, `noBackButtonAndCrafterBarHasRecipe` (no Back cell on any tab of any profession, Crafter bar has 6 tabs with Recipe before Inventory), `tabSwitchKeepsTheMenuInstance` (sets
+- `MenuTest` (26, incl. `settingsKeepLayoutToggle`, `settingsSaveToolsToggle`, `settingsStripLogsToggleIsLumberOnly`, incl. `professionTabIsCentredAndWraps`): the tabbed menu. `opensOnStatusWithTabBar`, `noBackButtonAndCrafterBarHasRecipe` (no Back cell on any tab of any profession, Crafter bar has 6 tabs with Recipe before Inventory), `tabSwitchKeepsTheMenuInstance` (sets
   `player.containerMenu`, clicks tabs and checks it is still the same menu), `controlCellsSwallowEveryOtherClick`,
   `noneSwitchesWithoutConfirm`, `confirmFlowAndCancel`, `targetsShowAndClear`, `targetsAreaClearAndColumns`,
   `lumberAndFarmerLayouts` (cell positions of every profession's Inventory tab), `settingsFollowToggle`, `settingsFreezeToggle`,
@@ -61,7 +61,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   the hit), `durabilityGoesToTheRealStack`, `wornWeaponIsSwappedNotLost`, `breedsPigsWithCarrots`, `noBreedingAtTheBabyCap`,
   `noWeaponStillBreeds`, `cycleOrder` (recorded phases BREED, KILL, DELIVER), `dropsGoStraightToCarry` (no item entity, drops in the carry), `noCullingWithoutCarryRoom`, `fullOutputStopsCullingKeepsTheCarry`, `frozenButcherDoesNothing`,
   `butcherDeclaration` ([butcher.md](../features/butcher.md)). Each test builds a walled 6x6 pen with the chests in the wall.
-- `MendingTest` (12): Mending repair with bottles and never breaking a Mending tool for Lumber, Butcher and Farmer, stored tools repaired and reused, D9 every tick, idle top-up for Butcher and Farmer, `mendingWastesNoXp` (no XP wasted, store spent first) ([mending.md](../features/mending.md)).
+- `MendingTest` (14): Mending repair with bottles and never breaking a Mending tool for Lumber, Butcher and Farmer, stored tools repaired and reused, D9 every tick, idle top-up for Butcher and Farmer, `mendingWastesNoXp` (no XP wasted, store spent first), `saveToolsParksAnyEnchantedAxe` (Efficiency axe is parked), `plainAndUnsavedToolsBreak` (plain axe, and Mending axe with Save tools off, break) ([mending.md](../features/mending.md)).
 - `XpTest` (11, incl. `keepLayoutBottlesMergeOnly`, `keepLayoutNoMatchingStackKeepsTheXp`): stored XP and XP bottles for Smelter and Butcher, full chest, profession change, save/load; the smelter test uses gold ore (exactly 1.0 XP) because furnace XP of 0.7 is rounded at random per collection, which made an iron-ore version flaky ([xp-bottles.md](../features/xp-bottles.md)). Orb checks use `around(helper)`, the test's own structure box only (structures are ~15 blocks apart; a wider box counted neighbours' orbs), and the profession test discards its orbs after counting.
 - `SmelterTest` (24 incl. blast furnace cases and `keepLayoutLeavesOneAndNeverFillsEmptyOutputSlots`, `keepLayoutOutputWithoutMatchingStackCountsAsFull`): even split (gold ore, exactly 1.0 XP, so the XP total is asserted exactly; iron's random rounding made a bound flaky), 8-furnace cap, furnace types, one test per never-block rule, lava bucket, freeze, Inventory layout ([smelter.md](../features/smelter.md)).
 - `TransferLimitTest` (2): `transporterNeverMovesMoreThan16PerWindow` (256 items A to B, chest totals sampled every tick, at most 16 per 5-tick window, A's lid open during the whole take, at least 150 ticks), `smelterFetchOf64OreCompletes` (a fetch cut by the budget several times still gives 8 to each of 8 furnaces and 64 ingots). See [transfer-limit.md](transfer-limit.md). No existing test needed a larger tick budget.
@@ -76,7 +76,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `DistributorTest` (6): `eightTargetsTakeMultipleOfEight`, `sevenTargetsTakeMultipleOfSeven`, `doubleChestCountsAsOne`, `fewerThanNTakesNothing`, `fullTargetReturnsItsShare`, `keepLayoutRespectedOnBothSides` ([distributor.md](../features/distributor.md)).
 
 Total: 244 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` has none), so the log says `All 245 required tests passed` (see Gotchas). Update the numbers here when
+`GolemGuiClientTest` has none), so the log says `All 248 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

@@ -103,7 +103,7 @@ Sorter: (3,4) a book "No inventory". A recipe group (`SlotGroup:recipe`) is neve
 on else null, `GolemData.save`; refused with a chat message while frozen. (2,5) the **Freeze** toggle (`blue_ice` through
 `GolemIcon:plain`, glint while on, name "Freeze: on/off", `GolemMenu:toggleFreeze`): all professions, rules in
 [freeze.md](freeze.md). (2,4) **Keep layout** (`item_frame` through `GolemIcon:plain`, glint while on, name "Keep layout: on/off", `GolemMenu:toggleKeepLayout`): all professions, not refused while frozen, rules in
-[keep-layout.md](keep-layout.md). (4,4) **Strip logs** (`oak_log` while off, `stripped_oak_log` while on, glint while on like the other toggles, `GolemMenu:toggleStripLogs`): shown for the Lumber only,
+[keep-layout.md](keep-layout.md). (4,3 for the Lumber, 4,4 for Farmer and Butcher) **Save tools** (vanilla `anvil` through `GolemIcon:plain`, glint while on, name "Save tools: on/off", lore "Puts enchanted tools away before they break" / "Plain tools are used until they break", `GolemMenu:toggleSaveTools`): shown for Lumber, Farmer and Butcher only, default on, not refused while frozen, kept over a profession change, `GolemData:saveTools`, see [mending.md](mending.md). (4,5) **Strip logs** (`oak_log` while off, `stripped_oak_log` while on, glint while on like the other toggles, `GolemMenu:toggleStripLogs`): shown for the Lumber only (it moved from 4,4 to 4,5 so Save tools at 4,3 and Strip logs stay centred),
 `GolemData:stripLogs`, see [lumber.md](lumber.md) "Strip logs".
 Why rows 2 and 4: user request, common toggles one row up, the Lumber-only toggle one row down, each centred (col 4).
 
@@ -318,6 +318,7 @@ item, so the pack is optional (decision D18).
 | `profession_lumber` | `iron_axe` | iron axe |
 | `profession_smelter` | `furnace` | furnace (copper furnace with a flame) |
 | `profession_butcher` | `iron_sword` | copper-hilted sword with a ham badge |
+| `profession_distributor` | `dropper` | dropper |
 | `follow_on`, `follow_off` | `lead` | lead (glint when on) |
 | `assign_chest`, `assign_input`, `assign_output`, `icon_inventory` | `chest` | chest (its override copies vanilla's special seasonal model) |
 | `assign_block` | `target` | target block |
