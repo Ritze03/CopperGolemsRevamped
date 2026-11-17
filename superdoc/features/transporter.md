@@ -16,17 +16,37 @@ assignment), up to 9 full stacks per trip. Vanilla signatures behind this are in
 
 1. Cooldown running: decrement, return.
 2. Either assignment missing, or either block no longer a container: stop navigation, retry in 40 ticks.
-3. Target = A when carry is empty, else B.
+3. Target = A when carry is empty (or a take is still loading), B when B accepts at least one carried stack
+   (`TransporterLogic:acceptsAny`), else A (return trip, below).
 4. Not in reach: `Interact:approach` walks to a stand position within 1 block of the chest (2 blocks as
    fallback if none is reachable), see [../architecture/interaction.md](../architecture/interaction.md).
 5. In reach: stop, look at chest, then
-   - carry empty: `takeAll(A, carry)`; nothing moved (A empty) -> wait 40 ticks; else open A's lid
+   - carry empty: `takeAll(A, carry)` of only the stacks B can take right now (`canInsert(B, stack, keepLayout)`, plus the
+     filter); nothing moved (A empty, or nothing B accepts) -> wait 40 ticks; else open A's lid
      (`Interact:openChest`, `TAKE`) and wait 20 (`Interact.OPEN_TICKS`).
-   - carry non-empty: `insertAll(carry, B)`; leftovers stay in carry and mean B is full -> wait 40; else open B's lid
-     (`INSERT`) and wait 20.
+   - carry non-empty, at B: `insertAll(carry, B)`; leftovers stay in carry and mean B is full -> wait 40; else open B's lid
+     (`INSERT`) and wait 20. If B still refuses the whole carry after the wait, step 3 sends the golem back to A.
+   - carry non-empty, at A (return trip): `insertAll(carry, A)` puts it back (same lid/wait handling); what A refuses too
+     stays in carry and is retried every 40 ticks at whichever chest accepts first.
 6. `GolemData.save` after each take/insert.
 
-**Keep layout:** `TransporterLogic:tick` passes `GolemData:keepLayout` to the budgeted take and insert, so with the setting on chest A keeps 1 item per slot and chest B only gets merged into non-empty same-item slots. See [keep-layout.md](keep-layout.md).
+### Types B refuses
+
+Why: with Keep layout on, B only accepts types it already holds a non-full stack of. The golem used to take every type
+from A, deliver what B took, and stand at B with the rest forever (retrying every 40 ticks); e.g. A with 64 sticks and
+64 logs, B with only a stick placeholder: 63 logs stuck in the carry. Now the take only picks types B can take, and a
+carry B refuses entirely (B changed meanwhile, or is physically full) goes back to A, so the items are in a chest, not
+the golem, and the golem is free for anything B accepts later. This holds with Keep layout off too: there it only
+matters when B is full. `canInsert` checks `canPlaceItem` like `insertAll`, so a "B accepts" never ends in a 0-item
+insert (no A/B ping-pong). Cost: a type B has only a little room for is taken in full; the rest rides back to A.
+Tests: `TransporterTest:keepLayoutLeavesTypesBCannotTake`, `TransporterTest:carryBRefusesGoesBackToA`.
+
+### Duplicate assignments
+
+Assigning the same chest as both A and B (or any other duplicate assignment) is allowed on purpose: nothing checks
+for it. Why: user decision, "if someone wants to do it, let them".
+
+**Keep layout:** `TransporterLogic:tick` passes `GolemData:keepLayout` to the budgeted take and insert, so with the setting on chest A keeps 1 item per slot and chest B only gets merged into non-empty same-item slots; types B has no such stack for stay in A (see "Types B refuses" above). See [keep-layout.md](keep-layout.md).
 
 **Transfer limit:** `takeAll` / `insertAll` run through `TransferBudget` (16 items per 5 ticks). A take cut short by the budget sets `State.loading` so the golem stays at A (lid kept open, wait until the next window) and only delivers once a take ends with budget left; a cut insert just repeats at B. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
 
@@ -60,7 +80,8 @@ counts as its type.
 
 `TransporterLogic:tick` takes from A through `TransferBudget:take(..., accepts(data))`; non-passing stacks stay in A.
 "Nothing passing in A" is "nothing moved", so the golem waits 40 ticks like for an empty chest. The delivery to B never
-filters: carried items that no longer pass (filter changed mid-trip) are still delivered, never stranded.
+filters: carried items that no longer pass (filter changed mid-trip) are still delivered, never stranded. (The take also
+skips what B cannot take, see "Types B refuses".)
 
 Migration: old saves have 9 items and no `filter_mode`. `TransporterProfession:migrate` pads the list to 18 (called from
 `GolemTicker` and the `GolemMenu` constructor, like the other per-profession migrations); the mode reads as Off.
@@ -77,6 +98,8 @@ Migration: old saves have 9 items and no `filter_mode`. `TransporterProfession:m
   stack size), then fills empty slots; shrinks the source.
 - `insertAll(List<ItemStack> carry, Container dst): boolean` same into a container
   (`canPlaceItem`, container max stack size respected); remainder stays in `carry`.
+- `canInsert(Container dst, ItemStack stack, boolean keepLayout)`: would the insert move at least one item (no change
+  made); `acceptsAny(carry, dst, keepLayout)` is the same over a carry.
 - `containerAt(Level, BlockPos): @Nullable Container`, `isEmpty(list)`.
 
 Why a hand-written merge loop instead of `HopperBlockEntity.addItem(from, to, stack, dir)`: that

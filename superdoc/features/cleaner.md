@@ -23,8 +23,8 @@ The extra 2 blocks catch items lying on or just above the clicked floor blocks.
 Transient per-golem timers in a `WeakHashMap` (same style as the Transporter); persistent state is only `GolemData`.
 
 1. Area unset, output unset or not a container: stop, retry in 40 ticks.
-2. An item entity in the box (its centre inside, see below), alive, no pickup delay, (partly) fits the carry and not
-   skipped: path to the nearest;
+2. An item entity in the box (its centre inside, see below), alive, no pickup delay, (partly) fits the carry, not
+   skipped and (Keep layout only) accepted by the chest: path to the nearest;
    within 1.5 blocks, move as much as fits into carry and discard the entity or leave the remainder on it
    (no duplication). Cooldown 5 ticks.
 3. Else carry non-empty: `Interact:approach` to the output chest (1-block stand position, 2-block fallback, see
@@ -68,9 +68,17 @@ check; the cost is up to 10 s wasted per unreachable item (then 1 min ignored).
 
 ## Keep layout
 
-With the per-golem Keep layout setting on ([keep-layout.md](keep-layout.md)): the delivery (`TransferBudget:insert`) merges into matching stacks of the output chest only, never into empty slots. Items with no
-matching stack stay with the golem and the full-chest handling (retry every `RETRY_TICKS`) applies. Picking up ground drops is not
-a chest transfer and is unaffected. Test: `keepLayoutDeliversOnlyOntoMatchingStacks`.
+With the per-golem Keep layout setting on ([keep-layout.md](keep-layout.md)): the delivery (`TransferBudget:insert`) merges into matching stacks of the output chest only, never into empty slots.
+The scan also skips item entities the chest cannot take right now (`TransporterLogic:canInsert(chest, stack, true)`):
+they stay on the ground. Items already carried that the chest refuses (it changed after the pickup) stay with the golem
+and the full-chest handling (retry every `RETRY_TICKS`) applies; they are never dropped.
+
+Why: undeliverable types used to be picked up anyway and piled up in the carry until all 9 slots were full, after which
+the golem could collect nothing. Why not drop refused carry back (the Transporter's return to A): the chest is often
+outside the area, and items dropped there would never be collected again and despawn; keeping them costs only a slot.
+Why only with Keep layout: with it off, a chest that is merely full is the old full-chest case, and holding the items
+keeps them from despawning. Tests: `keepLayoutDeliversOnlyOntoMatchingStacks` (diamonds stay on the ground),
+`keepLayoutLeavesUndeliverableTypes` (nine refused types nearer than the cobblestone, all left lying).
 
 
 ## Tests (`CleanerTest`)

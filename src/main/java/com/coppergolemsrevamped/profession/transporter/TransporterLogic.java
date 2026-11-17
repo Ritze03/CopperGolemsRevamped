@@ -55,13 +55,17 @@ public final class TransporterLogic {
 			return;
 		}
 		List<ItemStack> carry = carry(data);
-		boolean carryEmpty = isEmpty(carry);
 		boolean loading = s.loading; // a take cut short by the transfer budget goes on before the carry is delivered
-		BlockPos target = loading || carryEmpty ? a : b;
+		boolean take = loading || isEmpty(carry);
+		// A carry B refuses entirely (B full, or changed under Keep layout) goes back to A instead of idling at B forever.
+		boolean deliver = !take && acceptsAny(carry, cb, data.keepLayout);
+		BlockPos target = deliver ? b : a;
 		if (!Interact.approach(level, golem, target, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(target));
-		if (loading || carryEmpty) {
-			boolean moved = TransferBudget.take(level, golem, ca, carry, accepts(data), data.keepLayout) > 0;
+		if (take) {
+			// Only types B can take right now: a type B never accepts (Keep layout, no matching stack) would be carried forever.
+			Predicate<ItemStack> wanted = accepts(data).and(st -> canInsert(cb, st, data.keepLayout));
+			boolean moved = TransferBudget.take(level, golem, ca, carry, wanted, data.keepLayout) > 0;
 			if (moved) Interact.openChest(level, golem, target, Interact.Action.TAKE);
 			if (TransferBudget.exhausted(level, golem)) {
 				// budget used up, not "chest empty": stay, keep the lid open and go on next window
@@ -74,7 +78,8 @@ public final class TransporterLogic {
 				s.loading = false;
 			}
 		} else {
-			if (TransferBudget.insert(level, golem, carry, cb, data.keepLayout) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
+			// deliver to B, or put back into A what B refuses
+			if (TransferBudget.insert(level, golem, carry, deliver ? cb : ca, data.keepLayout) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
 			boolean empty = isEmpty(carry);
 			if (empty) s.walk.reset();
 			if (empty) s.cooldown = Interact.OPEN_TICKS;
@@ -218,13 +223,23 @@ public final class TransporterLogic {
 		return addTo(null, stack, dst, Integer.MAX_VALUE, keepLayout);
 	}
 
-	/** True when {@code stack} would at least partly fit into {@code dst} under the keep layout rule (no change made). */
+	/**
+	 * True when {@code stack} would at least partly fit into {@code dst} under the keep layout rule (no change made). Mirrors
+	 * {@link #addTo}, {@code canPlaceItem} included, so a "yes" here means an insert really moves something.
+	 */
 	public static boolean canInsert(Container dst, ItemStack stack, boolean keepLayout) {
 		boolean layout = layoutRule(keepLayout, dst, stack);
 		for (int i = 0; i < dst.getContainerSize(); i++) {
 			ItemStack cur = dst.getItem(i);
-			if (cur.isEmpty() ? !layout : ItemStack.isSameItemSameComponents(cur, stack) && cur.getCount() < Math.min(stack.getMaxStackSize(), dst.getMaxStackSize())) return true;
+			boolean room = cur.isEmpty() ? !layout : ItemStack.isSameItemSameComponents(cur, stack) && cur.getCount() < Math.min(stack.getMaxStackSize(), dst.getMaxStackSize());
+			if (room && dst.canPlaceItem(i, stack)) return true;
 		}
+		return false;
+	}
+
+	/** True when some carried stack would at least partly fit into {@code dst} ({@link #canInsert}). */
+	public static boolean acceptsAny(List<ItemStack> carry, Container dst, boolean keepLayout) {
+		for (ItemStack st : carry) if (!st.isEmpty() && canInsert(dst, st, keepLayout)) return true;
 		return false;
 	}
 
