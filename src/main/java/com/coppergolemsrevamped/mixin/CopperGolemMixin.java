@@ -21,6 +21,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.Brain;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.entity.CopperGolemStatueBlockEntity;
 
 @Mixin(CopperGolem.class)
 public abstract class CopperGolemMixin {
@@ -49,9 +50,17 @@ public abstract class CopperGolemMixin {
 		GolemService.dropAll(level, (CopperGolem) (Object) this);
 	}
 
+	/**
+	 * Oxidation into a statue: the golem's data and held item move onto the statue block entity (created just before
+	 * by {@code createStatue}) instead of dropping; revival gives them back (superdoc/features/oxidation.md). Runs
+	 * before vanilla's {@code dropPreservedEquipment}, so a real held item is already gone from the hand then.
+	 */
 	@Inject(method = "turnToStatue", at = @At(value = "INVOKE",
 		target = "Lnet/minecraft/world/entity/animal/golem/CopperGolem;dropPreservedEquipment(Lnet/minecraft/server/level/ServerLevel;)V"))
-	private void cgr$statueDrops(ServerLevel level, CallbackInfo ci) {
-		GolemService.dropAll(level, (CopperGolem) (Object) this);
+	private void cgr$intoStatue(ServerLevel level, CallbackInfo ci) {
+		CopperGolem golem = (CopperGolem) (Object) this;
+		if (level.getBlockEntity(golem.blockPosition()) instanceof CopperGolemStatueBlockEntity statue) {
+			GolemService.toStatue(golem, statue);
+		}
 	}
 }

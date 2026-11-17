@@ -27,6 +27,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/mending.md](features/mending.md): Lumber, Farmer and Butcher repair Mending tools with XP bottles from the tool chest (7 XP each) and never use a Mending tool below 10 durability (rest in the chest, bare hands or another tool).
 - [features/freeze.md](features/freeze.md): Settings-tab Freeze toggle, a frozen golem does nothing and stands still so its inventory can be changed.
 - [features/keep-layout.md](features/keep-layout.md): Settings-tab Keep layout toggle for every golem: never empties a stack (leaves 1), never fills empty slots, so hand-laid-out chests stay intact.
+- [features/oxidation.md](features/oxidation.md): an oxidized golem's statue keeps its data, items and held item (block entity attachment), revival restores them, a mined statue drops the items; lenient `GolemData` codec and slot padding.
 - [features/chunk-loading.md](features/chunk-loading.md): profession golems keep a 3x3 chunk area loaded and ticking (persistent ticket), limits.
 
 ## Rules and meta
