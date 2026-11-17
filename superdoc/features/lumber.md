@@ -43,6 +43,14 @@ Why start only from T and not below: player structures under or next to the tree
 if T itself is gone (a player broke it, or the golem broke the bottom log) the upper logs are still connected to the
 remembered ones; state is transient, so after a server restart a half-felled tree whose T is gone is no longer found.
 
+Cost (review fix, 2026-11): the flood used to run on every non-cooldown tick, also every tick of a walk in FELL, and every
+log check rebuilt an iron axe stack and evaluated the transformer. Now `LumberLogic:woodKind` caches its answer per `Block`
+(`WOOD_KIND`, an identity map; the axe stack is created once, lazily because item components are bound after mod init; the
+cache is cleared when the transformer instance changes, i.e. after a data reload). Why per block: the axe mapping is a fixed
+block-to-block table. And while FELL walks (`anchored` false) or waits out a strip, `tick` reuses the last flood for up to
+`REDETECT_TICKS` (20); arrival at the stand spot (anchored) floods again, and `fell` returns once on arrival when its target
+is no longer a log, so a log broken by someone else during the walk is never "broken" from a stale set.
+
 When a tree appears (nothing known, logs found) the golem remembers its **footprint**: the 2x2 square of logs at T's
 level that contains T (`LumberLogic:bottomSquare`), else just T. The footprint is where it replants.
 
@@ -154,6 +162,12 @@ of the sapling (now in range, one block from it) would always be skipped; a skip
 retried after the skip or the next cycle. Why no margin around the footprint (user decision: "if he's not standing directly in
 the sapling, it is fine, a single block next to it is fine"): only the trunk cells suffocate, and the old 2-block margin made
 the golem ignore player-dropped saplings and random apples lying next to the sapling. After a pickup the golem walks back to its waiting spot (`standOutside`), so the growth logic is unchanged.
+Golem inside the sapling volume (pushed, or spawned there) while a drop is seen: `collect` first steps out to the 1..2 ring
+(`standOutside`) and only then chases. Why (review fix, 2026-11): the path's start node was inside the volume, so `crosses` was
+true for every path, `detour` found nothing and the drop was skipped for `SKIP_TICKS` (1200). `detour` also tries ring cells at
+the golem's Y +-1 (uneven ground). Test: `LumberTest:collectsDropWhileStandingInTheSapling`.
+The fit check in the entity predicate (`LumberLogic:fitsSome`) applies the `storeInto` rules in place without copying the
+inventory: it runs per item entity every tick of a chase.
 Test: `LumberTest:collectsDropsWhileWaitingForGrowth`.
 
 ### Bone meal must not out-run the leaves (sapling loss, 2026-11)
@@ -166,7 +180,13 @@ after 5 minutes, while every tree cost 1 sapling (4 for 2x2): the stock drained 
 within the old 2-block margin of the footprint were never collected while a sapling stood (the margin is gone, see "Why no margin").
 Rules now, in order, every tick of BONEMEAL:
 1. **Collect first**: every collectable drop in the box (same rules: never enter the footprint, skip paths crossing the sapling)
-   before any bone meal. The pickup-delay filter is gone (leaf drops carry a 10-tick delay and bone meal would otherwise run in it).
+   before any bone meal. A drop still under its pickup delay (leaf drops 10 ticks, a player's throw 40) counts as there
+   (`lastSeen`, bone meal waits) but is **not taken** until the delay has run out: the golem walks to it and waits in range.
+   Takeable drops are chased first. A drop that is still delayed at `PENDING_AGE` (60 ticks) or older (never-pickup items,
+   unlimited-lifetime displays) is ignored. Why (review fix, 2026-11): the earlier version dropped the delay filter entirely
+   (so bone meal could not run in a leaf drop's delay) and therefore snatched what a player had just thrown; the Cleaner never
+   takes delayed items. Waiting instead of filtering keeps both: no snatching, and no bone meal while a fresh drop is coming.
+   Test: `LumberTest:pickupDelayedDropIsNotTakenAtOnce`.
 2. **Low stock waits**: when saplings in supply slots + carry + input chest are at most what the next planting needs (1, or 4
    for a 2x2 footprint), no bone meal is applied until a spare sapling is in hand, no drop was seen for `PICKUP_QUIET` (150
    ticks, counted from entering BONEMEAL or the last drop) or `PICKUP_MAX` passed. The golem waits (Mending, standing outside).
@@ -226,6 +246,16 @@ unfinished, so the replant branch never ran. The new loop has no such state: no 
 If the input chest holds bone meal and a sapling of ours stands (T or a footprint cell), the golem fetches bone meal
 (when it holds fewer than 4, up to 16) and, standing next to T, applies one per 10 ticks with `BoneMealItem.growCrop`
 until the tree has grown; the next tick detects the logs and the cycle moves to FELL. Without bone meal it waits for natural growth.
+
+A sapling that cannot grow gets no bone meal and none is fetched for it (`LumberLogic:boneTarget`, review fix 2026-11): vanilla's
+`BonemealableBlock:isValidBonemealTarget` must hold (26.3 `SaplingBlock`: `TreeGrower:canGrow`, i.e. a feature exists, a lone dark or
+pale oak sapling fails, plus the minimum tree height below the build limit), and after `BONE_MAX_FAILS` (16) uses in a row that left
+the sapling block state unchanged the golem stops (`State.boneFails`) and just waits for natural growth. Why the counter: vanilla's
+check does not look at space, so an obstructed sapling (a block above it) is accepted, the bone meal is consumed and `growTree` fails
+and puts the sapling back; before the fix this burned one bone meal per 10 ticks and refetched until the input chest was empty. A free
+sapling changes on 45% of the uses (stage 0 to 1, then the tree), so 16 misses in a row by chance are 0.55^16 = 7e-5; a stage step
+resets the count. The count resets on replanting and when a tree appears; otherwise it stays until the state is rebuilt (restart,
+reassignment), so clearing the obstruction later means natural growth or a restart. Test: `LumberTest:obstructedSaplingDoesNotDrainBoneMeal`.
 Why only the golem's own planted saplings: user choice. Why a fetch threshold: it avoids walking to the chest for
 every single bone meal.
 
@@ -292,6 +322,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
 - `repairsMendingAxeWhileWaitingForGrowth`: axe with 5 damage, 5 bottles in the input chest, sapling and no bone meal: axe whole, one bottle used.
 - Sapling loss: `dropsAreCollectedBeforeBoneMeal`, `lowSaplingStockWaitsForDropsBeforeBoneMeal`, `boneMealCyclesKeepTheSaplingStock` (see "Bone meal must not out-run the leaves").
 - `collectsDropsWhileWaitingForGrowth`: sapling, no bone meal; drops spawned once in BONEMEAL (2 sticks, 2 apples, a sapling, plus a stick next to T that is left alone) end in the carry while it is still a sapling; never in the sapling volume.
+- Review fixes (2026-11): `pickupDelayedDropIsNotTakenAtOnce`, `collectsDropWhileStandingInTheSapling`, `obstructedSaplingDoesNotDrainBoneMeal`.
 - `twoByTwoSiteWaitsForFourSaplings`: marked 2x2 site, 3 spruce saplings plant nothing, a 4th plants all four.
 - `neverStandsInTheSapling` (bone meal run: never in T's column while a sapling stands, health unchanged) and
   `stepsOutOfTheSapling` (spawned inside, waits 1..2 blocks away).
@@ -312,7 +343,8 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
   found.
 - Leaves are never cleared, so they can block the golem's path or a stand spot.
 - The tree needs a standable ground spot within reach of T (1 block, or 2 as fallback); otherwise it is skipped.
-- Any item in the drop box (not next to a growing sapling, see above) is picked up, including items a player dropped there.
+- Any item in the drop box is picked up, including items a player dropped there (once their pickup delay has run out).
+- An obstructed sapling that gave up on bone meal (16 unchanged uses) gets none again until it is replanted or the server restarts.
 - With nothing in the supply slots and no saplings in the input chest, saplings that drop from leaves are taken into
   the supply slot (if free) and used for the next planting; other kinds go to carry and the output chest.
 - Efficiency/Unbreaking are not specifically handled or tested (durability goes through the vanilla overload).

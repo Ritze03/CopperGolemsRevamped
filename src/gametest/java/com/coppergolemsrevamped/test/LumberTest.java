@@ -19,6 +19,7 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.entity.animal.golem.CopperGolemState;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -721,6 +722,86 @@ public class LumberTest {
 		helper.runAfterDelay(300, () -> {
 			int d = Math.max(Math.abs(golem.getBlockX() - at.getX()), Math.abs(golem.getBlockZ() - at.getZ()));
 			helper.assertTrue(d >= 1 && d <= 2, "golem waits " + d + " blocks from the sapling at " + golem.blockPosition());
+			helper.succeed();
+		});
+	}
+
+	/**
+	 * Pickup delay (review finding): an apple thrown at the waiting golem's feet with a player's 40-tick pickup delay is not
+	 * taken while the delay runs (before the fix it went within one 20-tick idle), but is collected once it has run out.
+	 */
+	@GameTest(maxTicks = 1500)
+	public void pickupDelayedDropIsNotTakenAtOnce(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		CopperGolem golem = lumber(helper);
+		ItemEntity[] drop = { null };
+		long[] at = { -1 };
+		helper.onEachTick(() -> {
+			if (drop[0] == null) {
+				if (LumberLogic.phaseOf(golem) == LumberLogic.Phase.BONEMEAL && golem.onGround() && golem.getNavigation().isDone()) {
+					drop[0] = helper.spawnItem(Items.APPLE, helper.relativeVec(golem.position()));
+					drop[0].setPickUpDelay(40); // what Player.drop gives a thrown item
+					drop[0].setDeltaMovement(Vec3.ZERO);
+					at[0] = helper.getTick();
+				}
+				return;
+			}
+			long dt = helper.getTick() - at[0];
+			if (dt < 38) helper.assertTrue(drop[0].isAlive(), "taken " + dt + " ticks after the throw, inside its pickup delay");
+		});
+		helper.succeedWhen(() -> {
+			helper.assertTrue(drop[0] != null && drop[0].isRemoved(), "apple not collected yet");
+			int apples = 0;
+			for (ItemStack st : GolemData.get(golem).items) if (st.is(Items.APPLE)) apples += st.getCount();
+			helper.assertTrue(apples == 1, "carried apples: " + apples);
+		});
+	}
+
+	/**
+	 * A golem standing inside the sapling volume with a drop on the sapling cell: it steps out to the ring and sucks the drop
+	 * up from there. Before the fix the start node made every path "cross" the sapling, no detour existed, and the drop was
+	 * skipped for 1200 ticks.
+	 */
+	@GameTest(maxTicks = 600)
+	public void collectsDropWhileStandingInTheSapling(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		CopperGolem golem = lumber(helper, T);
+		helper.spawnItem(Items.APPLE, new Vec3(T.getX() + 0.5, T.getY(), T.getZ() + 0.5));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(helper.getBlockState(T).is(net.minecraft.tags.BlockTags.SAPLINGS), "the sapling is gone");
+			int apples = 0;
+			for (ItemStack st : GolemData.get(golem).items) if (st.is(Items.APPLE)) apples += st.getCount();
+			helper.assertTrue(apples == 1, "carried apples: " + apples);
+		});
+	}
+
+	/**
+	 * An obstructed sapling (stone right above it: vanilla accepts bone meal, consumes it and fails to place the tree) does
+	 * not drain the input chest: the golem stops after at most one stage step plus 2 x BONE_MAX_FAILS (16) unchanged uses,
+	 * and stops fetching, so the count is stable from then on.
+	 */
+	@GameTest(maxTicks = 1200)
+	public void obstructedSaplingDoesNotDrainBoneMeal(GameTestHelper helper) {
+		world(helper);
+		helper.setBlock(T, Blocks.OAK_SAPLING);
+		helper.setBlock(T.above(), Blocks.STONE);
+		ChestBlockEntity in = chest(helper, IN);
+		in.setItem(0, new ItemStack(Items.IRON_AXE));
+		in.setItem(1, new ItemStack(Items.BONE_MEAL, 64));
+		in.setItem(2, new ItemStack(Items.OAK_SAPLING, 20));
+		CopperGolem golem = lumber(helper);
+		int[] usedAt700 = { -1 };
+		helper.runAfterDelay(700, () -> {
+			usedAt700[0] = 64 - boneTotal(golem, in);
+			helper.assertTrue(usedAt700[0] >= 1, "no bone meal tried at all");
+			helper.assertTrue(usedAt700[0] <= 33, "bone meal used on an obstructed sapling: " + usedAt700[0]);
+		});
+		helper.runAfterDelay(1100, () -> {
+			int used = 64 - boneTotal(golem, in);
+			helper.assertTrue(used == usedAt700[0], "still applying: " + usedAt700[0] + " used at tick 700, " + used + " at 1100");
+			helper.assertBlockPresent(Blocks.OAK_SAPLING, T);
 			helper.succeed();
 		});
 	}
