@@ -25,6 +25,8 @@ Every copper golem, with or without a profession, takes damage only from players
   slowly.
 - Why all golems, not only ones with a profession: simplest rule, and an unemployed golem is a future worker.
 
+A golem a tree, melon or pumpkin grows into is moved out by the ticker, see [golem-safety.md](golem-safety.md).
+
 ## Tests (`HealthTest`, 5)
 
 `suffocationDoesNothing` (golem inside stone for 100 ticks), `nonPlayerDamageIsIgnored` (fall, lava, fire, drowning, wall,

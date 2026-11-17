@@ -37,7 +37,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   conserved), `realOutputIsStillTakeOnly`, `handToolIsDisplayOnlyAndNeverDrops` (kills a golem, counts the drops), `vanillaThrowNeverSeesTheDisplayCopy`,
   `handDisplayRules`. The mock player (`makeMockServerPlayerInLevel`) can open and close menus, so reopen paths run too.
   See [gui.md](../features/gui.md).
-- `ChestSorterTest` (7): `visitedLimit`, `legacyItemsAreDropped` (`GolemTicker:tick` migrates old waxed-copper items),
+- `ChestSorterTest` (9, plus `sorterWalksBackHome`, `sorterWithoutHomeGetsOne`, [golem-safety.md](../features/golem-safety.md)): `visitedLimit`, `legacyItemsAreDropped` (`GolemTicker:tick` migrates old waxed-copper items),
   `menuWithoutSlotGroups` (same 6-row menu), `mixinAppliesLimit`, `sortsFreshGolem`,
   `sortsWaxedOxidizedSourceIntoMatchingChest` (a waxed oxidized copper chest as the source), `sortsAfterBeingTransporter`
   ([chest-sorter.md](../features/chest-sorter.md)).
@@ -73,17 +73,18 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `unfreezingResumesTheWork`, `freezingClosesAnOpenLidAndStops`, `frozenSurvivesSaveLoad`, `frozenChestSorterDoesNotSort`
   ([freeze.md](../features/freeze.md)).
 - `KeepLayoutTest` (8): Keep layout for the Transporter (A keeps 1 per slot, B's empty slots stay empty), the plain-container rule incl. the unstackable and furnace exemptions, off-case, and the Chest Sorter mixin (`chestSorterKeepsLayout`, `chestSorterNeverFillsEmptySlots`, `chestSorterUnstackableKeepsVanillaRule`, `chestSorterSkipsTypesNoChestTakes`) ([keep-layout.md](../features/keep-layout.md)). The two "no chest takes it" sorter tests use echo shards, an item no other test uses: the sorter's 32-block search area reaches neighbour tests' chests, and a neighbour chest holding cobblestone accepted the "unwanted" cobblestone (flaky `hand 9 minecraft:cobblestone`).
-- `ChunkLoadTest` (7): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
+- `ChunkLoadTest` (9, plus `unreachableFarTargetIsGivenUp`, `golemsDoNotUsePortals`): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad`, `unloadedTargetIsNeverLoaded` (a far chest B is never
   loaded, see "Unloaded targets") ([chunk-loading.md](../features/chunk-loading.md)).
 
 - `DistributorTest` (8): `eightTargetsTakeMultipleOfEight`, `sevenTargetsTakeMultipleOfSeven`, `doubleChestCountsAsOne`, `fewerThanNTakesNothing`, `fullTargetReturnsItsShare`, `shareLargerThanBudgetDeliveredInOneVisit`, `severalTypesOverBudgetDeliveredInOneVisit`, `keepLayoutRespectedOnBothSides` ([distributor.md](../features/distributor.md)).
-- `OxidationTest` (3): `statueKeepsEverythingAndRevivalRestoresIt`, `minedStatueDropsEverything`, `plainGolemStatueStaysVanilla` ([oxidation.md](../features/oxidation.md)).
+- `GolemSafetyTest` (3): `followTurnsOffWhenPlayerAbsent`, `workingGolemDismounts`, `golemInsideBlockStepsOut` ([golem-safety.md](../features/golem-safety.md)).
+- `OxidationTest` (4): `golemsNeverOxidize`, `statueKeepsEverythingAndRevivalRestoresIt`, `minedStatueDropsEverything`, `plainGolemStatueStaysVanilla` ([oxidation.md](../features/oxidation.md)).
 
 - `HealthTest` (5): `suffocationDoesNothing`, `nonPlayerDamageIsIgnored`, `playerDamageHurts`, `voidAndKillStillKill`, `regeneratesOneHpPerThirtySeconds` ([health.md](../features/health.md)).
 
-Total: 274 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 275 required tests passed` (see Gotchas). Update the numbers here when
+Total: 282 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 283 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

@@ -28,6 +28,7 @@ Agent-facing documentation for the project. Start at the overview.
 - [features/freeze.md](features/freeze.md): Settings-tab Freeze toggle, a frozen golem does nothing and stands still so its inventory can be changed.
 - [features/keep-layout.md](features/keep-layout.md): Settings-tab Keep layout toggle for every golem: never empties a stack (leaves 1), never fills empty slots, so hand-laid-out chests stay intact.
 - [features/oxidation.md](features/oxidation.md): an oxidized golem's statue keeps its data, items and held item (block entity attachment), revival restores them, a mined statue drops the items; lenient `GolemData` codec and slot padding.
+- [features/golem-safety.md](features/golem-safety.md): removal log line, Chest Sorter home, Follow auto-off, dismount from vehicles, step out of blocks.
 - [features/health.md](features/health.md): copper golems take damage only from players (void and /kill still kill) and regenerate 1 HP per 30 seconds; why (suffocation deaths).
 - [features/chunk-loading.md](features/chunk-loading.md): profession golems keep a 3x3 chunk area loaded and ticking (persistent ticket), limits.
 

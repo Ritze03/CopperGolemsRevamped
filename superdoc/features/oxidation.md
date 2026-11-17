@@ -8,6 +8,17 @@ the golem with all of it.
 Why: user request ("when a golem oxidizes, make it not lose its profession, settings, items and so on"). Before, the
 statue conversion dropped the stored items at the spot and the profession and setup were gone with the discarded golem.
 
+## Decision: golems never oxidize
+
+User decision ("Stop oxidation entirely"): after golems vanished from a live server, no copper golem advances its
+oxidation stage or turns into a statue. `mixin/CopperGolemMixin:cgr$noWeathering` cancels the HEAD of the private
+`CopperGolem#updateWeathering` (called every server tick), which covers both the stage advance and the random statue
+roll. Why cancel and not wax (`nextWeatheringTick = -2`): waxing changes interaction (honeycomb refused, an axe would
+scrape wax instead of oxidation). Golems keep their current stage; scraping with an axe and waxing with honeycomb still
+work as in vanilla. Everything below still matters for statues that already exist (reviving them) and for the
+statue-keeps-data code, which stays. Test: `OxidationTest:golemsNeverOxidize` (due stage stays, fully oxidized golem
+never becomes a statue over 3000 weathering ticks).
+
 ## Vanilla (26.3)
 
 - `CopperGolem#turnToStatue(ServerLevel)` places an oxidized statue, calls `CopperGolemStatueBlockEntity#createStatue`
@@ -64,7 +75,7 @@ The statue stores the same codec, so this matters here too.
 
 ## Tests
 
-`OxidationTest` (3): `statueKeepsEverythingAndRevivalRestoresIt` (calls the private `turnToStatue` by reflection; no
+`OxidationTest` (4, plus `golemsNeverOxidize`, see the decision above): `statueKeepsEverythingAndRevivalRestoresIt` (calls the private `turnToStatue` by reflection; no
 item or orb dropped, block entity save/load keeps the data, three axe scrapes and the revival through the real
 block/axe calls restore every field, the held item and the name), `minedStatueDropsEverything` (items, filter item,
 held item and 2 XP bottles drop, the statue item has no auto name), `plainGolemStatueStaysVanilla`.

@@ -152,6 +152,7 @@ Death flow: `LivingEntity#die(DamageSource)` -> `protected void LivingEntity#dro
 - `public void Entity#spawnAtLocation(ServerLevel, ItemStack)`; `CopperGolem` also uses `spawnAtLocation(level, stack, 1.5F)` in `shear`.
 
 Statue conversion (oxidised golem -> statue block), all in `CopperGolem`:
+- (The mod cancels `updateWeathering` at HEAD, so none of this runs: `CopperGolemMixin:cgr$noWeathering`, [oxidation.md](../features/oxidation.md).)
 - `private void updateWeathering(ServerLevel, RandomSource, long gameTime)`: if `nextWeatheringTick != -2` (not waxed)
   and state is OXIDIZED and `canTurnToStatue(level)` then `turnToStatue(level)`.
 - `private boolean canTurnToStatue(Level)`: block at `blockPosition()` is air and `nextFloat() <= 0.0058F`.

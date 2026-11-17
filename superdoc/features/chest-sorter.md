@@ -68,6 +68,11 @@ step, an early return unless a sorter still holds items). Why there and not in `
 that must not mutate. Until the first tick the items stay in the save, and death or a profession change drops them as
 for any profession (no item is lost). `GolemMenu` copes with zero slot groups (Inventory tab: "No inventory").
 
+## Home
+
+The sorter keeps a home (`GolemData:home`) and walks back when it strays more than 24 blocks (8 vertical): see
+[golem-safety.md](golem-safety.md). Why: with no chest in range the vanilla brain strolls away for good.
+
 ## Tests (`ChestSorterTest`)
 
 - `visitedLimit`: no profession 10, sorter 64; the declaration has no slots and runs the vanilla brain.

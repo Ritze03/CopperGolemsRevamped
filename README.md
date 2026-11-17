@@ -38,6 +38,7 @@ The **Help** button prints help for the current tab in chat; the menu stays open
 - **XP bottles:** Smelters and Butchers store the experience they earn and pay it out as Bottles o' Enchanting (7 XP each); no glass bottles are needed and no XP orbs spawn. The Smelter shows them in its ninth slot and delivers them to the output chest; the Butcher delivers them to the output chest.
 - **Profession change:** items the golem holds (including XP bottles) are returned to you, and its targets are cleared.
 - **Health:** copper golems only take damage from players (not suffocation, fall, fire, mobs or explosions) and regenerate half a heart every 30 seconds.
+- **Safety:** golems never oxidize, climb out of minecarts and boats, step out of blocks they got stuck in, and a Chest Sorter walks back home when it strays. Follow turns itself off when you are away for 30 seconds.
 - **Mending:** Lumbers, Farmers and Butchers repair Mending tools with XP bottles (7 XP each) from their tool chest and never use an enchanted tool until it breaks: it goes back into the chest before, and the golem uses its hands or another tool. Plain tools are used until they break, then the next one is taken from the chest.
 - **Transfer limit:** each golem moves at most 16 items per 5 ticks (64 per second).
 
