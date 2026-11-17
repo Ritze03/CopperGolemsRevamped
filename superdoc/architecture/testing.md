@@ -80,8 +80,10 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `DistributorTest` (8): `eightTargetsTakeMultipleOfEight`, `sevenTargetsTakeMultipleOfSeven`, `doubleChestCountsAsOne`, `fewerThanNTakesNothing`, `fullTargetReturnsItsShare`, `shareLargerThanBudgetDeliveredInOneVisit`, `severalTypesOverBudgetDeliveredInOneVisit`, `keepLayoutRespectedOnBothSides` ([distributor.md](../features/distributor.md)).
 - `OxidationTest` (3): `statueKeepsEverythingAndRevivalRestoresIt`, `minedStatueDropsEverything`, `plainGolemStatueStaysVanilla` ([oxidation.md](../features/oxidation.md)).
 
-Total: 266 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 267 required tests passed` (see Gotchas). Update the numbers here when
+- `HealthTest` (5): `suffocationDoesNothing`, `nonPlayerDamageIsIgnored`, `playerDamageHurts`, `voidAndKillStillKill`, `regeneratesOneHpPerThirtySeconds` ([health.md](../features/health.md)).
+
+Total: 271 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 272 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

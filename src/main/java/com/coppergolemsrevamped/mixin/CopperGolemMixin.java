@@ -45,6 +45,13 @@ public abstract class CopperGolemMixin {
 		GolemTicker.tick(level, (CopperGolem) (Object) this, () -> original.call(brain, level, body));
 	}
 
+	/** Slow regeneration for every copper golem (superdoc/features/health.md): 1 HP per 600 ticks, frozen or not. */
+	@Inject(method = "customServerAiStep", at = @At("HEAD"))
+	private void cgr$regen(ServerLevel level, CallbackInfo ci) {
+		CopperGolem golem = (CopperGolem) (Object) this;
+		if (golem.tickCount % 600 == 0 && golem.getHealth() < golem.getMaxHealth()) golem.heal(1.0F);
+	}
+
 	@Inject(method = "dropEquipment", at = @At("TAIL"))
 	private void cgr$dropStored(ServerLevel level, CallbackInfo ci) {
 		GolemService.dropAll(level, (CopperGolem) (Object) this);

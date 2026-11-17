@@ -2,7 +2,7 @@
 	"required": true,
 	"package": "com.coppergolemsrevamped.mixin",
 	"compatibilityLevel": "JAVA_25",
-	"mixins": ["CopperGolemMixin", "GolemSpawnMixin","TransportItemsBetweenContainersMixin", "AbstractFurnaceAccessor", "EntityMixin", "AnimalMixin", "EntityPushMixin", "LivingEntityPushMixin", "oxidation.CopperGolemStatueBlockEntityMixin", "oxidation.StatueRemovalMixin"],
+	"mixins": ["CopperGolemMixin", "GolemSpawnMixin","TransportItemsBetweenContainersMixin", "AbstractFurnaceAccessor", "EntityMixin", "AnimalMixin", "EntityPushMixin", "LivingEntityPushMixin", "GolemDamageMixin", "oxidation.CopperGolemStatueBlockEntityMixin", "oxidation.StatueRemovalMixin"],
 	"injectors": {
 		"defaultRequire": 1
 	},

@@ -318,6 +318,7 @@ Read from the decompiled 26.3 client classes `CopperGolemModel`, `CopperGolemRen
 
 ## 12. Behavioural summary and corrections to earlier assumptions
 
+- Health: 12 max HP, no natural regeneration; `LivingEntity#isInvulnerableTo(ServerLevel, DamageSource)` is the damage gate (not declared in `CopperGolem`). The mod changes both, see [health.md](../features/health.md).
 - Visited-chest limit is **10** (11th triggers wander), not 9; it is a literal in `setVisitedBlockPos`.
 - Search radius is 32 horizontal / 8 vertical (65x17x65 box); pickup count is up to 16 of the **first** non-empty slot.
 - Wander cooldown after failure is 140 ticks (idle `RandomStroll` runs during it).
