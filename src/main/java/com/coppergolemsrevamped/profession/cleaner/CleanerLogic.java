@@ -82,8 +82,10 @@ public final class CleanerLogic {
 
 		long now = level.getGameTime();
 		s.skip.values().removeIf(until -> until <= now);
+		// Keep layout: leave on the ground what the chest cannot take (no matching stack), or it piles up in the carry forever.
 		List<ItemEntity> items = level.getEntitiesOfClass(ItemEntity.class, box,
-			e -> e.isAlive() && !e.hasPickUpDelay() && fits(data.items, e.getItem()) && box.contains(e.position()) && !s.skip.containsKey(e.getUUID()));
+			e -> e.isAlive() && !e.hasPickUpDelay() && fits(data.items, e.getItem()) && box.contains(e.position()) && !s.skip.containsKey(e.getUUID())
+				&& (!data.keepLayout || TransporterLogic.canInsert(chest, e.getItem(), true)));
 		if (!items.isEmpty()) {
 			ItemEntity target = items.stream().min(Comparator.comparingDouble(golem::distanceToSqr)).get();
 			if (golem.distanceToSqr(target) > PICKUP_RANGE_SQR) {

@@ -8,6 +8,7 @@ import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.Professions;
 import com.coppergolemsrevamped.profession.cleaner.CleanerLogic;
 import com.coppergolemsrevamped.profession.cleaner.CleanerProfession;
+import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import java.util.List;
 
@@ -285,7 +286,7 @@ public class CleanerTest {
 		});
 	}
 
-	/** Keep layout: cobblestone merges onto the chest's cobblestone stack; the diamonds find no matching stack and stay with the golem. */
+	/** Keep layout: cobblestone merges onto the chest's cobblestone stack; the diamonds find no matching stack and stay on the ground. */
 	@GameTest(maxTicks = 1200)
 	public void keepLayoutDeliversOnlyOntoMatchingStacks(GameTestHelper helper) {
 		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
@@ -294,7 +295,7 @@ public class CleanerTest {
 		ChestBlockEntity chest = helper.getBlockEntity(chestPos, ChestBlockEntity.class);
 		chest.setItem(3, new ItemStack(Items.COBBLESTONE, 10));
 		drop(helper, Items.COBBLESTONE, 20, 1.5, 2.5);
-		drop(helper, Items.DIAMOND, 5, 3.5, 1.5);
+		ItemEntity diamonds = drop(helper, Items.DIAMOND, 5, 3.5, 1.5);
 
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 2));
 		GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
@@ -313,9 +314,41 @@ public class CleanerTest {
 				if (!s.isEmpty()) used++;
 			}
 			helper.assertTrue(stone == 30 && other == 0 && used == 1, "chest: cobble " + stone + ", other " + other + ", slots " + used);
-			boolean heldDiamonds = false;
-			for (ItemStack s : GolemData.get(golem).items) heldDiamonds |= s.is(Items.DIAMOND) && s.getCount() == 5;
-			helper.assertTrue(heldDiamonds, "golem should still hold the diamonds");
+			helper.assertTrue(diamonds.isAlive() && diamonds.getItem().getCount() == 5, "the diamonds must stay on the ground");
+			helper.assertTrue(TransporterLogic.isEmpty(GolemData.get(golem).items), "carry not empty: " + GolemData.get(golem).items);
+		});
+	}
+
+	/**
+	 * Keep layout: nine types the chest has no stack for lie nearer than the cobblestone. They must stay on the ground; picked
+	 * up, they used to fill all nine carry slots for good, and the cobblestone was never collected.
+	 */
+	@GameTest(maxTicks = 1200)
+	public void keepLayoutLeavesUndeliverableTypes(GameTestHelper helper) {
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		BlockPos chestPos = new BlockPos(5, 1, 1);
+		helper.setBlock(chestPos, Blocks.CHEST);
+		ChestBlockEntity chest = helper.getBlockEntity(chestPos, ChestBlockEntity.class);
+		chest.setItem(0, new ItemStack(Items.COBBLESTONE, 1));
+		Item[] refused = {Items.DIAMOND, Items.EMERALD, Items.GOLD_INGOT, Items.IRON_INGOT, Items.COAL,
+			Items.REDSTONE, Items.STICK, Items.OAK_LOG, Items.FLINT};
+		List<ItemEntity> left = new java.util.ArrayList<>();
+		for (int i = 0; i < refused.length; i++) left.add(drop(helper, refused[i], 2, 3.5 - i / 4, 0.5 + i % 4));
+		drop(helper, Items.COBBLESTONE, 20, 0.5, 3.5);
+
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 2));
+		GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
+		GolemData data = GolemData.get(golem);
+		data.keepLayout = true;
+		data.assignments.put("area_a", helper.absolutePos(new BlockPos(0, 0, 0)));
+		data.assignments.put("area_b", helper.absolutePos(new BlockPos(3, 0, 3)));
+		data.assignments.put("output", helper.absolutePos(chestPos));
+		GolemData.save(golem, data);
+
+		helper.succeedWhen(() -> {
+			helper.assertTrue(chest.getItem(0).is(Items.COBBLESTONE) && chest.getItem(0).getCount() == 21, "chest holds " + chest.getItem(0));
+			for (ItemEntity e : left) helper.assertTrue(e.isAlive() && e.getItem().getCount() == 2, "picked up " + e.getItem());
+			helper.assertTrue(TransporterLogic.isEmpty(GolemData.get(golem).items), "carry not empty: " + GolemData.get(golem).items);
 		});
 	}
 }

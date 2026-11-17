@@ -4,6 +4,7 @@ import com.coppergolemsrevamped.CopperGolemsRevamped;
 import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.core.GolemService;
+import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import net.fabricmc.fabric.api.gametest.v1.GameTest;
 
@@ -254,6 +255,74 @@ public class TransporterTest {
 			int stone = 0;
 			for (int i = 0; i < chestB.getContainerSize(); i++) stone += chestB.getItem(i).getCount();
 			helper.assertTrue(stone == 192, "cobblestone in B: " + stone);
+		});
+	}
+
+	// ---- types B cannot take (superdoc/features/transporter.md "Types B refuses") ----
+
+	private static int count(ChestBlockEntity c, net.minecraft.world.item.Item item) {
+		int n = 0;
+		for (int i = 0; i < c.getContainerSize(); i++) if (c.getItem(i).is(item)) n += c.getItem(i).getCount();
+		return n;
+	}
+
+	private static CopperGolem transporter(GameTestHelper helper, BlockPos a, BlockPos b, boolean keepLayout) {
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 4));
+		GolemService.changeProfession(helper.getLevel(), golem, CopperGolemsRevamped.id("transporter"));
+		GolemData data = GolemData.get(golem);
+		data.keepLayout = keepLayout;
+		data.assignments.put("input", helper.absolutePos(a));
+		data.assignments.put("output", helper.absolutePos(b));
+		GolemData.save(golem, data);
+		return golem;
+	}
+
+	/**
+	 * Keep layout, B has a stick placeholder but no log stack: the golem moves the sticks and never takes the logs (it used
+	 * to take 63 logs and stand at B with them forever).
+	 */
+	@GameTest(maxTicks = 1200)
+	public void keepLayoutLeavesTypesBCannotTake(GameTestHelper helper) {
+		floor(helper);
+		BlockPos a = new BlockPos(1, 1, 3);
+		BlockPos b = new BlockPos(6, 1, 3);
+		helper.setBlock(a, Blocks.CHEST);
+		helper.setBlock(b, Blocks.CHEST);
+		ChestBlockEntity chestA = helper.getBlockEntity(a, ChestBlockEntity.class);
+		ChestBlockEntity chestB = helper.getBlockEntity(b, ChestBlockEntity.class);
+		chestA.setItem(0, new ItemStack(Items.STICK, 64));
+		chestA.setItem(1, new ItemStack(Items.OAK_LOG, 64));
+		chestB.setItem(0, new ItemStack(Items.STICK, 1));
+		CopperGolem golem = transporter(helper, a, b, true);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(chestB, Items.STICK) == 64 && count(chestB, Items.OAK_LOG) == 0,
+				"B sticks " + count(chestB, Items.STICK) + ", logs " + count(chestB, Items.OAK_LOG));
+			helper.assertTrue(count(chestA, Items.OAK_LOG) == 64 && count(chestA, Items.STICK) == 1,
+				"A sticks " + count(chestA, Items.STICK) + ", logs " + count(chestA, Items.OAK_LOG));
+			helper.assertTrue(TransporterLogic.isEmpty(TransporterLogic.carry(GolemData.get(golem))), "carry not empty: " + GolemData.get(golem).items);
+		});
+	}
+
+	/** A carry B refuses entirely (B changed meanwhile) goes back to A instead of waiting at B forever. */
+	@GameTest(maxTicks = 1200)
+	public void carryBRefusesGoesBackToA(GameTestHelper helper) {
+		floor(helper);
+		BlockPos a = new BlockPos(1, 1, 3);
+		BlockPos b = new BlockPos(6, 1, 3);
+		helper.setBlock(a, Blocks.CHEST);
+		helper.setBlock(b, Blocks.CHEST);
+		ChestBlockEntity chestA = helper.getBlockEntity(a, ChestBlockEntity.class);
+		ChestBlockEntity chestB = helper.getBlockEntity(b, ChestBlockEntity.class);
+		chestA.setItem(0, new ItemStack(Items.OAK_LOG, 1));
+		chestB.setItem(0, new ItemStack(Items.STICK, 1));
+		CopperGolem golem = transporter(helper, a, b, true);
+		GolemData data = GolemData.get(golem);
+		data.items.set(0, new ItemStack(Items.OAK_LOG, 10));
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(chestA, Items.OAK_LOG) == 11, "A logs " + count(chestA, Items.OAK_LOG));
+			helper.assertTrue(count(chestB, Items.OAK_LOG) == 0 && count(chestB, Items.STICK) == 1, "B changed");
+			helper.assertTrue(TransporterLogic.isEmpty(TransporterLogic.carry(GolemData.get(golem))), "carry not empty: " + GolemData.get(golem).items);
 		});
 	}
 }

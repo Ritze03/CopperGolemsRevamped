@@ -180,4 +180,56 @@ public class KeepLayoutTest {
 			helper.succeed();
 		});
 	}
+
+	/**
+	 * Chest Sorter, unstackable item: vanilla's rule (empty chest or one holding the same item) applies. The nearer chest has
+	 * free slots but only a stick, so the axe must go to the farther chest that already holds an axe.
+	 */
+	@GameTest(maxTicks = 1200)
+	public void chestSorterUnstackableKeepsVanillaRule(GameTestHelper helper) {
+		floor(helper);
+		BlockPos src = new BlockPos(1, 1, 3);
+		BlockPos near = new BlockPos(3, 1, 1);
+		BlockPos far = new BlockPos(6, 1, 6);
+		helper.setBlock(src, Blocks.COPPER_CHEST.weathering().unaffected());
+		helper.setBlock(near, Blocks.CHEST);
+		helper.setBlock(far, Blocks.CHEST);
+		ChestBlockEntity from = helper.getBlockEntity(src, ChestBlockEntity.class);
+		ChestBlockEntity other = helper.getBlockEntity(near, ChestBlockEntity.class);
+		ChestBlockEntity same = helper.getBlockEntity(far, ChestBlockEntity.class);
+		from.setItem(0, new ItemStack(Items.IRON_AXE));
+		other.setItem(0, new ItemStack(Items.STICK, 1));
+		same.setItem(0, new ItemStack(Items.IRON_AXE));
+		CopperGolem golem = keeper(helper, ChestSorterProfession.ID);
+		helper.onEachTick(() -> helper.assertTrue(count(other, Items.IRON_AXE) == 0, "axe put into the chest without an axe"));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(golem.getMainHandItem().isEmpty() && from.isEmpty() && count(same, Items.IRON_AXE) == 2,
+				"src " + from.getItem(0) + ", far axes " + count(same, Items.IRON_AXE) + ", hand " + golem.getMainHandItem());
+			helper.assertTrue(count(other, Items.STICK) == 1 && count(other, Items.IRON_AXE) == 0, "near chest changed");
+		});
+	}
+
+	/**
+	 * Chest Sorter: a type no destination accepts (cobblestone in slot 0) is skipped, not picked up and held forever; the
+	 * sticks behind it are still sorted.
+	 */
+	@GameTest(maxTicks = 1200)
+	public void chestSorterSkipsTypesNoChestTakes(GameTestHelper helper) {
+		floor(helper);
+		BlockPos src = new BlockPos(1, 1, 3);
+		BlockPos dst = new BlockPos(6, 1, 3);
+		helper.setBlock(src, Blocks.COPPER_CHEST.weathering().unaffected());
+		helper.setBlock(dst, Blocks.CHEST);
+		ChestBlockEntity from = helper.getBlockEntity(src, ChestBlockEntity.class);
+		ChestBlockEntity to = helper.getBlockEntity(dst, ChestBlockEntity.class);
+		from.setItem(0, new ItemStack(Items.COBBLESTONE, 10));
+		from.setItem(1, new ItemStack(Items.STICK, 10));
+		to.setItem(0, new ItemStack(Items.STICK, 1));
+		CopperGolem golem = keeper(helper, ChestSorterProfession.ID);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(golem.getMainHandItem().isEmpty() && count(to, Items.STICK) == 10 && from.getItem(1).getCount() == 1,
+				"dst sticks " + count(to, Items.STICK) + ", src " + from.getItem(0) + "/" + from.getItem(1) + ", hand " + golem.getMainHandItem());
+			helper.assertTrue(count(from, Items.COBBLESTONE) == 10 && count(to, Items.COBBLESTONE) == 0, "cobblestone moved");
+		});
+	}
 }
