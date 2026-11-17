@@ -32,7 +32,7 @@ import net.minecraft.world.level.block.entity.ChestBlockEntity;
 
 /**
  * Mending for the tool professions (superdoc/features/mending.md): XP bottles in the tool chest repair the tools (7 XP
- * each, vanilla conversion), and with Save tools on any enchanted tool at or below {@link GolemMending#SAFE_DURABILITY} is
+ * each, vanilla conversion), and any enchanted tool at or below {@link GolemMending#SAFE_DURABILITY} is
  * never used (it goes back into the chest, the golem works bare-handed or with another tool).
  */
 public class MendingTest {
@@ -76,12 +76,12 @@ public class MendingTest {
 	@GameTest
 	public void guardAndConversion(GameTestHelper helper) {
 		ItemStack above = mending(helper, Items.IRON_AXE, SAFE + 1), at = mending(helper, Items.IRON_AXE, SAFE);
-		helper.assertTrue(GolemMending.canUse(above, true) && !GolemMending.canUse(at, true) && GolemMending.canUse(at, false), "threshold: " + GolemMending.canUse(above, true) + " " + GolemMending.canUse(at, true));
+		helper.assertTrue(GolemMending.canUse(above) && !GolemMending.canUse(at), "threshold: " + GolemMending.canUse(above) + " " + GolemMending.canUse(at));
 		ItemStack plain = new ItemStack(Items.IRON_AXE);
 		plain.setDamageValue(plain.getMaxDamage() - 1);
-		helper.assertTrue(GolemMending.canUse(plain, true), "a plain tool is always usable");
+		helper.assertTrue(GolemMending.canUse(plain), "a plain tool is always usable");
 		ItemStack last = mending(helper, Items.IRON_AXE, 1);
-		helper.assertTrue(!GolemMending.damage(helper.getLevel(), last, true, 1) && !last.isEmpty() && GolemMending.remaining(last) == 1,
+		helper.assertTrue(!GolemMending.damage(helper.getLevel(), last, 1) && !last.isEmpty() && GolemMending.remaining(last) == 1,
 			"damage() must refuse the hit that would break a Mending tool");
 		int per = GolemMending.perBottle(helper.getLevel(), at);
 		helper.assertTrue(per == 14, "durability per 7 XP bottle: " + per);
@@ -148,9 +148,9 @@ public class MendingTest {
 		});
 	}
 
-	/** The "Save tools" rule covers every enchanted tool, not only Mending: an Efficiency axe rests at the threshold. */
+	/** The enchanted-tool rule covers every enchanted tool, not only Mending: an Efficiency axe rests at the threshold. */
 	@GameTest(maxTicks = 4000)
-	public void saveToolsParksAnyEnchantedAxe(GameTestHelper helper) {
+	public void enchantedToolRuleParksAnyEnchantedAxe(GameTestHelper helper) {
 		lumberWorld(helper, 5);
 		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
 		ItemStack axe = new ItemStack(Items.IRON_AXE);
@@ -164,22 +164,36 @@ public class MendingTest {
 		});
 	}
 
-	/** Plain axe breaks as before, and with "Save tools" off a Mending axe breaks too. */
+	/** A plain axe at 1 durability is used until it breaks (never parked), then the golem fetches the next axe from the chest. */
 	@GameTest(maxTicks = 4000)
-	public void plainAndUnsavedToolsBreak(GameTestHelper helper) {
-		lumberWorld(helper, 10); // two golems share the tree, each axe has 3 points
+	public void plainAxeBreaksThenGolemFetchesNext(GameTestHelper helper) {
+		lumberWorld(helper, 5);
+		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
+		in.setItem(0, new ItemStack(Items.STONE_AXE));
+		ItemStack plain = new ItemStack(Items.IRON_AXE);
+		plain.setDamageValue(plain.getMaxDamage() - 1);
+		CopperGolem golem = lumber(helper, plain);
+		helper.onEachTick(() -> helper.assertTrue(count(in, Items.IRON_AXE) == 0, "the 1-durability plain axe was parked in the chest"));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(out, Items.OAK_LOG) == 5, "logs: " + count(out, Items.OAK_LOG));
+			helper.assertTrue(GolemData.get(golem).items.get(LumberProfession.AXE_SLOT).is(Items.STONE_AXE), "golem did not fetch the next axe");
+			helper.assertTrue(count(in, Items.IRON_AXE) == 0 && count(in, Items.STONE_AXE) == 0, "axes left in the chest");
+		});
+	}
+
+	/** An enchanted (Efficiency) axe is parked at the threshold, but plain axes still break: two golems, one each. */
+	@GameTest(maxTicks = 4000)
+	public void plainBreaksWhileMendingIsParked(GameTestHelper helper) {
+		lumberWorld(helper, 10);
 		ChestBlockEntity in = chest(helper, IN);
 		ItemStack plain = new ItemStack(Items.IRON_AXE);
 		plain.setDamageValue(plain.getMaxDamage() - 3);
 		CopperGolem a = lumber(helper, plain);
-		CopperGolem b = lumber(helper, mending(helper, Items.IRON_AXE, 3));
-		GolemData bd = GolemData.get(b);
-		bd.saveTools = false;
-		GolemData.save(b, bd);
+		CopperGolem b = lumber(helper, mending(helper, Items.IRON_AXE, SAFE + 2));
 		helper.succeedWhen(() -> {
 			helper.assertTrue(GolemData.get(a).items.get(LumberProfession.AXE_SLOT).isEmpty(), "plain axe should have broken");
-			helper.assertTrue(GolemData.get(b).items.get(LumberProfession.AXE_SLOT).isEmpty(), "Mending axe should have broken with Save tools off");
-			helper.assertTrue(count(in, Items.IRON_AXE) == 0, "no axe is parked");
+			helper.assertTrue(GolemData.get(b).items.get(LumberProfession.AXE_SLOT).isEmpty() && count(in, Items.IRON_AXE) == 1, "Mending axe should be parked");
+			helper.assertTrue(GolemMending.remaining(in.getItem(firstAxe(in))) == SAFE, "parked axe remaining: " + in.getItem(firstAxe(in)));
 		});
 	}
 
@@ -259,6 +273,20 @@ public class MendingTest {
 			helper.assertTrue(adultCows(helper, p) == 8, "adult cows: " + adultCows(helper, p));
 			helper.assertTrue(ButcherTest.count(p.tools, Items.IRON_SWORD) == 1 && GolemData.get(p.golem).items.get(ButcherProfession.TOOL_SLOT).isEmpty(),
 				"the sword is not back in the tool chest");
+		});
+	}
+
+	/** A plain sword at 1 durability strikes until it breaks, the golem then takes the next sword from the tool chest. */
+	@GameTest(maxTicks = 4000)
+	public void butcherPlainSwordBreaksThenFetchesNext(GameTestHelper helper) {
+		ItemStack plain = new ItemStack(Items.IRON_SWORD);
+		plain.setDamageValue(plain.getMaxDamage() - 1);
+		ButcherTest.Pen p = herd(helper, 9, plain);
+		p.tools.setItem(0, new ItemStack(Items.STONE_SWORD));
+		helper.onEachTick(() -> helper.assertTrue(ButcherTest.count(p.tools, Items.IRON_SWORD) == 0, "the 1-durability plain sword was parked"));
+		helper.succeedWhen(() -> {
+			helper.assertTrue(adultCows(helper, p) == 8, "adult cows: " + adultCows(helper, p));
+			helper.assertTrue(GolemData.get(p.golem).items.get(ButcherProfession.TOOL_SLOT).is(Items.STONE_SWORD), "golem did not fetch the next sword");
 		});
 	}
 
@@ -353,6 +381,41 @@ public class MendingTest {
 		helper.succeedWhen(() -> {
 			helper.assertTrue(count(toolChest, Items.IRON_HOE) == 1 && GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT).isEmpty(), "the hoe is not back in the chest");
 			helper.assertTrue(count(outChest, Items.WHEAT) == 1, "wheat harvested by hand: " + count(outChest, Items.WHEAT));
+		});
+	}
+
+	/** A plain hoe at 1 durability is used for the last point (tills, breaks), never parked; the golem then fetches the next hoe. */
+	@GameTest(maxTicks = 2500)
+	public void farmerUsesLastPointThenFetchesNext(GameTestHelper helper) {
+		BlockPos tools = new BlockPos(5, 1, 0), seeds = new BlockPos(5, 1, 2), out = new BlockPos(5, 1, 4);
+		for (int x = 0; x < 8; x++) for (int z = 0; z < 8; z++) helper.setBlock(new BlockPos(x, 0, z), Blocks.STONE);
+		helper.setBlock(tools, Blocks.CHEST);
+		helper.setBlock(seeds, Blocks.CHEST);
+		helper.setBlock(out, Blocks.CHEST);
+		helper.setBlock(new BlockPos(3, 1, 3), Blocks.TORCH);
+		helper.setBlock(new BlockPos(0, 0, 0), Blocks.DIRT);
+		helper.setBlock(new BlockPos(1, 0, 0), Blocks.DIRT);
+		helper.setBlock(new BlockPos(2, 0, 0), Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, 7));
+		chest(helper, seeds).setItem(0, new ItemStack(Items.WHEAT_SEEDS, 8));
+		ChestBlockEntity toolChest = chest(helper, tools);
+		toolChest.setItem(0, new ItemStack(Items.STONE_HOE));
+		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 2));
+		GolemService.changeProfession(helper.getLevel(), golem, FarmerProfession.ID);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("field_a", helper.absolutePos(new BlockPos(0, 0, 0)));
+		data.assignments.put("field_b", helper.absolutePos(new BlockPos(2, 0, 0)));
+		data.assignments.put("tools", helper.absolutePos(tools));
+		data.assignments.put("seeds", helper.absolutePos(seeds));
+		data.assignments.put("output", helper.absolutePos(out));
+		ItemStack plain = new ItemStack(Items.IRON_HOE);
+		plain.setDamageValue(plain.getMaxDamage() - 1);
+		data.items.set(FarmerProfession.TOOL_SLOT, plain);
+		GolemData.save(golem, data);
+		helper.onEachTick(() -> helper.assertTrue(count(toolChest, Items.IRON_HOE) == 0, "the 1-durability plain hoe was parked"));
+		helper.succeedWhen(() -> {
+			helper.assertBlockPresent(Blocks.FARMLAND, new BlockPos(0, 0, 0));
+			helper.assertBlockPresent(Blocks.FARMLAND, new BlockPos(1, 0, 0));
+			helper.assertTrue(GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT).is(Items.STONE_HOE), "golem did not fetch the next hoe");
 		});
 	}
 

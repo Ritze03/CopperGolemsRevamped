@@ -4,6 +4,7 @@ import com.coppergolemsrevamped.ai.Interact;
 import com.coppergolemsrevamped.ai.ToolSwing;
 import com.coppergolemsrevamped.assign.AssignMode;
 import com.coppergolemsrevamped.core.GolemData;
+import com.coppergolemsrevamped.core.GolemMending;
 import com.coppergolemsrevamped.core.GolemService;
 import com.coppergolemsrevamped.profession.Profession;
 import com.coppergolemsrevamped.profession.Professions;
@@ -172,9 +173,9 @@ public class FarmerTest {
 		});
 	}
 
-	/** A hoe that breaks on its next use is swapped for a fresh one from the chest; no hoe is lost or duplicated. */
+	/** A plain hoe with 1 durability is used until it breaks (never parked), then the golem fetches a fresh one from the chest. */
 	@GameTest(maxTicks = 1500)
-	public void wornHoeIsSwappedNotLost(GameTestHelper helper) {
+	public void plainHoeBreaksThenNextIsFetched(GameTestHelper helper) {
 		world(helper);
 		field(helper, 2, 1, Blocks.DIRT);
 		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_HOE));
@@ -183,16 +184,11 @@ public class FarmerTest {
 		worn.setDamageValue(worn.getMaxDamage() - 1);
 		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn));
 
-		helper.onEachTick(() -> {
-			int hoes = count(chest(helper, TOOLS), Items.IRON_HOE) + count(chest(helper, TOOLS), Items.WOODEN_HOE)
-				+ count(GolemData.get(golem).items, Items.IRON_HOE) + count(GolemData.get(golem).items, Items.WOODEN_HOE);
-			helper.assertTrue(hoes == 2, "hoes in total: " + hoes);
-		});
+		helper.onEachTick(() -> helper.assertTrue(count(chest(helper, TOOLS), Items.WOODEN_HOE) == 0, "the 1-durability plain hoe was parked"));
 		helper.succeedWhen(() -> {
 			helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(0, 1, 0));
 			helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(1, 1, 0));
 			helper.assertTrue(GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT).is(Items.IRON_HOE), "iron hoe not in the tool slot");
-			helper.assertTrue(count(chest(helper, TOOLS), Items.WOODEN_HOE) == 1, "worn hoe not returned to the chest");
 		});
 	}
 
@@ -391,7 +387,7 @@ public class FarmerTest {
 		helper.succeedWhen(() -> helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(1, 1, 0)));
 	}
 
-	/** Worn hoe, an axe comes first in the chest: only the hoe replaces it; the axe stays; no tool is lost. */
+	/** Protected enchanted hoe (at the threshold), an axe comes first in the chest: only the hoe replaces it; the axe stays; no tool is lost. */
 	@GameTest(maxTicks = 1500)
 	public void wornHoeReplacedOnlyByHoe(GameTestHelper helper) {
 		world(helper);
@@ -399,7 +395,7 @@ public class FarmerTest {
 		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_AXE));
 		chest(helper, TOOLS).setItem(1, new ItemStack(Items.IRON_HOE));
 		chest(helper, SEEDS).setItem(0, new ItemStack(Items.WHEAT_SEEDS, 8));
-		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_HOE)));
+		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, MendingTest.mending(helper, Items.WOODEN_HOE, GolemMending.SAFE_DURABILITY)));
 		helper.onEachTick(() -> {
 			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
 			helper.assertTrue(!t.is(Items.IRON_AXE), "axe replaced the hoe");
@@ -414,7 +410,7 @@ public class FarmerTest {
 		});
 	}
 
-	/** Worn axe, a hoe comes first in the chest: only the axe replaces it, then both melons are harvested. */
+	/** Protected enchanted axe, a hoe comes first in the chest: only the axe replaces it, then both melons are harvested. */
 	@GameTest(maxTicks = 1500)
 	public void wornAxeReplacedOnlyByAxe(GameTestHelper helper) {
 		world(helper);
@@ -423,7 +419,7 @@ public class FarmerTest {
 		helper.setBlock(new BlockPos(1, 1, 0), Blocks.MELON);
 		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_HOE));
 		chest(helper, TOOLS).setItem(1, new ItemStack(Items.IRON_AXE));
-		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_AXE)));
+		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, MendingTest.mending(helper, Items.WOODEN_AXE, GolemMending.SAFE_DURABILITY)));
 		helper.onEachTick(() -> {
 			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
 			helper.assertTrue(!t.is(Items.IRON_HOE), "hoe replaced the axe");
@@ -438,9 +434,9 @@ public class FarmerTest {
 		});
 	}
 
-	/** No same-type replacement: the worn hoe is not used up, the dirt is not tilled, the axe stays in the chest. */
+	/** No same-type replacement: the plain 1-durability hoe is used until it breaks (it tills a cell), never parked. */
 	@GameTest(maxTicks = 500)
-	public void noReplacementKeepsWornHoe(GameTestHelper helper) {
+	public void plainHoeWithoutReplacementIsUsedUp(GameTestHelper helper) {
 		world(helper);
 		field(helper, 2, 1, Blocks.DIRT);
 		chest(helper, TOOLS).setItem(0, new ItemStack(Items.IRON_AXE));
@@ -448,17 +444,17 @@ public class FarmerTest {
 		CopperGolem golem = farmer(helper, 2, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_HOE)));
 		helper.runAfterDelay(300, () -> {
 			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
-			helper.assertTrue(t.is(Items.WOODEN_HOE) && t.getDamageValue() == t.getMaxDamage() - 1, "tool slot: " + t);
-			helper.assertBlockPresent(Blocks.DIRT, new BlockPos(0, 0, 0));
-			helper.assertBlockPresent(Blocks.DIRT, new BlockPos(1, 0, 0));
-			helper.assertTrue(count(chest(helper, TOOLS), Items.IRON_AXE) == 1, "axe left the chest");
+			helper.assertTrue(!t.is(Items.WOODEN_HOE), "the plain hoe was not used up: " + t);
+			helper.assertTrue(count(chest(helper, TOOLS), Items.WOODEN_HOE) == 0, "the plain hoe was parked");
+			helper.assertTrue(helper.getBlockState(new BlockPos(0, 0, 0)).is(Blocks.FARMLAND)
+				|| helper.getBlockState(new BlockPos(1, 0, 0)).is(Blocks.FARMLAND), "the last point tilled nothing");
 			helper.succeed();
 		});
 	}
 
-	/** Same for the axe: a worn axe with only a hoe in the chest harvests nothing and is kept. */
+	/** Same for the axe: a plain 1-durability axe with only a hoe in the chest harvests the pumpkin and breaks. */
 	@GameTest(maxTicks = 500)
-	public void noReplacementKeepsWornAxe(GameTestHelper helper) {
+	public void plainAxeWithoutReplacementIsUsedUp(GameTestHelper helper) {
 		world(helper);
 		field(helper, 1, 1, Blocks.FARMLAND);
 		helper.setBlock(new BlockPos(0, 1, 0), Blocks.PUMPKIN);
@@ -466,9 +462,8 @@ public class FarmerTest {
 		CopperGolem golem = farmer(helper, 1, 1, (g, d) -> d.items.set(FarmerProfession.TOOL_SLOT, worn(Items.WOODEN_AXE)));
 		helper.runAfterDelay(300, () -> {
 			ItemStack t = GolemData.get(golem).items.get(FarmerProfession.TOOL_SLOT);
-			helper.assertTrue(t.is(Items.WOODEN_AXE) && t.getDamageValue() == t.getMaxDamage() - 1, "tool slot: " + t);
-			helper.assertBlockPresent(Blocks.PUMPKIN, new BlockPos(0, 1, 0));
-			helper.assertTrue(count(chest(helper, TOOLS), Items.IRON_HOE) == 1, "hoe left the chest");
+			helper.assertTrue(!t.is(Items.WOODEN_AXE), "the plain axe was not used up: " + t);
+			helper.assertBlockNotPresent(Blocks.PUMPKIN, new BlockPos(0, 1, 0));
 			helper.succeed();
 		});
 	}

@@ -538,7 +538,7 @@ public final class LumberLogic {
 			if (TransferBudget.remaining(level, golem) >= 1 && fetchAxe(in, data)) {
 				took++; // a swap counts as one item
 				TransferBudget.spend(level, golem, 1);
-			} else if (TransferBudget.remaining(level, golem) >= 1 && GolemMending.mustPark(data.items.get(LumberProfession.AXE_SLOT), data.saveTools)
+			} else if (TransferBudget.remaining(level, golem) >= 1 && GolemMending.mustPark(data.items.get(LumberProfession.AXE_SLOT))
 				&& GolemMending.park(in, data.items.get(LumberProfession.AXE_SLOT))) {
 				data.items.set(LumberProfession.AXE_SLOT, ItemStack.EMPTY); // no other axe: it rests in the chest, the golem chops by hand
 				took++;
@@ -819,7 +819,7 @@ public final class LumberLogic {
 		return breakBlock(level, golem, data, tree, pos, false);
 	}
 
-	/** {@code bare}: no usable axe because an enchanted axe is resting (Save tools); the log is then broken by hand (no tool, no wear). */
+	/** {@code bare}: no usable axe because an enchanted axe is resting; the log is then broken by hand (no tool, no wear). */
 	static Result breakBlock(ServerLevel level, CopperGolem golem, GolemData data, Set<BlockPos> tree, BlockPos pos, boolean bare) {
 		if (!breakAllowed(golem.getX(), golem.getZ(), tree, pos)) return Result.DENIED;
 		BlockState st = level.getBlockState(pos);
@@ -833,7 +833,7 @@ public final class LumberLogic {
 		storeAll(data, drops);
 		// breaking empties the stack (vanilla behaviour); the item is gone, never duplicated
 		if (slot >= 0) {
-			GolemMending.damage(level, tool, data.saveTools, 1); // a protected enchanted axe is never broken (axeSlot only offers a usable one)
+			GolemMending.damage(level, tool, 1); // a protected enchanted axe is never broken (axeSlot only offers a usable one)
 			if (tool.isEmpty()) data.items.set(slot, ItemStack.EMPTY);
 		}
 		return Result.BROKEN;
@@ -843,13 +843,12 @@ public final class LumberLogic {
 
 	/**
 	 * The stripped form of the log at {@code pos} when the golem should strip it first: setting on, a usable axe that can
-	 * take the strip hit and still the break hit (not the last durability point), and a vanilla stripping result that is
+	 * take the strip hit and still the break hit (2+ points left), and a vanilla stripping result that is
 	 * a log. Null otherwise (the log is broken as it is). The result comes from the axe's own {@code BLOCK_TRANSFORMER}
 	 * component, so every wood vanilla strips is covered (logs, wood, stems, hyphae) and nothing is hardcoded.
 	 */
 	public static @Nullable BlockState strippedState(ServerLevel level, BlockPos pos, GolemData data, ItemStack tool) {
-		if (!data.stripLogs || tool.isEmpty() || !isAxe(tool) || !GolemMending.canUse(tool, data.saveTools) || tool.nextDamageWillBreak()) return null;
-		if (GolemMending.hasMending(tool) && GolemMending.remaining(tool) <= 2) return null;
+		if (!data.stripLogs || tool.isEmpty() || !isAxe(tool) || !GolemMending.canUse(tool) || GolemMending.remaining(tool) < 2) return null; // at the last point the log is just broken (the strip hit would break the axe before the break hit)
 		Holder<BlockTransformer> h = tool.get(DataComponents.BLOCK_TRANSFORMER);
 		if (h == null) return null;
 		for (BlockTransformer.BlockTransformData t : h.value().transforms()) {
@@ -869,7 +868,7 @@ public final class LumberLogic {
 		}
 		level.setBlock(pos, stripped, 11);
 		level.playSound(null, pos, sound, SoundSource.BLOCKS, 1.0F, 1.0F);
-		GolemMending.damage(level, tool, data.saveTools, 1);
+		GolemMending.damage(level, tool, 1);
 	}
 
 	// ---- walking with give-up -------------------------------------------------------------------------------------
@@ -1246,33 +1245,33 @@ public final class LumberLogic {
 
 	static int axeSlot(GolemData data) {
 		ItemStack a = data.items.get(LumberProfession.AXE_SLOT);
-		return isAxe(a) && GolemMending.canUse(a, data.saveTools) ? LumberProfession.AXE_SLOT : -1; // a resting enchanted axe is not an axe to use
+		return isAxe(a) && GolemMending.canUse(a) ? LumberProfession.AXE_SLOT : -1; // a resting enchanted axe is not an axe to use
 	}
 
 	/**
-	 * Bare hands are allowed only because of a protected enchanted axe (Save tools): one resting in the slot, or (empty slot) lying unusable in the
+	 * Bare hands are allowed only because of a protected enchanted axe: one resting in the slot, or (empty slot) lying unusable in the
 	 * input chest. Without such an axe a golem with no axe still does no work, as before.
 	 */
 	static boolean mendingBlocked(GolemData data, @Nullable Container in) {
 		ItemStack cur = data.items.get(LumberProfession.AXE_SLOT);
-		if (GolemMending.mustPark(cur, data.saveTools)) return true;
+		if (GolemMending.mustPark(cur)) return true;
 		if (!cur.isEmpty() || in == null) return false;
-		for (int i = 0; i < in.getContainerSize(); i++) if (isAxe(in.getItem(i)) && GolemMending.mustPark(in.getItem(i), data.saveTools)) return true;
+		for (int i = 0; i < in.getContainerSize(); i++) if (isAxe(in.getItem(i)) && GolemMending.mustPark(in.getItem(i))) return true;
 		return false;
 	}
 
-	/** Chest slot of an axe that may be taken: fills the empty axe slot or replaces a worn one (about to break); -1 if none. */
+	/** Chest slot of an axe that may be taken: fills the empty axe slot or replaces a protected resting one; -1 if none. */
 	static int fetchableAxe(Container chest, GolemData data) {
 		ItemStack cur = data.items.get(LumberProfession.AXE_SLOT);
-		if (!cur.isEmpty() && !cur.nextDamageWillBreak() && GolemMending.canUse(cur, data.saveTools)) return -1;
+		if (!cur.isEmpty() && GolemMending.canUse(cur)) return -1;
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (isAxe(st) && st.getCount() == 1 && GolemMending.canUse(st, data.saveTools) && (cur.isEmpty() || !st.nextDamageWillBreak())) return i;
+			if (isAxe(st) && st.getCount() == 1 && GolemMending.canUse(st)) return i;
 		}
 		return -1;
 	}
 
-	/** Empty: take one. Worn (breaks on its next use): swap, the old one goes into the chest slot (nothing lost). */
+	/** Empty: take one. Protected enchanted axe resting: swap, the old one goes into the chest slot (nothing lost). */
 	static boolean fetchAxe(Container chest, GolemData data) {
 		int i = fetchableAxe(chest, data);
 		if (i < 0) return false;
@@ -1290,7 +1289,7 @@ public final class LumberLogic {
 		// Mending: bottles to use, or a resting Mending axe the chest can take back
 		ItemStack held = data.items.get(LumberProfession.AXE_SLOT);
 		if (felling && (GolemMending.canRepair(level, data, held, in, LumberLogic::isAxe)
-			|| GolemMending.mustPark(held, data.saveTools) && GolemMending.canPark(in, held))) return true;
+			|| GolemMending.mustPark(held) && GolemMending.canPark(in, held))) return true;
 		// topUp: a fetch the transfer budget cut short goes on up to its full target, not just above the low mark
 		if (wantSap && countOf(data, LumberLogic::isSapling) < (topUp ? 64 : SAPLING_LOW) && supplySource(in, data, LumberLogic::isSapling) >= 0) return true;
 		return growing && countOf(data, LumberLogic::isBone) < (topUp ? BONE_TARGET : BONE_LOW) && supplySource(in, data, LumberLogic::isBone) >= 0;

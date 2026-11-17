@@ -290,11 +290,11 @@ public class LumberTest {
 	}
 
 	/**
-	 * The golem carries an iron axe that breaks on its next use; the input chest holds a diamond axe. It swaps before
-	 * cutting: the worn axe is in the chest afterwards (not lost), the golem holds the diamond axe, all logs delivered.
+	 * The golem carries a plain iron axe with 1 durability left; the input chest holds a diamond axe. The plain axe is used
+	 * until it breaks (never parked in the chest), then the golem fetches the diamond axe; all logs delivered.
 	 */
 	@GameTest(maxTicks = 1500)
-	public void wornAxeIsSwapped(GameTestHelper helper) {
+	public void plainAxeBreaksThenNextIsFetched(GameTestHelper helper) {
 		world(helper);
 		tree(helper, 4, 0);
 		ChestBlockEntity in = chest(helper, IN), out = chest(helper, OUT);
@@ -309,7 +309,7 @@ public class LumberTest {
 
 		helper.succeedWhen(() -> {
 			helper.assertTrue(count(out, Items.OAK_LOG) == 4, "oak logs in output: " + count(out, Items.OAK_LOG));
-			helper.assertTrue(count(in, Items.IRON_AXE) == 1, "worn axe in the chest: " + count(in, Items.IRON_AXE));
+			helper.assertTrue(count(in, Items.IRON_AXE) == 0, "worn axe parked in the chest: " + count(in, Items.IRON_AXE));
 			helper.assertTrue(GolemData.get(golem).items.get(LumberProfession.AXE_SLOT).is(Items.DIAMOND_AXE), "golem axe is not the diamond axe");
 		});
 	}

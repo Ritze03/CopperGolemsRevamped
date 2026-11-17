@@ -14,16 +14,15 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 /**
- * Mending and Save tools for the tool professions (Lumber, Farmer, Butcher): XP bottles in the tool chest repair Mending
- * tools, and with the per-golem "Save tools" setting on (default) any enchanted tool (not only Mending) is never used down
- * to its last points (it goes back into the chest instead); plain tools, and every tool with the setting off, are used until
- * they break. See superdoc/features/mending.md.
+ * Mending and the enchanted-tool guard for the tool professions (Lumber, Farmer, Butcher): XP bottles in the tool chest
+ * repair Mending tools, and any enchanted tool (not only Mending) is never used down to its last points (it goes back
+ * into the chest instead); plain tools are used until they break. See superdoc/features/mending.md.
  */
 public final class GolemMending {
 	private GolemMending() {}
 
 	/**
-	 * With "Save tools" on, an enchanted tool with this many durability points left (or fewer) is not used any more. Why 10: one use costs 1 point
+	 * An enchanted tool with this many durability points left (or fewer) is not used any more. Why 10: one use costs 1 point
 	 * (hit, break, till), so anything above 1 would already be safe; 10 leaves margin for tools that cost more per use,
 	 * and is far below the weakest tool's durability (golden: 32), so little durability is parked.
 	 */
@@ -39,30 +38,30 @@ public final class GolemMending {
 	}
 
 	/**
-	 * Is this tool protected from wear right now: "Save tools" is on ({@code GolemData.saveTools}), the tool is enchanted
+	 * Is this tool protected from wear right now: it is enchanted
 	 * (any enchantment, not only Mending) and has {@link #SAFE_DURABILITY} points or fewer left. Plain tools never are.
 	 */
-	public static boolean protects(ItemStack tool, boolean saveTools) {
-		return saveTools && !tool.isEmpty() && tool.isEnchanted() && tool.isDamageableItem() && remaining(tool) <= SAFE_DURABILITY;
+	public static boolean protects(ItemStack tool) {
+		return !tool.isEmpty() && tool.isEnchanted() && tool.isDamageableItem() && remaining(tool) <= SAFE_DURABILITY;
 	}
 
 	/** THE use guard: false for a protected tool ({@link #protects}); every other tool is usable. */
-	public static boolean canUse(ItemStack tool, boolean saveTools) {
-		return !protects(tool, saveTools);
+	public static boolean canUse(ItemStack tool) {
+		return !protects(tool);
 	}
 
 	/** A held protected tool that must go back into the chest. */
-	public static boolean mustPark(ItemStack tool, boolean saveTools) {
-		return protects(tool, saveTools);
+	public static boolean mustPark(ItemStack tool) {
+		return protects(tool);
 	}
 
 	/**
-	 * Damages {@code tool} by {@code amount} like a use, except an enchanted tool that would drop to 0 or below while
-	 * {@code saveTools} is on: that one is left untouched and false is returned (the last line of defence behind {@link #canUse}).
+	 * Damages {@code tool} by {@code amount} like a use, except an enchanted tool that would drop to 0 or below: that one is left
+	 * untouched and false is returned (the last line of defence behind {@link #canUse}). Plain tools just break.
 	 */
-	public static boolean damage(ServerLevel level, ItemStack tool, boolean saveTools, int amount) {
+	public static boolean damage(ServerLevel level, ItemStack tool, int amount) {
 		if (tool.isEmpty()) return true;
-		if (saveTools && tool.isEnchanted() && remaining(tool) <= amount) return false;
+		if (tool.isEnchanted() && remaining(tool) <= amount) return false;
 		tool.hurtAndBreak(amount, level, null, broken -> {});
 		return true;
 	}
@@ -82,10 +81,10 @@ public final class GolemMending {
 	 * Worth a repair: a damaged Mending tool that is resting (not usable) or lacks at least one bottle's worth of durability.
 	 * Why: without this the golem would walk back to the chest after every single hit to burn a bottle on 1 point.
 	 */
-	private static boolean wantsRepair(ServerLevel level, ItemStack s, Predicate<ItemStack> isTool, boolean topUp, boolean saveTools) {
+	private static boolean wantsRepair(ServerLevel level, ItemStack s, Predicate<ItemStack> isTool, boolean topUp) {
 		if (s.getCount() != 1 || !isTool.test(s) || !hasMending(s) || !s.isDamaged()) return false;
 		int per = perBottle(level, s);
-		return per > 0 && (topUp || s.getDamageValue() >= per || !canUse(s, saveTools));
+		return per > 0 && (topUp || s.getDamageValue() >= per || !canUse(s));
 	}
 
 	public static int bottlesIn(Container chest) {
@@ -113,8 +112,8 @@ public final class GolemMending {
 	 */
 	public static boolean canRepair(ServerLevel level, GolemData data, ItemStack held, Container chest, Predicate<ItemStack> isTool, boolean topUp) {
 		if (data.xp <= 0 && bottlesIn(chest, data.keepLayout) <= 0) return false;
-		if (wantsRepair(level, held, isTool, topUp, data.saveTools)) return true;
-		for (int i = 0; i < chest.getContainerSize(); i++) if (wantsRepair(level, chest.getItem(i), isTool, topUp, data.saveTools)) return true;
+		if (wantsRepair(level, held, isTool, topUp)) return true;
+		for (int i = 0; i < chest.getContainerSize(); i++) if (wantsRepair(level, chest.getItem(i), isTool, topUp)) return true;
 		return false;
 	}
 
@@ -135,7 +134,7 @@ public final class GolemMending {
 		for (int i = -1; i < chest.getContainerSize(); i++) {
 			ItemStack t = i < 0 ? held : chest.getItem(i);
 			// once a tool is worth repairing it is repaired to full, as far as the XP reaches
-			if (!wantsRepair(level, t, isTool, topUp, data.saveTools)) continue;
+			if (!wantsRepair(level, t, isTool, topUp)) continue;
 			while (t.isDamaged()) {
 				int need = xpFor(level, t, t.getDamageValue());
 				if (data.xp < need && data.xp < GolemXp.XP_PER_BOTTLE) {

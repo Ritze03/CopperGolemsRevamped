@@ -61,8 +61,8 @@ while marked, so only the animal gets its push. Why not make the golem never pus
   kill takes about 25 ticks plus the walk; the weakest sword needs 2 to 3 hits.
 - Durability: `Weapon#itemDamagePerAttack` (1 for swords and axes) goes to the real stack in the tool slot
   (`hurtAndBreak`), a broken weapon empties the slot.
-- Worn weapon (`nextDamageWillBreak`) or empty slot: only when something is to be culled, the golem fetches one from the tool
-  chest; a worn one goes into the freed chest slot (nothing lost), as in Lumber. Without a weapon it does not kill.
+- Empty slot (a plain weapon broke) or a protected enchanted weapon: only when something is to be culled, the golem fetches one from the tool
+  chest; a resting enchanted one goes into the freed chest slot (nothing lost), as in Lumber. Without a weapon it does not kill.
 
 ### How Looting is applied (the mechanism)
 
@@ -169,7 +169,7 @@ with the three chests set into the west wall.
 
 ## Mending
 
-The **Save tools** setting (Settings 4,4, default on) applies the same guard to any enchanted weapon; off, weapons are used until they break. See [mending.md](mending.md).
+Any enchanted weapon is protected at 10 durability or less, plain weapons are used until they break (no setting). See [mending.md](mending.md).
 
 A Mending weapon is repaired with XP bottles from the **tools chest** and never used below 10 durability: it is parked in the
 chest (or swapped for a usable weapon) and the golem culls bare-handed (1 damage per hit) meanwhile. Only a Mending weapon

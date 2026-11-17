@@ -198,9 +198,9 @@ public final class FarmerLogic {
 		// the axe does only the fruit work: it never tills or plants, so it needs no seeds
 		boolean anyPlant = mode != Mode.AXE && s.anyPlant;
 
-		// 1. tool: fill an empty slot (any hoe/axe: that sets the type) or swap a tool that breaks on its next use
+		// 1. tool: fill an empty slot (any hoe/axe: that sets the type) or swap a resting protected tool
 		//    (same type only). Nothing is fetched when this tool type has no work in the field.
-		boolean worn = tool.nextDamageWillBreak() || !GolemMending.canUse(tool, data.saveTools); // a protected enchanted tool near its end (Save tools) counts as worn
+		boolean worn = !GolemMending.canUse(tool); // a protected enchanted tool near its end counts as worn
 		boolean toolWork = mode == Mode.NONE ? anyTill || anyFruit : mode == Mode.HOE ? anyTill : anyFruit;
 		if (toolWork) {
 			BlockPos pos = data.assignments.get(FarmerProfession.TOOLS);
@@ -208,7 +208,7 @@ public final class FarmerLogic {
 			if (chest != null) {
 				boolean repair = GolemMending.canRepair(level, data, tool, chest, FarmerLogic::isTool);
 				boolean swap = (mode == Mode.NONE || worn) && findTool(chest, tool, data) >= 0;
-				boolean park = mode != Mode.NONE && GolemMending.mustPark(tool, data.saveTools) && GolemMending.canPark(chest, tool);
+				boolean park = mode != Mode.NONE && GolemMending.mustPark(tool) && GolemMending.canPark(chest, tool);
 				if (repair || swap || park) {
 					if (walkTo(level, s, golem, pos, now)) toolVisit(level, golem, data, s, chest, pos);
 					return;
@@ -373,7 +373,7 @@ public final class FarmerLogic {
 				yield fitsAll(data, drops(level, soil.above(), st, false, ItemStack.EMPTY));
 			}
 			case FRUIT -> {
-				// never use the last durability point: the slot must keep the tool (and with it the type)
+				// a protected enchanted tool is not used; a plain one is used until it breaks (the slot then empties and the golem fetches another)
 				if (!tool.is(ItemTags.AXES) || !usable(tool, data)) yield false;
 				BlockState st = level.getBlockState(soil.above());
 				yield fitsAll(data, drops(level, soil.above(), st, false, tool));
@@ -419,7 +419,7 @@ public final class FarmerLogic {
 				if (!fitsAll(data, drops)) yield false;
 				level.destroyBlock(crop, false, golem);
 				storeAll(data, drops);
-				GolemMending.damage(level, tool, data.saveTools, 1);
+				GolemMending.damage(level, tool, 1);
 				yield true;
 			}
 			case PLANT -> plant(level, data, soil);
@@ -427,8 +427,8 @@ public final class FarmerLogic {
 				ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
 				level.setBlock(soil, Blocks.FARMLAND.defaultBlockState(), 3);
 				level.playSound(null, soil, SoundEvents.HOE_TILL.value(), SoundSource.BLOCKS, 1.0F, 1.0F);
-				// workable() guarantees this is not the last durability point, so the slot never empties
-				GolemMending.damage(level, tool, data.saveTools, 1);
+				// a plain hoe may break here: the slot empties and the next visit fetches a tool
+				GolemMending.damage(level, tool, 1);
 				yield plant(level, data, soil);
 			}
 		};
@@ -499,9 +499,9 @@ public final class FarmerLogic {
 		return modeOf(s) != Mode.NONE;
 	}
 
-	/** A tool the golem may use now: never its last durability point (whatever Save tools says), and not a protected enchanted tool. */
+	/** A tool the golem may use now: anything but a protected enchanted tool (plain tools are used until they break). */
 	static boolean usable(ItemStack tool, GolemData data) {
-		return !tool.nextDamageWillBreak() && GolemMending.canUse(tool, data.saveTools);
+		return GolemMending.canUse(tool);
 	}
 
 	/**
@@ -513,7 +513,7 @@ public final class FarmerLogic {
 		int used = GolemMending.repair(level, data, data.items.get(FarmerProfession.TOOL_SLOT), chest, FarmerLogic::isTool, TransferBudget.remaining(level, golem));
 		TransferBudget.spend(level, golem, used);
 		ItemStack tool = data.items.get(FarmerProfession.TOOL_SLOT);
-		boolean worn = tool.nextDamageWillBreak() || !GolemMending.canUse(tool, data.saveTools);
+		boolean worn = !GolemMending.canUse(tool);
 		boolean acted = used > 0;
 		if ((tool.isEmpty() || worn) && findTool(chest, tool, data) >= 0) {
 			if (TransferBudget.remaining(level, golem) >= 1) {
@@ -521,7 +521,7 @@ public final class FarmerLogic {
 				TransferBudget.spend(level, golem, 1); // a swap counts as one item
 				acted = true;
 			}
-		} else if (GolemMending.mustPark(tool, data.saveTools) && TransferBudget.remaining(level, golem) >= 1 && GolemMending.park(chest, tool)) {
+		} else if (GolemMending.mustPark(tool) && TransferBudget.remaining(level, golem) >= 1 && GolemMending.park(chest, tool)) {
 			data.items.set(FarmerProfession.TOOL_SLOT, ItemStack.EMPTY);
 			TransferBudget.spend(level, golem, 1);
 			acted = true;
@@ -529,15 +529,15 @@ public final class FarmerLogic {
 		ItemStack now = data.items.get(FarmerProfession.TOOL_SLOT);
 		// budget used up while work remains: stay, keep the lid open, go on next window (not "nothing to do")
 		boolean more = TransferBudget.exhausted(level, golem) && (GolemMending.canRepair(level, data, now, chest, FarmerLogic::isTool)
-			|| GolemMending.mustPark(now, data.saveTools) && GolemMending.canPark(chest, now)
-			|| (now.isEmpty() || now.nextDamageWillBreak() || GolemMending.mustPark(now, data.saveTools)) && findTool(chest, now, data) >= 0);
+			|| GolemMending.mustPark(now) && GolemMending.canPark(chest, now)
+			|| (now.isEmpty() || GolemMending.mustPark(now)) && findTool(chest, now, data) >= 0);
 		if (acted || more) Interact.openChest(level, golem, pos, Interact.Action.TAKE);
 		done(s, golem, data, more ? TransferBudget.waitTicks(level) : acted ? Interact.OPEN_TICKS : AFTER_ACTION_TICKS);
 	}
 
 	/**
 	 * Slot of a tool in {@code chest} that may go into the tool slot; -1 if none. Empty slot: the first hoe or axe.
-	 * Otherwise only the same type (hoe for hoe, axe for axe). Never one that breaks on its next use.
+	 * Otherwise only the same type (hoe for hoe, axe for axe). Never a protected enchanted tool.
 	 */
 	static int findTool(Container chest, ItemStack tool, GolemData data) {
 		Mode mode = modeOf(tool);

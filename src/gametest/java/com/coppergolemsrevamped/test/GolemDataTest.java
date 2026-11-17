@@ -57,7 +57,6 @@ public class GolemDataTest {
 		data.filterMode = FilterMode.BLACKLIST;
 		data.stripLogs = true;
 		data.keepLayout = true;
-		data.saveTools = false; // default is true
 		GolemData.save(golem, data);
 
 		TagValueOutput out = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, level.registryAccess());
@@ -85,7 +84,6 @@ public class GolemDataTest {
 		helper.assertTrue(d.filterMode == FilterMode.BLACKLIST, "filter_mode: " + d.filterMode);
 		helper.assertTrue(d.stripLogs, "strip_logs lost");
 		helper.assertTrue(d.keepLayout, "keep_layout lost");
-		helper.assertTrue(!d.saveTools, "save_tools reset to its default");
 		helper.succeed();
 	}
 
@@ -106,7 +104,7 @@ public class GolemDataTest {
 
 	/**
 	 * A save from before the newer fields (only profession, assignments, a short items list, following): every missing
-	 * field gets its default, save_tools on, and the items list is padded to the profession's slot count.
+	 * field gets its default, and the items list is padded to the profession's slot count.
 	 */
 	@GameTest
 	public void oldSaveGetsDefaults(GameTestHelper helper) {
@@ -131,7 +129,6 @@ public class GolemDataTest {
 		helper.assertTrue(d.filterMode == FilterMode.OFF, "filter_mode default: " + d.filterMode);
 		helper.assertTrue(!d.stripLogs, "strip_logs default");
 		helper.assertTrue(!d.keepLayout, "keep_layout default");
-		helper.assertTrue(d.saveTools, "save_tools default must be on");
 		helper.assertTrue(d.autoName == null && d.spawnChest == null && d.followPlayer == null, "nullable defaults");
 		helper.succeed();
 	}
@@ -156,7 +153,7 @@ public class GolemDataTest {
 		tag.put("items", items);
 		tag.putString("xp", "lots");
 		tag.putBoolean("keep_layout", true);
-		tag.putString("save_tools", "maybe");
+		tag.putBoolean("save_tools", false); // removed setting: an old save that still has it must load, the field ignored
 
 		DataResult<GolemData> r = GolemData.CODEC.parse(ops(helper), tag);
 		helper.assertTrue(r.isSuccess(), "decode failed: " + r.error().map(e -> e.message()).orElse(""));
@@ -170,7 +167,6 @@ public class GolemDataTest {
 		helper.assertTrue(ItemStack.matches(d.items.get(2), new ItemStack(Items.EMERALD, 7)), "slot 2 shifted: " + d.items.get(2));
 		helper.assertTrue(d.xp == 0, "bad xp: " + d.xp);
 		helper.assertTrue(d.keepLayout, "keep_layout lost");
-		helper.assertTrue(d.saveTools, "bad save_tools must fall back to on");
 		helper.succeed();
 	}
 

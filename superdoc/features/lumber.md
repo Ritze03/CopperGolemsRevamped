@@ -68,8 +68,8 @@ level that contains T (`LumberLogic:bottomSquare`), else just T. The footprint i
    position is in the detected tree set and within `REACH_H` horizontally of the golem, and it is a log. Time per log
    `LumberLogic:breakTicks(hardness, speed)` = `max(1, ceil(hardness * 30 / speed))` (vanilla correct-tool formula;
    oak log: 30 ticks wooden axe, 10 iron, 8 diamond), the golem looks at the log meanwhile.
-4. Durability 1 per log (`hurtAndBreak`, server overload). A worn axe (`nextDamageWillBreak`) is swapped for a fresh
-   one from the input chest, the old one going into that chest slot: nothing lost or duplicated. No axe: the golem
+4. Durability 1 per log (`hurtAndBreak`, server overload). A plain axe is used until it breaks (the slot then empties and a
+   fresh one is fetched from the input chest); a protected enchanted axe is swapped, going into that chest slot: nothing lost or duplicated. No axe: the golem
    idles and the tree is untouched. Axes are fetched only when there is a tree to fell.
    Broken-axe handling: `LumberLogic:breakBlock` reads the axe slot once before `hurtAndBreak` and clears that slot
    index afterwards. Why: `axeSlot` finds the slot by testing for an axe, so after the axe broke it returned -1 and
@@ -108,7 +108,7 @@ ticks (0.8 s) per log over the pure vanilla formula (whole swings). Test: `Lumbe
 
 ## Strip logs (setting)
 
-Lumber-only toggle on the Settings tab (4,5, next to Save tools at 4,3), "Strip logs: on/off", icon `oak_log` off / `stripped_oak_log` on, default **off**, persisted as
+Lumber-only toggle on the Settings tab (4,5), "Strip logs: on/off", icon `oak_log` off / `stripped_oak_log` on, default **off**, persisted as
 `GolemData:stripLogs` (codec field `strip_logs`, old saves load off). With it on the golem strips each log with its axe before
 breaking it, so the carry and the output chest get stripped logs. User request. See [gui.md](gui.md) for the toggle.
 
@@ -130,7 +130,7 @@ breaking it, so the carry and the output chest get stripped logs. User request. 
   (`fellsMixedPlainAndStrippedTree`). `State:stripPos` keeps the just-stripped log as the next target across a delivery trip.
 - Timing: strip tick, then `STRIP_TICKS`, then the break (whole swings, still one hold).
 - Durability: strip 1 plus break 1 = 2 per log, both through `GolemMending.damage`. Strips only when the axe is usable
-  (`canUse`), is not on its last point (`nextDamageWillBreak`: then the log is just broken) and, for Mending, has more than 2 left.
+  (`canUse`), has at least 2 durability points left (at the last point the log is just broken: the strip hit would break the axe before the break hit).
   Bare hands (a resting Mending axe, no axe) never strip. A Mending axe is therefore never broken by a strip.
 - DELIVER is unchanged: stripped logs are ordinary items for the output chest.
 
@@ -328,8 +328,8 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
 - `twoByTwoSiteWaitsForFourSaplings`: marked 2x2 site, 3 spruce saplings plant nothing, a 4th plants all four.
 - `neverStandsInTheSapling` (bone meal run: never in T's column while a sapling stands, health unchanged) and
   `stepsOutOfTheSapling` (spawned inside, waits 1..2 blocks away).
-- `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped` (iron axe about to break swapped for a
-  diamond axe, the old one lands in the chest).
+- `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `plainAxeBreaksThenNextIsFetched` (iron axe at 1 durability breaks, the diamond axe is
+  fetched, no axe is parked in the chest; was `wornAxeIsSwapped`).
 - `walledInTrunkIsFelledFromTwoBlocks`: all T neighbours stone: the 2-block fallback still fells it.
 - `unreachableTreeIsSkipped`: tree inside a closed stone ring: skipped after the give-up time, nothing breaks.
 - Strip logs: `stripLogsGivesStrippedLogs` (5 stripped logs, damage 10), `stripLogsIsVisibleStep` (a stripped log stands in the tree for at least 8 ticks per log), `fellsMixedPlainAndStrippedTree`, `stripLogsOffByDefault` (plain logs, damage 5), `stripLogsNeverBreaksMendingAxe`,
@@ -355,7 +355,7 @@ leaves PLANT / BONEMEAL / FELL: with a carry it delivers, else it idles until th
 ## Mending
 
 A Mending axe is repaired with XP bottles from the **input chest** and never used below 10 durability: it is parked in the
-input chest (or swapped for a usable axe) and the golem chops by hand meanwhile. The per-golem **Save tools** setting (Settings 4,3, default on) extends this to any enchanted axe and, when off, lets every axe break; Strip logs moved to 4,5. Only a Mending axe enables bare hands; a
+input chest (or swapped for a usable axe) and the golem chops by hand meanwhile. The rule covers any enchanted axe (no setting; the former Save tools toggle was removed), plain axes break. Only a Mending axe enables bare hands; a
 golem that never had an axe still does no work. See [mending.md](mending.md).
 
 ## Keep layout

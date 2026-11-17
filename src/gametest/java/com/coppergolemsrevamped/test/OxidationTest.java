@@ -76,7 +76,6 @@ public class OxidationTest {
 		d.filterMode = FilterMode.WHITELIST;
 		d.stripLogs = true;
 		d.keepLayout = true;
-		d.saveTools = false;
 		GolemData.save(golem, d);
 		golem.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.EMERALD, 5));
 		golem.setGuaranteedDrop(EquipmentSlot.MAINHAND);
@@ -114,7 +113,6 @@ public class OxidationTest {
 		helper.assertTrue(d.filterMode == FilterMode.WHITELIST, "filter mode: " + d.filterMode);
 		helper.assertTrue(d.stripLogs, "strip_logs lost");
 		helper.assertTrue(d.keepLayout, "keep_layout lost");
-		helper.assertTrue(!d.saveTools, "save_tools reset to default");
 		helper.assertTrue("Transporter".equals(d.autoName), "autoName: " + d.autoName);
 	}
 

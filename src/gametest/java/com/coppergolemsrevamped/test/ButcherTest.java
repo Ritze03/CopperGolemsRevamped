@@ -258,9 +258,9 @@ public class ButcherTest {
 		});
 	}
 
-	/** A sword that breaks on its next use is swapped for a fresh one from the tool chest; the worn one goes into the chest. */
+	/** A plain sword with 1 durability is used until it breaks (never parked), then a fresh one is taken from the tool chest. */
 	@GameTest(maxTicks = 2000)
-	public void wornWeaponIsSwappedNotLost(GameTestHelper helper) {
+	public void plainSwordBreaksThenNextIsFetched(GameTestHelper helper) {
 		Pen p = pen(helper, false);
 		ItemStack worn = new ItemStack(Items.IRON_SWORD);
 		worn.setDamageValue(worn.getMaxDamage() - 1);
@@ -269,10 +269,8 @@ public class ButcherTest {
 		for (int i = 0; i < 9; i++) animal(helper, p, EntityTypes.COW, false);
 		helper.succeedWhen(() -> {
 			ItemStack slot = GolemData.get(p.golem).items.get(ButcherProfession.TOOL_SLOT);
-			helper.assertTrue(slot.is(Items.IRON_SWORD) && !slot.nextDamageWillBreak(), "no fresh sword in the slot: " + slot);
-			ItemStack back = p.tools.getItem(0);
-			helper.assertTrue(back.is(Items.IRON_SWORD) && back.getDamageValue() == back.getMaxDamage() - 1, "the worn sword is not in the chest: " + back);
-			helper.assertTrue(animals(helper, p, net.minecraft.world.entity.animal.cow.Cow.class).size() == 8, "no kill yet");
+			helper.assertTrue(slot.is(Items.IRON_SWORD) && slot.getDamageValue() < slot.getMaxDamage() - 1, "no fresh sword in the slot: " + slot);
+			helper.assertTrue(count(p.tools, Items.IRON_SWORD) == 0, "the worn sword was parked in the chest");
 		});
 	}
 

@@ -54,16 +54,15 @@ Why one tool and two modes (user): an axe farmer must not make farmland, so an a
 till around; the user chose "axe = ONLY melon/pumpkin, leaves stems alone".
 
 **Tool replacement is same-type only** (hoe for hoe, axe for axe; `FarmerLogic:findTool`, `FarmerLogic:fetchTool`).
-A tool about to break (`ItemStack:nextDamageWillBreak`) is swapped with a same-type tool from the tool chest that does
-not itself break next use; the worn one goes into that chest slot (nothing lost or duplicated). With no same-type
-replacement the golem **does not use the last durability point**: that tool work is simply not workable and the golem
-idles on it. An empty slot takes the first hoe or axe (lowest chest slot) and that sets the type; it is fetched only
+A protected enchanted tool (at most 10 durability left, see [mending.md](mending.md)) is swapped with a same-type tool from
+the tool chest; the resting one goes into that chest slot (nothing lost or duplicated). A plain tool is used until it
+breaks, **including its last durability point**; the empty slot then takes the first hoe or axe from the chest. Why: the old
+"never use the last point" rule (to keep the slot's type) parked 1-durability tools in the chest forever. An empty slot takes the first hoe or axe (lowest chest slot) and that sets the type; it is fetched only
 when the field has work for some tool (tillable ground or a fruit block), the golem takes whichever comes first.
 
-Why: the type must survive without extra persistent state (`GolemData` has no field for it): a tool that is never
-allowed to break keeps the slot filled, and the item in the slot IS the type. A hoe replaced by an axe (or the
-reverse) would silently change what the golem does. Consequence: a worn tool is kept at 1 durability until the user
-puts a same-type tool in the tool chest; tell the user via the Help text, no extra UI.
+Why: the type needs no persistent state (`GolemData` has no field for it): the item in the slot IS the type. A swap of a
+protected enchanted tool therefore stays same-type, so a hoe is never silently replaced by an axe. A plain tool that
+breaks empties the slot, and the next fetch (any hoe or axe) sets the type again.
 
 ## Tool swing
 
@@ -78,14 +77,14 @@ Transient state (cooldown, walk state, skip map) in a `WeakHashMap` like the Cle
 `GolemData`, saved after every mutation. Per tick, in order:
 
 1. `field` empty/oversized or `output` not a container: stop, retry in 40 ticks. `tools`/`seeds` are optional.
-2. Tool: empty slot and some cell needs tilling or holds a fruit block, or the tool is about to break and its own
+2. Tool: empty slot and some cell needs tilling or holds a fruit block, or the tool is a protected enchanted one and its own
    mode has work (hoe: tillable cell, axe: fruit block): walk to the tool chest and take/swap per the rule above.
 3. Seeds (not in axe mode): some cell needs planting/tilling and the seed slot holds < 16: fetch per the first-seed rule.
 4. Nearest workable cell (by distance, ties in scan order), one action per 5 ticks. Axe mode considers only fruit
    cells (`FarmerLogic:actForAxe`), the other modes `FarmerLogic:actFor`:
    - **harvest** (hoe/none): crop above is a mature `CropBlock` (`isMaxAge`). Drops come from `Block:getDrops` with an
      empty tool and are stored in the seed slot (same item first) then carry.
-   - **fruit** (axe): melon/pumpkin block above, axe not about to break. Drops from `Block:getDrops` with the axe
+   - **fruit** (axe): melon/pumpkin block above, a usable axe. Drops from `Block:getDrops` with the axe
      (melon slices 3-7, pumpkin 1), axe loses 1 durability per block.
    Both use the same rule: `workable` pre-checks a roll, but `act` is the authority: it rolls once, checks that exact
    list fits (on a copy of the inventory) and only then calls `destroyBlock(pos, false)`; if it does not fit the block
@@ -93,7 +92,7 @@ Transient state (cooldown, walk state, skip map) in a `WeakHashMap` like the Cle
    0-3, melon slices 3-7), so a second roll after the check could be bigger and, with the block already destroyed,
    lose items (D9: no item lost or duplicated).
    - **plant**: farmland with air above and a seed in the slot.
-   - **till**: dirt, grass block or dirt path with air above, a hoe in the tool slot (not about to break) and a seed in
+   - **till**: dirt, grass block or dirt path with air above, a usable hoe in the tool slot (not a protected enchanted one) and a seed in
      the slot (so the hoe is not worn for nothing); sets farmland, `hurtAndBreak(1)` on the hoe stack (server-level
      overload, null player), then plants.
 5. Otherwise carry non-empty, deliver (cooldown `Interact.OPEN_TICKS` when items moved):
@@ -142,17 +141,18 @@ skips the cell for 1200 ticks. `FarmerLogic:isSkipped` is the test hook.
   seeds. Beetroot seeds are conserved per tick; all 9 cells end as beetroots, output holds exactly 4 wheat and no
   seeds (the harvest's seed drops return to the seed chest, which ends with at least the original 20 wheat seeds).
 - `tillsDirtWithHoe`: 2x2 dirt, iron hoe in the tool chest: farmland + wheat everywhere, hoe damage 4.
-- `wornHoeIsSwappedNotLost`: wooden hoe at max-1 damage, iron hoe in the chest: exactly 2 hoes exist per tick; iron hoe
-  ends in the slot, worn one in the chest.
+- `plainHoeBreaksThenNextIsFetched`: wooden hoe at max-1 damage, iron hoe in the chest: the wooden hoe is used up (never
+  parked in the chest), iron hoe ends in the slot (changed: it used to assert a swap and the worn hoe in the chest).
 - `seedsGoToSeedChestRestToOutput`: carry with wheat, wheat seeds, carrots, melon seeds on a field with no work:
   seed items end in the seed chest, the rest in output, the lid opened (`Interact:isOpen`) and closed.
 - `seedsOverflowToOutput` (full seed chest), `noSeedChestSeedsToOutput`.
 - `axeHarvestsFruitLeavesStems`: melon and pumpkin block next to their stems, a carved pumpkin, a dirt cell, hoe and
   axe in the tool chest: fruits gone (melon slices 3-7, 1 pumpkin in output), axe damage 2, stems/carved pumpkin/dirt
   untouched, nothing planted, seed chest untouched; at each harvest `Interact:inReach` (1 block) holds.
-- `hoeIgnoresMelons`; `wornHoeReplacedOnlyByHoe` / `wornAxeReplacedOnlyByAxe` (the other type is first in the chest
-  and stays there); `noReplacementKeepsWornHoe` / `noReplacementKeepsWornAxe` (slot keeps the worn tool at max-1
-  damage, nothing tilled/harvested); `emptySlotTakesFirstToolAndFilter` (slot filter, first hoe/axe wins).
+- `hoeIgnoresMelons`; `wornHoeReplacedOnlyByHoe` / `wornAxeReplacedOnlyByAxe` (a protected enchanted tool is replaced only by the same
+  type; the other type stays in the chest); `plainHoeWithoutReplacementIsUsedUp` / `plainAxeWithoutReplacementIsUsedUp`
+  (a plain tool at max-1 damage uses its last point and breaks, never parked; these replace the old
+  `noReplacementKeepsWorn*` tests that asserted the removed "never use the last point" rule); `emptySlotTakesFirstToolAndFilter` (slot filter, first hoe/axe wins).
 - `fieldLimit9`: spec maxSize 9, `areaFits` 9x9 / not 10x9 / not 9x10, oversized stored field yields no cells.
 - `harvestWithNearlyFullCarryLosesNothing`: forced drop roll (`FarmerLogic:testDropRoll`): the checked roll fits, the
   stored roll (wheat + 3 seeds) does not. The crop must stay untouched, then be harvested after the carry was
@@ -174,7 +174,7 @@ skips the cell for 1200 ticks. `FarmerLogic:isSkipped` is the test hook.
 
 ## Mending
 
-The **Save tools** setting (Settings 4,4, default on) applies the same guard to any enchanted tool; off, tools are used until they break. See [mending.md](mending.md).
+Any enchanted tool is protected at 10 durability or less, plain tools are used until they break (no setting). See [mending.md](mending.md).
 
 A Mending hoe or axe is repaired with XP bottles from the **tools chest** and never used below 10 durability: it is parked
 in the chest (or swapped for a usable same-type tool); without a tool the golem still harvests but does not till or break

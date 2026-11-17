@@ -51,7 +51,7 @@ lenient codec) rides along through chunk unloads and every statue block change.
 
 The statue stores the same codec, so this matters here too.
 
-- Every field is lenient: missing (old save) or malformed, it falls back to its default (`save_tools` on, the others
+- Every field is lenient: missing (old save) or malformed, it falls back to its default (the others
   off/empty). One undecodable stack (an item of a removed mod) becomes empty in place via `GolemData:LENIENT_STACK`,
   the other slots keep their indices; a malformed assignment entry is dropped, the good ones stay
   (`GolemData:tolerant`). Each fallback logs a warning. Why: a strict codec fails the whole attachment and Fabric then

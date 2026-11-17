@@ -83,9 +83,8 @@ public class GolemData {
 		Codec.INT.lenientOptionalFieldOf("xp", 0).forGetter(d -> d.xp),
 		Codec.STRING.lenientOptionalFieldOf("filter_mode", FilterMode.OFF.id).forGetter(d -> d.filterMode.id),
 		Codec.BOOL.lenientOptionalFieldOf("strip_logs", false).forGetter(d -> d.stripLogs),
-		Codec.BOOL.lenientOptionalFieldOf("keep_layout", false).forGetter(d -> d.keepLayout),
-		Codec.BOOL.lenientOptionalFieldOf("save_tools", true).forGetter(d -> d.saveTools)
-	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, kl, st) -> {
+		Codec.BOOL.lenientOptionalFieldOf("keep_layout", false).forGetter(d -> d.keepLayout)
+	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, kl) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
@@ -99,7 +98,6 @@ public class GolemData {
 		d.filterMode = FilterMode.parse(fm);
 		d.stripLogs = sl;
 		d.keepLayout = kl;
-		d.saveTools = st;
 		d.fitItems();
 		return d;
 	}));
@@ -121,8 +119,6 @@ public class GolemData {
 	public boolean stripLogs;
 	/** Keep layout: never empty a stack, never fill an empty slot in a container (see superdoc/features/keep-layout.md). Default off. */
 	public boolean keepLayout;
-	/** Save tools (Lumber, Farmer, Butcher): enchanted tools are put away before they break (see superdoc/features/mending.md). Default on. */
-	public boolean saveTools = true;
 	public @Nullable UUID followPlayer;
 
 	/** The chest the build pattern left where the copper block was; null for golems spawned any other way. */

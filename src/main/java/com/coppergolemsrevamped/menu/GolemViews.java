@@ -351,12 +351,6 @@ final class GolemViews {
 			lore("Leaves 1 item in every slot; never fills empty slots"), keep),
 			(p, b) -> m.toggleKeepLayout()));
 		boolean lumber = LumberProfession.ID.equals(m.currentId());
-		if (lumber || FarmerProfession.ID.equals(m.currentId()) || ButcherProfession.ID.equals(m.currentId())) {
-			boolean save = data.saveTools;
-			set(cells, 4, lumber ? 3 : 4, icon(GolemIcon.plain(Items.ANVIL, Component.literal("Save tools: " + (save ? "on" : "off")),
-				lore("Puts enchanted tools away before they break", "Plain tools are used until they break"), save),
-				(p, b) -> m.toggleSaveTools()));
-		}
 		if (lumber) {
 			boolean strip = data.stripLogs;
 			set(cells, 4, 5, icon(GolemIcon.plain(strip ? Items.STRIPPED_OAK_LOG : Items.OAK_LOG,Component.literal("Strip logs: " + (strip ? "on" : "off")),

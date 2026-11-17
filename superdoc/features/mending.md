@@ -1,7 +1,7 @@
 # Mending for the tool professions
 
-Lumber, Farmer and Butcher repair Mending tools with XP bottles from their tool chest and, with the per-golem **Save tools**
-setting on (default), never use an enchanted tool down to its last points. Code: `core/GolemMending` (shared rules), used by `profession/lumber/LumberLogic`,
+Lumber, Farmer and Butcher repair Mending tools with XP bottles from their tool chest and never use an enchanted tool
+down to its last points; plain tools are used until they break. Code: `core/GolemMending` (shared rules), used by `profession/lumber/LumberLogic`,
 `profession/farmer/FarmerLogic`, `profession/butcher/ButcherLogic`. Tests: `MendingTest`. Index: [../README.md](../README.md).
 
 Why: user request ("Mending should work for all the professions that use tools: XP bottles in the tool chest repair it, fixed
@@ -57,25 +57,27 @@ exists so a golem does not walk back after every hit; idle golems have nothing b
 - Tests: `LumberTest:repairsMendingAxeWhileWaitingForGrowth`, `MendingTest:butcherTopsUpSwordWhileIdle`,
   `MendingTest:farmerTopsUpHoeWhileIdle`.
 
-## Save tools (never break an enchanted tool)
+## Enchanted-tool guard (never break an enchanted tool)
 
-Per-golem setting `GolemData.saveTools` (codec key `save_tools`, **default on**, so old saves behave as before for Mending
-tools; kept over a profession change; Settings tab toggle for Lumber, Farmer and Butcher only, see [gui.md](gui.md)).
+No setting: the rule is fixed for all tool professions (Lumber, Farmer, Butcher). The former per-golem "Save tools" toggle
+(`GolemData.saveTools`, codec key `save_tools`) was removed; old saves that still contain `save_tools` load fine (the codec
+reads only known fields, so the key is ignored).
 
-Why: user decision, "the 'Save Tool' option (avoid breaking) should be a setting for all of the classes. So it can be turned
-off and they just break their tools." and "Lets do non-enchanted = let it break. Enchanted = save tool".
+Why: user decision, "Remove the toggle for save tools. Just make it: unenchanted: break the tool; enchanted: save it, before
+breaking. This is for all professions." Earlier: "Lets do non-enchanted = let it break. Enchanted = save tool". Bug that led
+to it: a leftover `ItemStack:nextDamageWillBreak` gate swapped a plain tool out at 1 durability and parked it in the chest
+forever, even with Save tools off; that gate is gone, so a plain tool is used until it actually breaks.
 
-- On: every **enchanted** tool (`ItemStack:isEnchanted`, any enchantment, not only Mending) is protected: `GolemMending:protects`
-  is true at `GolemMending:SAFE_DURABILITY` = **10** points or fewer; plain tools are never protected and break as before.
-  `GolemMending:canUse(tool, saveTools)` is false for a protected tool.
-- Off: nothing is protected; Lumber and Butcher use a tool until it breaks (the existing "worn" swap one hit before the
-  break still applies to all tools, as it always did for plain ones). The **Farmer is the exception**: it never uses a
-  tool's last durability point, setting on or off (`FarmerLogic:usable` checks `nextDamageWillBreak` first), because an
-  empty tool slot would lose the hoe/axe type the slot stands for (see [farmer.md](farmer.md)); a worn tool is swapped or kept.
+- Every **enchanted** tool (`ItemStack:isEnchanted`, any enchantment, not only Mending) is protected: `GolemMending:protects`
+  is true at `GolemMending:SAFE_DURABILITY` = **10** points or fewer; plain tools are never protected and are used until
+  they break. `GolemMending:canUse(tool)` is false for a protected tool.
+- When a plain tool breaks, `hurtAndBreak` empties the slot and the existing "empty slot: fetch from the chest" path takes
+  the next tool (Lumber `fetchAxe`, Butcher `fetchableWeapon`, Farmer `fetchTool`; the Farmer's empty slot takes the first
+  hoe or axe, which sets the type again, see [farmer.md](farmer.md)). A worn plain tool is never swapped or parked.
 - Repair is unchanged and Mending-only: XP bottles repair Mending tools. An enchanted tool **without** Mending that reaches
   the threshold is parked and simply stays in the chest, nothing can repair it; the golem uses another tool or bare hands.
 - No fetch loop: every fetch/selection path (`fetchAxe`/`fetchableAxe`, `FarmerLogic:findTool`/`usable`,
-  `ButcherLogic:fetchableWeapon`/`needsWeapon`) goes through `canUse` with the flag, so a parked tool is never offered again.
+  `ButcherLogic:fetchableWeapon`/`needsWeapon`) goes through `canUse`, so a parked tool is never offered again.
 - Why 10: one use costs 1 point (hit, log, till, fruit), so 2 would already be enough; 10 leaves margin for tools that
   cost more per use or a use that starts just before the check, and is small next to the weakest tool (golden axe 32), so
   little durability sits unused. Mending refills it anyway once bottles arrive.
@@ -83,7 +85,7 @@ off and they just break their tools." and "Lets do non-enchanted = let it break.
   then keeps using it; else (2) swaps it for a usable tool (a non-Mending one, or a Mending one above the threshold; the
   resting tool goes into that chest slot); else (3) puts it into a free chest slot (`GolemMending:park`, 1 item of budget). If
   the chest is full the tool stays in the slot **unused**; it is never dropped on the ground.
-- Last line of defence: every wear call goes through `GolemMending:damage`, which refuses (with Save tools on) a hit that would take an enchanted tool
+- Last line of defence: every wear call goes through `GolemMending:damage`, which refuses a hit that would take an enchanted tool
   to 0 (Lumber `breakBlock`, Butcher `strike`, Farmer till and fruit). The decision functions use `canUse` first, so the
   refusal only matters if a caller is ever wrong.
 - Lumber's `axeSlot` and Farmer's `usable` return a resting (protected) enchanted tool as "not a tool", so no path can pick it up.
@@ -96,7 +98,7 @@ off and they just break their tools." and "Lets do non-enchanted = let it break.
 | Butcher | hits by hand for 1 damage (`ButcherLogic:attackDamage` base), status gets ", bare-handed (enchanted weapon put away to save it)" |
 | Farmer | harvests mature crops (never needed a tool); does **not** till or break fruit blocks (no hoe/axe) |
 
-Bare-handed work happens **only because of a protected enchanted tool** (Save tools on; `LumberLogic:mendingBlocked`,
+Bare-handed work happens **only because of a protected enchanted tool** (`LumberLogic:mendingBlocked`,
 `ButcherLogic:mendingBlocked`, names kept from when only Mending tools were protected): a resting enchanted tool in the slot,
 or an empty slot with an unusable enchanted tool lying in the tool chest. Why: a golem that
 never had a tool still does no tool work, as before ([lumber.md](lumber.md), [butcher.md](butcher.md)); this feature must
@@ -123,7 +125,7 @@ every tick.
 `lumberNeverBreaksMendingAxeAndChopsByHand` (threshold + 1, no other axe), `lumberSwitchesToPlainAxe`,
 `lumberRepairsStoredMendingAxeAndReusesIt` (18 bottles, more than one window); Butcher: `butcherNeverBreaksMendingSword`,
 `butcherRepairsWithBottles`; Farmer: `farmerReturnsMendingHoeAndDoesNotTill` (also: ripe wheat is still harvested by hand),
-`farmerRepairsStoredMendingHoeAndReusesIt`; idle top-up: `butcherTopsUpSwordWhileIdle`, `farmerTopsUpHoeWhileIdle`; no waste: `saveToolsParksAnyEnchantedAxe`, `plainAndUnsavedToolsBreak`; `mendingWastesNoXp` (5 points missing: bottle used, 4 XP stored; then 4 points from the store with no bottle; XP bottled = spent + stored).
+`farmerRepairsStoredMendingHoeAndReusesIt`; idle top-up: `butcherTopsUpSwordWhileIdle`, `farmerTopsUpHoeWhileIdle`; no waste: `enchantedToolRuleParksAnyEnchantedAxe`, `plainAxeBreaksThenGolemFetchesNext`, `plainBreaksWhileMendingIsParked`, `butcherPlainSwordBreaksThenFetchesNext`, `farmerUsesLastPointThenFetchesNext`; `mendingWastesNoXp` (5 points missing: bottle used, 4 XP stored; then 4 points from the store with no bottle; XP bottled = spent + stored).
 
 ## Keep layout
 
