@@ -18,11 +18,15 @@ Id `coppergolemsrevamped:farmer`, `runsVanillaBrain = false`.
 
 Two clicks are stored as `field_a`/`field_b` (see [assign-mode.md](assign-mode.md)); the field is their x/z
 rectangle, at most 9x9 (`AssignMode:areaFits`, also re-checked in `FarmerLogic:cells`, which returns nothing for an
-oversized field). The **soil layer is the Y of the lower click**; crops live at soil Y + 1. Click the dirt/farmland
-blocks themselves. Cells are listed x ascending, then z ascending.
+oversized field). The **soil Y is chosen per column** (`FarmerLogic:soilCells`): the clicked Y range extended by 1 up and
+1 down (lower click Y - 1 to higher click Y + 1) is searched, and the best block wins: (1) farmland, else (2) a block with a
+crop, melon or pumpkin directly above, else (3) a tillable block with air above; among equal ranks the highest Y. A column
+with no candidate is skipped. Crops live at soil Y + 1. The result is cached per scan (`State.soil`, `RESCAN_TICKS`); the
+loaded-chunk check uses the column corners (`FarmerLogic:cells`, at the lower click's Y). Cells are listed x ascending, then z ascending.
 
-Why: user spec "farms a set field, at most 9x9 per golem"; D14 "'Assign Area' up to 9x9". One Y layer keeps the
-field flat and the per-cell logic trivial; the Y of the higher click is ignored.
+Why: user: "the farmer should always consider one block up and down of the selected area (so marking crops works just as
+well, as marking the field below." Players click either the farmland or the crops above it; the window makes both work and
+tolerates slightly uneven fields. The 9x9 x/z limit is unchanged (D14 "'Assign Area' up to 9x9").
 
 ## Seed definition
 
@@ -46,7 +50,7 @@ The mode is read from the item in the tool slot (`FarmerLogic:modeOf`): `HOE`, `
 
 - **Hoe** (and no tool): crop work as described under Loop (harvest, plant, till). A golem with no tool still harvests
   and plants on existing farmland but tills nothing.
-- **Axe**: ONLY harvests `Blocks.MELON` and `Blocks.PUMPKIN` at soil Y + 1 anywhere in the field rectangle (not carved
+- **Axe**: ONLY harvests `Blocks.MELON` and `Blocks.PUMPKIN` at each column's soil Y + 1 anywhere in the field rectangle (not carved
   pumpkins, never stems). Never tills, plants or harvests crops, and fetches no seeds. A fruit grows on a cell next to
   its stem, so every cell is checked, not only stem cells.
 
@@ -153,6 +157,8 @@ skips the cell for 1200 ticks. `FarmerLogic:isSkipped` is the test hook.
   type; the other type stays in the chest); `plainHoeWithoutReplacementIsUsedUp` / `plainAxeWithoutReplacementIsUsedUp`
   (a plain tool at max-1 damage uses its last point and breaks, never parked; these replace the old
   `noReplacementKeepsWorn*` tests that asserted the removed "never use the last point" rule); `emptySlotTakesFirstToolAndFilter` (slot filter, first hoe/axe wins).
+- `fieldClickedOnCropLayer`, `fieldClickedBelowSoil`: 2x2 farmland with mature wheat, both corners at crop Y (farmland Y + 1) or
+  at farmland Y - 1: harvested and replanted, 4 wheat in output.
 - `fieldLimit9`: spec maxSize 9, `areaFits` 9x9 / not 10x9 / not 9x10, oversized stored field yields no cells.
 - `harvestWithNearlyFullCarryLosesNothing`: forced drop roll (`FarmerLogic:testDropRoll`): the checked roll fits, the
   stored roll (wheat + 3 seeds) does not. The crop must stay untouched, then be harvested after the carry was
@@ -170,7 +176,7 @@ skips the cell for 1200 ticks. `FarmerLogic:isSkipped` is the test hook.
 - A tool without a same-type replacement stays at 1 durability and that tool work stops (by design).
 - Unbreaking on the tool is not tested (the server `hurtAndBreak` overload should apply it; unverified).
 - No bone meal, no watering: dry farmland reverts to dirt when empty and is then re-tilled (costing durability).
-- Field Y variance (slopes) is not handled: only the lower click's layer is farmed.
+- Y variance beyond the +-1 window around the clicked range is not handled; a column whose soil lies outside it is skipped.
 
 ## Mending
 

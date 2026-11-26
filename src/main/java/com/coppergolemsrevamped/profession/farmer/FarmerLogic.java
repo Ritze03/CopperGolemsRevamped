@@ -36,7 +36,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * Farmer work loop. Field = x/z rectangle of the two clicks; soil layer = Y of the lower click, crops at soil Y + 1.
+ * Farmer work loop. Field = x/z rectangle of the two clicks; soil Y is picked per column within the clicked Y range +-1 (see soilCells), crops at soil Y + 1.
  * One tool, two modes: hoe (or none) harvests mature crops, plants, tills; axe harvests only melon/pumpkin blocks.
  */
 public final class FarmerLogic {
@@ -86,6 +86,8 @@ public final class FarmerLogic {
 		long scannedAt;
 		@Nullable Mode scanMode;
 		boolean anyTill, anyPlant, anyFruit;
+		/** Per-column soil positions of the last scan ({@link #soilCells}). */
+		List<BlockPos> soil = List.of();
 		/** The nearest-cell pick of this scan, once made ({@code picked}); {@code best} null = no workable cell. */
 		boolean picked;
 		@Nullable BlockPos best;
@@ -107,7 +109,10 @@ public final class FarmerLogic {
 		return stack.getItem() instanceof BlockItem bi && bi.getBlock() instanceof CropBlock && !(bi.getBlock() instanceof TorchflowerCropBlock);
 	}
 
-	/** Soil positions of the field (x outer, z inner, both ascending) at the lower click's Y; empty when unset or larger than 9x9. */
+	/**
+	 * The field's columns (x outer, z inner, both ascending) at the lower click's Y, only used for the loaded-chunk check
+	 * and as the column list; the real soil Y per column is {@link #soilCells}. Empty when unset or larger than 9x9.
+	 */
 	public static List<BlockPos> cells(GolemData data) {
 		BlockPos a = data.assignments.get(FarmerProfession.FIELD + "_a");
 		BlockPos b = data.assignments.get(FarmerProfession.FIELD + "_b");
@@ -117,6 +122,40 @@ public final class FarmerLogic {
 		for (int x = Math.min(a.getX(), b.getX()); x <= Math.max(a.getX(), b.getX()); x++)
 			for (int z = Math.min(a.getZ(), b.getZ()); z <= Math.max(a.getZ(), b.getZ()); z++)
 				out.add(new BlockPos(x, y, z));
+		return out;
+	}
+
+	/** Soil priority of a block at {@code pos}: 3 farmland, 2 something the Farmer works directly above, 1 tillable with air above, 0 none. */
+	private static int soilRank(ServerLevel level, BlockPos pos) {
+		BlockState st = level.getBlockState(pos), above = level.getBlockState(pos.above());
+		if (st.is(Blocks.FARMLAND)) return 3;
+		if (above.getBlock() instanceof CropBlock || isFruit(above)) return 2;
+		return tillable(st) && above.isAir() ? 1 : 0;
+	}
+
+	/**
+	 * The per-column soil positions: the clicked Y range extended by 1 up and 1 down is searched, the best rank wins, then
+	 * the highest Y. Columns without a candidate are left out. Same order as {@link #cells}.
+	 */
+	static List<BlockPos> soilCells(ServerLevel level, GolemData data, List<BlockPos> columns) {
+		BlockPos a = data.assignments.get(FarmerProfession.FIELD + "_a");
+		BlockPos b = data.assignments.get(FarmerProfession.FIELD + "_b");
+		List<BlockPos> out = new ArrayList<>();
+		if (a == null || b == null) return out;
+		int lo = Math.min(a.getY(), b.getY()) - 1, hi = Math.max(a.getY(), b.getY()) + 1;
+		for (BlockPos c : columns) {
+			BlockPos best = null;
+			int bestRank = 0;
+			for (int y = lo; y <= hi; y++) {
+				BlockPos p = new BlockPos(c.getX(), y, c.getZ());
+				int r = soilRank(level, p);
+				if (r > 0 && r >= bestRank) {
+					bestRank = r;
+					best = p;
+				}
+			}
+			if (best != null) out.add(best);
+		}
 		return out;
 	}
 
@@ -180,7 +219,8 @@ public final class FarmerLogic {
 		Mode mode = modeOf(tool);
 		if (s.rescan || now - s.scannedAt >= RESCAN_TICKS || s.scanMode != mode) {
 			boolean anyTill = false, anyPlant = false, anyFruit = false;
-			for (BlockPos c : cells) {
+			s.soil = soilCells(level, data, cells);
+			for (BlockPos c : s.soil) {
 				anyFruit |= actForAxe(level, c) != null;
 				Act a = actFor(level, c);
 				anyTill |= a == Act.TILL;
@@ -239,7 +279,7 @@ public final class FarmerLogic {
 			BlockPos best = null;
 			Act bestAct = null;
 			double bestD = Double.MAX_VALUE;
-			for (BlockPos c : cells) {
+			for (BlockPos c : s.soil) {
 				if (s.skip.containsKey(c)) continue;
 				Act a = mode == Mode.AXE ? actForAxe(level, c) : actFor(level, c);
 				if (a == null || !workable(level, data, c, a)) continue;
