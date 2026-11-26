@@ -41,6 +41,7 @@ public enum Tab {
 		"Keep layout (taking): the golem never empties a stack; it leaves 1 item in every slot it takes from.",
 		"Keep layout (storing): the golem only tops up stacks that already hold the same item and never puts items into empty slots.",
 		"Together they keep a chest you laid out by hand as it is.",
+		"Distributor: Split evenly gives every inventory an equal share; Fill in order fills the one nearest the area's first corner, then the next.",
 		"Click a toggle to switch it; it glows while on.")),
 	PROFESSION("Profession", "Choose what the golem does", null, List.of(
 		"Pick what this golem does.",

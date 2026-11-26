@@ -88,8 +88,9 @@ public class GolemData {
 		Codec.BOOL.lenientOptionalFieldOf("keep_layout_store").forGetter(d -> Optional.of(d.keepLayoutStore)),
 		// Legacy key, read only as the fallback for old saves; never written (the forGetter returns empty).
 		Codec.BOOL.lenientOptionalFieldOf("keep_layout").forGetter(d -> Optional.empty()),
-		GlobalPos.CODEC.lenientOptionalFieldOf("home").forGetter(d -> Optional.ofNullable(d.home))
-	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, klt, kls, kl, hm) -> {
+		GlobalPos.CODEC.lenientOptionalFieldOf("home").forGetter(d -> Optional.ofNullable(d.home)),
+		Codec.BOOL.lenientOptionalFieldOf("fill_in_order", false).forGetter(d -> d.fillInOrder)
+	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, klt, kls, kl, hm, fio) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
@@ -105,6 +106,7 @@ public class GolemData {
 		d.keepLayoutTake = klt.orElse(kl.orElse(false));
 		d.keepLayoutStore = kls.orElse(kl.orElse(false));
 		d.home = hm.orElse(null);
+		d.fillInOrder = fio;
 		d.fitItems();
 		return d;
 	}));
@@ -128,6 +130,8 @@ public class GolemData {
 	public boolean keepLayoutTake;
 	/** Keep layout, storing: only merge into non-empty same-item slots, never fill an empty slot. Default off. */
 	public boolean keepLayoutStore;
+	/** Distributor setting: fill the inventories one after another from the area's first corner instead of splitting evenly (see superdoc/features/distributor.md "Modes"). Default off. */
+	public boolean fillInOrder;
 	public @Nullable UUID followPlayer;
 	/**
 	 * Chest Sorter home: where the golem works; it walks back when it strays too far (see superdoc/features/golem-safety.md).

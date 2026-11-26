@@ -10,6 +10,7 @@ import com.coppergolemsrevamped.menu.GolemMenu;
 import com.coppergolemsrevamped.menu.Tab;
 import com.coppergolemsrevamped.profession.butcher.ButcherProfession;
 import com.coppergolemsrevamped.profession.crafter.CrafterProfession;
+import com.coppergolemsrevamped.profession.distributor.DistributorProfession;
 import com.coppergolemsrevamped.profession.farmer.FarmerProfession;
 
 import java.util.ArrayList;
@@ -441,6 +442,30 @@ public class MenuTest {
 		helper.assertTrue(GolemData.get(g).stripLogs && at(menu, 4, 5).is(Items.STRIPPED_OAK_LOG) && glint(at(menu, 4, 5)) && name(at(menu, 4, 5)).equals("Strip logs: on"), "on " + name(at(menu, 4, 5)));
 		click(menu, player, 4, 5);
 		helper.assertTrue(!GolemData.get(g).stripLogs, "off again");
+		helper.succeed();
+	}
+
+	/** The Distributor mode toggle (Settings 4,5): Split evenly by default, flips to Fill in order, other professions show none. */
+	@GameTest
+	public void settingsDistributionToggleIsDistributorOnly(GameTestHelper helper) {
+		for (Identifier id : new Identifier[] {null, TRANSPORTER, SORTER, LUMBER}) {
+			CopperGolem g = golem(helper, id);
+			GolemMenu menu = new GolemMenu(1, player(helper, g).getInventory(), g, Tab.SETTINGS);
+			for (int col = 0; col < 9; col++) helper.assertTrue(!name(at(menu, 4, col)).startsWith("Distribution"), id + " must not offer Distribution");
+		}
+		CopperGolem g = golem(helper, DistributorProfession.ID);
+		ServerPlayer player = player(helper, g);
+		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
+		helper.assertTrue(at(menu, 4, 5).is(Items.DROPPER) && name(at(menu, 4, 5)).equals("Distribution: Split evenly")
+			&& lore(at(menu, 4, 5)).contains("Click: Fill in order") && !GolemData.get(g).fillInOrder, "default " + name(at(menu, 4, 5)));
+		click(menu, player, 4, 5);
+		helper.assertTrue(GolemData.get(g).fillInOrder && at(menu, 4, 5).is(Items.HOPPER) && name(at(menu, 4, 5)).equals("Distribution: Fill in order")
+			&& lore(at(menu, 4, 5)).contains("Click: Split evenly"), "on " + name(at(menu, 4, 5)));
+		GolemData d = GolemData.get(g);
+		d.frozen = true;
+		GolemData.save(g, d);
+		click(menu, player, 4, 5);
+		helper.assertTrue(!GolemData.get(g).fillInOrder, "toggles while frozen");
 		helper.succeed();
 	}
 

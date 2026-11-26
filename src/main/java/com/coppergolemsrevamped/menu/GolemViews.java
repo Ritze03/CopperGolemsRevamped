@@ -11,6 +11,7 @@ import com.coppergolemsrevamped.profession.Profession.SlotGroup;
 import com.coppergolemsrevamped.profession.ProfessionStatus;
 import com.coppergolemsrevamped.profession.butcher.ButcherProfession;
 import com.coppergolemsrevamped.profession.farmer.FarmerProfession;
+import com.coppergolemsrevamped.profession.distributor.DistributorProfession;
 import com.coppergolemsrevamped.profession.lumber.LumberProfession;
 import com.coppergolemsrevamped.profession.Professions;
 
@@ -360,6 +361,15 @@ final class GolemViews {
 			set(cells, 4, 5, icon(GolemIcon.plain(strip ? Items.STRIPPED_OAK_LOG : Items.OAK_LOG,Component.literal("Strip logs: " + (strip ? "on" : "off")),
 				lore("Strips each log with the axe before breaking it", "The carry then holds stripped logs"), strip),
 				(p, b) -> m.toggleStripLogs()));
+		}
+		if (DistributorProfession.ID.equals(m.currentId())) {
+			boolean order = data.fillInOrder;
+			set(cells, 4, 5, icon(order
+				? GolemIcon.plain(Items.HOPPER, Component.literal("Distribution: Fill in order"),
+					lore("Fills the inventory nearest the area's first corner, then the next", "Click: Split evenly"), true)
+				: GolemIcon.plain(Items.DROPPER, Component.literal("Distribution: Split evenly"),
+					lore("Gives every inventory an equal share", "Click: Fill in order"), false),
+				(p, b) -> m.toggleFillInOrder()));
 		}
 	}
 

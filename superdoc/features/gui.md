@@ -104,7 +104,7 @@ on else null, `GolemData.save`; refused with a chat message while frozen. Follow
 `GolemIcon:plain`, glint while on, name "Freeze: on/off", `GolemMenu:toggleFreeze`): all professions, rules in
 [freeze.md](freeze.md). (2,3) **Keep layout (taking)** (`item_frame` through `GolemIcon:plain`, glint while on, name "Keep layout (taking): on/off", `GolemMenu:toggleKeepLayoutTake`) and (2,5) **Keep layout (storing)** (`glow_item_frame`, name "Keep layout (storing): on/off", `GolemMenu:toggleKeepLayoutStore`): two independent settings, all professions, not refused while frozen, rules in
 [keep-layout.md](keep-layout.md). (2,4) stays empty so the row is symmetric around column 4. (4,5) **Strip logs** (`oak_log` while off, `stripped_oak_log` while on, glint while on like the other toggles, `GolemMenu:toggleStripLogs`): shown for the Lumber only (at 4,5),
-`GolemData:stripLogs`, see [lumber.md](lumber.md) "Strip logs".
+`GolemData:stripLogs`, see [lumber.md](lumber.md) "Strip logs". The Distributor has its own (4,5) **Distribution** mode toggle: `dropper` "Distribution: Split evenly" (default) / `hopper` "Distribution: Fill in order" (glint, like the Transporter filter mode icon), plain vanilla items through `GolemIcon:plain`, `GolemMenu:toggleFillInOrder`, not refused while frozen, `GolemData:fillInOrder`, see [distributor.md](distributor.md) "Modes".
 Why rows 2 and 4: user request, common toggles one row up, the Lumber-only toggle one row down, each centred (col 4).
 
 ### Profession and the confirm screen

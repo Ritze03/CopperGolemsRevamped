@@ -248,4 +248,48 @@ public class DistributorTest {
 			helper.assertTrue(in.getItem(0).getCount() == 3 && count(in, Items.IRON_INGOT) == 3, "input settled at 3: " + count(in, Items.IRON_INGOT));
 		});
 	}
+
+	/** Three chests in a row, each full except for 2 free slots (128 iron). {@code swapped} assigns the corners the other way round. */
+	private static CopperGolem fillSetup(GameTestHelper helper, boolean swapped) {
+		CopperGolem golem = base(helper, false);
+		GolemData d = GolemData.get(golem);
+		d.fillInOrder = true;
+		if (swapped) {
+			d.assignments.put("targets_a", helper.absolutePos(new BlockPos(7, 1, 7)));
+			d.assignments.put("targets_b", helper.absolutePos(new BlockPos(0, 1, 5)));
+		}
+		GolemData.save(golem, d);
+		for (int i = 0; i < 3; i++) {
+			helper.setBlock(SPOTS[i], Blocks.CHEST);
+			Container c = at(helper, SPOTS[i]);
+			for (int k = 2; k < c.getContainerSize(); k++) c.setItem(k, new ItemStack(Items.COBBLESTONE, 64));
+		}
+		at(helper, IN_POS).setItem(0, new ItemStack(Items.IRON_INGOT, 64));
+		at(helper, IN_POS).setItem(1, new ItemStack(Items.IRON_INGOT, 64));
+		at(helper, IN_POS).setItem(2, new ItemStack(Items.IRON_INGOT, 64));
+		at(helper, IN_POS).setItem(3, new ItemStack(Items.IRON_INGOT, 8));
+		return golem;
+	}
+
+	private static void checkFill(GameTestHelper helper, CopperGolem golem, int first, int second, int third) {
+		Container in = at(helper, IN_POS);
+		helper.assertTrue(count(at(helper, SPOTS[first]), Items.IRON_INGOT) == 128, "first target has " + count(at(helper, SPOTS[first]), Items.IRON_INGOT));
+		helper.assertTrue(count(at(helper, SPOTS[second]), Items.IRON_INGOT) == 72, "second target has " + count(at(helper, SPOTS[second]), Items.IRON_INGOT));
+		helper.assertTrue(count(at(helper, SPOTS[third]), Items.IRON_INGOT) == 0, "third target has " + count(at(helper, SPOTS[third]), Items.IRON_INGOT));
+		helper.assertTrue(count(in, Items.IRON_INGOT) == 0 && held(golem) == 0, "all 200 placed");
+	}
+
+	/** Fill in order: the first target (nearest the first corner) is filled completely, then the second gets the rest, the third stays empty. */
+	@GameTest(maxTicks = 3000)
+	public void fillInOrderFillsOneAfterAnother(GameTestHelper helper) {
+		CopperGolem golem = fillSetup(helper, false);
+		helper.succeedWhen(() -> checkFill(helper, golem, 0, 1, 2));
+	}
+
+	/** The same layout with the corners swapped fills from the other end. */
+	@GameTest(maxTicks = 3000)
+	public void fillInOrderStartsAtTheFirstCorner(GameTestHelper helper) {
+		CopperGolem golem = fillSetup(helper, true);
+		helper.succeedWhen(() -> checkFill(helper, golem, 2, 1, 0));
+	}
 }

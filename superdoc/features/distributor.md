@@ -1,6 +1,7 @@
 # Distributor profession
 
-Takes items from an input chest and splits them evenly over every inventory in an assigned area. Id
+Takes items from an input chest and splits them evenly over every inventory in an assigned area (default), or fills them one
+after another (see [Modes](#modes)). Id
 `coppergolemsrevamped:distributor`, `runsVanillaBrain = false`. Code: `profession/distributor/DistributorProfession:init`
 (declaration), `profession/distributor/DistributorLogic:tick` (loop).
 
@@ -19,7 +20,7 @@ multitude of 8 from the input chest, split evenly between inventories. If 7, tak
   data string falls back to the vanilla model). A custom badge icon can follow like the other professions' (needs a PNG,
   model and override, and the icon table in [gui.md](gui.md)).
 - Status (`DistributorLogic:status`, hooked in `profession/ProfessionStatus`): "Distributing to N inventories", "No
-  inventories in the area", "No input chest set", "Input has fewer than N of any item", "Returning the leftovers to the
+  inventories in the area", "No input chest set", "Input has fewer than N of any item", "Filling inventories in order (N)", "No inventory can take anything from the input", "Returning the leftovers to the
   input chest", "Input chest is full: holding the leftovers".
 
 ## Targets
@@ -60,6 +61,30 @@ If the golem carries items with no plan (after a restart) it distributes them as
 A returned share is picked up again in the next round (the input shrinks until fewer than N of a type remain), so a chest
 that is permanently full costs trips but never items.
 
+## Modes
+
+Per-golem setting `GolemData:fillInOrder` (codec key `fill_in_order`, lenient optional, default false), toggled on the Settings
+tab at (4,5) ("Distribution: Split evenly" `dropper` / "Distribution: Fill in order" `hopper` with glint, `GolemMenu:toggleFillInOrder`,
+Distributor only, not refused while frozen, see [gui.md](gui.md)). Kept over a profession change like the other settings.
+
+- **Split evenly** (default, every old golem): everything above.
+- **Fill in order**: the targets are visited sorted by squared distance (block centres) from the area's **first corner** (the
+  first block the player clicked: `AssignMode` stores it as `targets_a`, the second, possibly capped, as `targets_b`, so the click
+  order is kept), ties by y, then x, then z (`DistributorLogic:fromCorner`, via `roundOf`).
+  - FETCH (`planFetchOrdered`): everything takeable (keep layout taking respected), no multiple-of-N rounding, no "fewer than
+    N" rule; limited by the 9 carry slots and the budget. Only types at least one loaded target can still take
+    (`TransporterLogic:canInsert` on its contents, keep layout storing respected) so the golem never carries what it cannot place.
+  - DISTRIBUTE (`distributeOrdered`): at each target `TransporterLogic:insertAll` puts in as much of the carry as fits
+    (keep layout storing, budget). A budget-cut visit stays and resumes next window; otherwise the golem moves on when the target
+    takes nothing more or the carry is empty. Targets that accept nothing of the carry (`acceptsAny`) are passed over without
+    walking, so full chests near the corner are not visited every round. Unloaded / unreachable targets as in split mode.
+  - RETURN: leftovers go back to the input chest as before. Status: "Filling inventories in order (N)".
+- Switching the mode mid-round resets the round plan (`State.ordered` vs the setting); the carry is then served by the new mode
+  as a fresh round, nothing is lost.
+
+Why (user request): "The distributor should have two settings: Even split (like now) and Fill one after another. [...] One
+after another should fill the chest closest to the area starting point first." and "Even split by default!"
+
 ## Transfer limit and keep layout
 
 All moves are budgeted (16 per 5 ticks, see [../architecture/transfer-limit.md](../architecture/transfer-limit.md)). The take
@@ -79,5 +104,5 @@ Freeze and Follow work through `GolemTicker` (nothing here).
 
 `eightTargetsTakeMultipleOfEight`, `sevenTargetsTakeMultipleOfSeven`, `doubleChestCountsAsOne`, `fewerThanNTakesNothing`,
 `fullTargetReturnsItsShare`, `keepLayoutRespectedOnBothSides`, `shareLargerThanBudgetDeliveredInOneVisit` and
-`severalTypesOverBudgetDeliveredInOneVisit` (a per-visit share over the budget: the input chest must never be refilled
+`fillInOrderFillsOneAfterAnother` (3 chests with 2 free slots each, 200 iron: 128, 72, 0) and `fillInOrderStartsAtTheFirstCorner` (corners swapped, other end first), `severalTypesOverBudgetDeliveredInOneVisit` (a per-visit share over the budget: the input chest must never be refilled
 mid-cycle, `watchNoRefill`).

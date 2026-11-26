@@ -6,6 +6,7 @@ import com.coppergolemsrevamped.core.GolemData;
 import com.coppergolemsrevamped.profession.transporter.TransporterLogic;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -83,6 +84,8 @@ public final class DistributorLogic {
 		double bestDist;
 		int stuck;
 		String status = "Working";
+		/** The mode the plan above was made for ({@link GolemData#fillInOrder}); a change resets the plan. */
+		boolean ordered;
 	}
 
 	private static final Map<CopperGolem, State> STATES = new WeakHashMap<>();
@@ -102,6 +105,18 @@ public final class DistributorLogic {
 		if (s.cooldown > 0) {
 			s.cooldown--;
 			return;
+		}
+		if (s.ordered != data.fillInOrder) {
+			// mode switched mid-round: drop the plan, the carry is served by the new mode as a fresh round
+			s.ordered = data.fillInOrder;
+			s.phase = Phase.FETCH;
+			s.plan = null;
+			s.shares = null;
+			s.quota = null;
+			s.round = new ArrayList<>();
+			s.idx = 0;
+			s.target = null;
+			s.walk.reset();
 		}
 		long now = level.getGameTime();
 		s.skip.values().removeIf(until -> until <= now);
@@ -191,6 +206,22 @@ public final class DistributorLogic {
 		return out;
 	}
 
+	/** The round's visit order: split evenly goes nearest-first from the input, fill in order by the area's first corner. */
+	private static List<BlockPos> roundOf(GolemData data, State s, BlockPos inPos) {
+		if (!data.fillInOrder) return nearestFirst(s.targets, inPos);
+		BlockPos a = data.assignments.get(DistributorProfession.TARGETS + "_a");
+		return fromCorner(s.targets, a != null ? a : inPos);
+	}
+
+	/** Sorted by squared distance (block centres) from {@code corner}; ties by y, then x, then z. */
+	static List<BlockPos> fromCorner(List<BlockPos> all, BlockPos corner) {
+		Vec3 c = Vec3.atCenterOf(corner);
+		List<BlockPos> out = new ArrayList<>(all);
+		out.sort(Comparator.<BlockPos>comparingDouble(p -> Vec3.atCenterOf(p).distanceToSqr(c))
+			.thenComparingInt(BlockPos::getY).thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ));
+		return out;
+	}
+
 	// ---- item helpers ----
 
 	private static boolean same(ItemStack a, ItemStack b) {
@@ -255,6 +286,40 @@ public final class DistributorLogic {
 		return plan;
 	}
 
+	/**
+	 * Fill in order: per item type (chest order) everything takeable, limited by what still fits the carry, and only
+	 * types some loaded target can still take (checked on its contents, keep layout storing respected).
+	 */
+	private static List<Amount> planFetchOrdered(ServerLevel level, Container in, List<ItemStack> carry, List<BlockPos> targets, boolean keepTake, boolean keepStore) {
+		List<Container> conts = new ArrayList<>();
+		for (BlockPos t : targets) {
+			Container c = TransporterLogic.containerAt(level, t);
+			if (c != null) conts.add(c);
+		}
+		List<Amount> types = new ArrayList<>();
+		for (int i = 0; i < in.getContainerSize(); i++) {
+			ItemStack st = in.getItem(i);
+			if (st.isEmpty()) continue;
+			int take = TransporterLogic.takeable(in, st, keepTake);
+			if (take <= 0) continue;
+			Amount found = null;
+			for (Amount t : types) if (same(t.type, st)) found = t;
+			if (found == null) types.add(new Amount(st.copyWithCount(1), take)); else found.n += take;
+		}
+		List<ItemStack> sim = copyOf(carry);
+		List<Amount> plan = new ArrayList<>();
+		for (Amount t : types) {
+			boolean wanted = false;
+			for (Container c : conts) if (TransporterLogic.canInsert(c, t.type, keepStore)) { wanted = true; break; }
+			if (!wanted) continue;
+			int fit = t.n - mergeInto(copyOf(sim), t.type.copyWithCount(t.n));
+			if (fit <= 0) continue;
+			mergeInto(sim, t.type.copyWithCount(fit));
+			plan.add(new Amount(t.type, fit));
+		}
+		return plan;
+	}
+
 	/** Per item type in the carry: {@code total / n} (types with a share of 0 are left out, they go back). */
 	private static List<Amount> sharesOf(List<ItemStack> carry, int n) {
 		List<Amount> totals = new ArrayList<>();
@@ -269,7 +334,8 @@ public final class DistributorLogic {
 		return out;
 	}
 
-	private static String distributing(int n) {
+	private static String distributing(int n, boolean ordered) {
+		if (ordered) return "Filling inventories in order (" + n + ")";
 		return "Distributing to " + n + (n == 1 ? " inventory" : " inventories");
 	}
 
@@ -279,7 +345,7 @@ public final class DistributorLogic {
 		if (s.plan == null) {
 			if (!TransporterLogic.isEmpty(carry)) {
 				// items from before a restart: serve them like a fresh round
-				s.round = nearestFirst(s.targets, inPos);
+				s.round = roundOf(data, s, inPos);
 				s.phase = s.round.isEmpty() ? Phase.RETURN : Phase.DISTRIBUTE;
 				s.shares = null;
 				s.quota = null;
@@ -293,17 +359,19 @@ public final class DistributorLogic {
 				s.cooldown = RETRY_TICKS;
 				return false;
 			}
-			List<Amount> plan = planFetch(in, carry, n, data.keepLayoutTake);
+			List<Amount> plan = data.fillInOrder
+				? planFetchOrdered(level, in, carry, s.targets, data.keepLayoutTake, data.keepLayoutStore)
+				: planFetch(in, carry, n, data.keepLayoutTake);
 			if (plan.isEmpty()) {
 				golem.getNavigation().stop();
-				s.status = "Input has fewer than " + n + " of any item";
+				s.status = data.fillInOrder ? "No inventory can take anything from the input" : "Input has fewer than " + n + " of any item";
 				s.cooldown = RETRY_TICKS;
 				return false;
 			}
 			s.plan = plan;
-			s.round = nearestFirst(s.targets, inPos);
+			s.round = roundOf(data, s, inPos);
 		}
-		s.status = distributing(s.round.size());
+		s.status = distributing(s.round.size(), data.fillInOrder);
 		if (!walkTo(level, golem, s, inPos)) return false;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
 		boolean moved = false;
@@ -339,6 +407,7 @@ public final class DistributorLogic {
 	}
 
 	private static boolean distribute(ServerLevel level, CopperGolem golem, GolemData data, State s, List<ItemStack> carry) {
+		if (data.fillInOrder) return distributeOrdered(level, golem, data, s, carry);
 		if (s.shares == null) s.shares = sharesOf(carry, Math.max(1, s.round.size()));
 		if (s.shares.isEmpty() || s.idx >= s.round.size()) {
 			s.phase = Phase.RETURN;
@@ -346,7 +415,7 @@ public final class DistributorLogic {
 			s.target = null;
 			return false;
 		}
-		s.status = distributing(s.round.size());
+		s.status = distributing(s.round.size(), data.fillInOrder);
 		BlockPos tp = s.round.get(s.idx);
 		Long until = s.skip.get(tp);
 		Container c = until != null && until > level.getGameTime() ? null : TransporterLogic.containerAt(level, tp);
@@ -396,6 +465,51 @@ public final class DistributorLogic {
 			s.quota = null;
 			s.walk.reset();
 			s.cooldown = moved > 0 ? Interact.OPEN_TICKS : 5;
+		}
+		return true;
+	}
+
+	/**
+	 * Fill in order: the current inventory gets as much of the carry as it takes, then the next one. An inventory that
+	 * can take nothing from the carry is passed over without walking to it.
+	 */
+	private static boolean distributeOrdered(ServerLevel level, CopperGolem golem, GolemData data, State s, List<ItemStack> carry) {
+		if (TransporterLogic.isEmpty(carry) || s.idx >= s.round.size()) {
+			s.phase = Phase.RETURN;
+			s.walk.reset();
+			s.target = null;
+			return false;
+		}
+		s.status = distributing(s.round.size(), true);
+		BlockPos tp = s.round.get(s.idx);
+		Long until = s.skip.get(tp);
+		Container c = until != null && until > level.getGameTime() ? null : TransporterLogic.containerAt(level, tp);
+		if (c == null) {
+			s.scanAt = 0;
+			s.idx++;
+			s.target = null;
+			return false;
+		}
+		if (!TransporterLogic.acceptsAny(carry, c, data.keepLayoutStore)) {
+			s.idx++; // nothing of the carry fits here: do not even walk there
+			s.target = null;
+			return false;
+		}
+		if (!walkTo(level, golem, s, tp)) return false;
+		golem.getLookControl().setLookAt(Vec3.atCenterOf(tp));
+		int budget = TransferBudget.remaining(level, golem);
+		int got = budget > 0 ? TransporterLogic.insertAll(carry, c, budget, data.keepLayoutStore) : 0;
+		TransferBudget.spend(level, golem, got);
+		if (got > 0) Interact.openChest(level, golem, tp, Interact.Action.INSERT);
+		boolean more = !TransporterLogic.isEmpty(carry) && TransporterLogic.acceptsAny(carry, c, data.keepLayoutStore);
+		if (more && (budget <= 0 || got > 0)) {
+			// cut by the transfer budget: stay and go on next window
+			Interact.openChest(level, golem, tp, Interact.Action.INSERT);
+			s.cooldown = TransferBudget.waitTicks(level);
+		} else {
+			s.idx++;
+			s.walk.reset();
+			s.cooldown = got > 0 ? Interact.OPEN_TICKS : 5;
 		}
 		return true;
 	}

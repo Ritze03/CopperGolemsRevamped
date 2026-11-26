@@ -56,6 +56,7 @@ public class GolemDataTest {
 		data.xp = 13;
 		data.filterMode = FilterMode.BLACKLIST;
 		data.stripLogs = true;
+		data.fillInOrder = true;
 		data.keepLayoutTake = true;
 		data.keepLayoutStore = false;
 		GolemData.save(golem, data);
@@ -84,6 +85,7 @@ public class GolemDataTest {
 		helper.assertTrue(d.xp == 13, "xp: " + d.xp);
 		helper.assertTrue(d.filterMode == FilterMode.BLACKLIST, "filter_mode: " + d.filterMode);
 		helper.assertTrue(d.stripLogs, "strip_logs lost");
+		helper.assertTrue(d.fillInOrder, "fill_in_order lost");
 		helper.assertTrue(d.keepLayoutTake && !d.keepLayoutStore, "keep_layout_take lost or keep_layout_store set");
 		helper.succeed();
 	}
@@ -129,6 +131,7 @@ public class GolemDataTest {
 		helper.assertTrue(d.xp == 0, "xp default: " + d.xp);
 		helper.assertTrue(d.filterMode == FilterMode.OFF, "filter_mode default: " + d.filterMode);
 		helper.assertTrue(!d.stripLogs, "strip_logs default");
+		helper.assertTrue(!d.fillInOrder, "fill_in_order default (Split evenly)");
 		helper.assertTrue(!d.keepLayoutTake && !d.keepLayoutStore, "keep_layout defaults");
 		helper.assertTrue(d.autoName == null && d.spawnChest == null && d.followPlayer == null, "nullable defaults");
 		helper.succeed();

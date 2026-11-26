@@ -212,6 +212,14 @@ public class GolemMenu extends AbstractContainerMenu {
 		rebuild();
 	}
 
+	/** Settings tab Distributor mode: Split evenly <-> Fill in order (see distributor.md). Not refused while frozen. */
+	void toggleFillInOrder() {
+		GolemData data = GolemData.get(golem);
+		data.fillInOrder = !data.fillInOrder;
+		GolemData.save(golem, data);
+		rebuild();
+	}
+
 	/** Filter tab mode button: Off -> Whitelist -> Blacklist -> Off. */
 	void cycleFilterMode() {
 		GolemData data = GolemData.get(golem);
