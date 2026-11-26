@@ -534,7 +534,7 @@ public class FarmerTest {
 		seeds.setItem(0, new ItemStack(Items.WHEAT_SEEDS, 3));
 		seeds.setItem(1, new ItemStack(Items.WHEAT_SEEDS, 1));
 		out.setItem(0, new ItemStack(Items.WHEAT, 1));
-		farmer(helper, 2, 1, (g, d) -> d.keepLayout = true);
+		farmer(helper, 2, 1, (g, d) -> { d.keepLayoutTake = true; d.keepLayoutStore = true; });
 
 		helper.succeedWhen(() -> {
 			helper.assertBlockPresent(Blocks.WHEAT, new BlockPos(0, 1, 0));

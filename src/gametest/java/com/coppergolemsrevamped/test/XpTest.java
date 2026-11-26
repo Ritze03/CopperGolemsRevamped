@@ -211,7 +211,7 @@ public class XpTest {
 	@GameTest(maxTicks = 900)
 	public void keepLayoutBottlesMergeOnly(GameTestHelper helper) {
 		Pen p = ButcherTest.pen(helper, false);
-		p.data.keepLayout = true;
+		p.data.keepLayoutTake = true; p.data.keepLayoutStore = true;
 		p.data.xp = 20;
 		GolemData.save(p.golem, p.data);
 		p.out.setItem(0, new ItemStack(Items.EXPERIENCE_BOTTLE, 1));
@@ -226,7 +226,7 @@ public class XpTest {
 	@GameTest(maxTicks = 600)
 	public void keepLayoutNoMatchingStackKeepsTheXp(GameTestHelper helper) {
 		Pen p = ButcherTest.pen(helper, false);
-		p.data.keepLayout = true;
+		p.data.keepLayoutTake = true; p.data.keepLayoutStore = true;
 		p.data.xp = 20;
 		GolemData.save(p.golem, p.data);
 		p.out.setItem(0, new ItemStack(Items.DIRT, 1));

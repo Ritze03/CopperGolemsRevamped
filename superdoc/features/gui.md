@@ -99,11 +99,11 @@ Sorter: (3,4) a book "No inventory". A recipe group (`SlotGroup:recipe`) is neve
 
 ### Settings
 
-(2,3) the Follow toggle (`follow_on` / `follow_off`, glint while on): `following = !following`, `followPlayer` = clicker UUID when
-on else null, `GolemData.save`; refused with a chat message while frozen. Follow turns itself off after the player was absent 30 s (see [golem-safety.md](golem-safety.md)). (2,5) the **Freeze** toggle (`blue_ice` through
+(2,2) the Follow toggle (`follow_on` / `follow_off`, glint while on): `following = !following`, `followPlayer` = clicker UUID when
+on else null, `GolemData.save`; refused with a chat message while frozen. Follow turns itself off after the player was absent 30 s (see [golem-safety.md](golem-safety.md)). (2,6) the **Freeze** toggle (`blue_ice` through
 `GolemIcon:plain`, glint while on, name "Freeze: on/off", `GolemMenu:toggleFreeze`): all professions, rules in
-[freeze.md](freeze.md). (2,4) **Keep layout** (`item_frame` through `GolemIcon:plain`, glint while on, name "Keep layout: on/off", `GolemMenu:toggleKeepLayout`): all professions, not refused while frozen, rules in
-[keep-layout.md](keep-layout.md). (4,5) **Strip logs** (`oak_log` while off, `stripped_oak_log` while on, glint while on like the other toggles, `GolemMenu:toggleStripLogs`): shown for the Lumber only (at 4,5),
+[freeze.md](freeze.md). (2,3) **Keep layout (taking)** (`item_frame` through `GolemIcon:plain`, glint while on, name "Keep layout (taking): on/off", `GolemMenu:toggleKeepLayoutTake`) and (2,5) **Keep layout (storing)** (`glow_item_frame`, name "Keep layout (storing): on/off", `GolemMenu:toggleKeepLayoutStore`): two independent settings, all professions, not refused while frozen, rules in
+[keep-layout.md](keep-layout.md). (2,4) stays empty so the row is symmetric around column 4. (4,5) **Strip logs** (`oak_log` while off, `stripped_oak_log` while on, glint while on like the other toggles, `GolemMenu:toggleStripLogs`): shown for the Lumber only (at 4,5),
 `GolemData:stripLogs`, see [lumber.md](lumber.md) "Strip logs".
 Why rows 2 and 4: user request, common toggles one row up, the Lumber-only toggle one row down, each centred (col 4).
 
@@ -294,7 +294,7 @@ An icon is a vanilla base item with `DataComponents.CUSTOM_MODEL_DATA` = one str
 lines are explicitly non-italic gray, the other icons
 hide `ATTRIBUTE_MODIFIERS` (tool base items), an "on" toggle gets `ENCHANTMENT_GLINT_OVERRIDE`.
 `GolemIcon:plain` is the same for a vanilla item with no custom model (bundle, compass, spyglass, barrier, apple, lime dye,
-arrow, book in the Status, Targets and confirm views, `blue_ice` for Freeze, `item_frame` for Keep layout, `knowledge_book` for the Recipe tab and label).
+arrow, book in the Status, Targets and confirm views, `blue_ice` for Freeze, `item_frame` / `glow_item_frame` for Keep layout (taking / storing), `knowledge_book` for the Recipe tab and label).
 Why plain for those two: a vanilla item already reads right and needs no texture, model or override file.
 
 The mod jar and the resource pack both ship `assets/minecraft/items/<base>.json`, overriding the vanilla item

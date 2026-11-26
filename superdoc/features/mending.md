@@ -129,7 +129,7 @@ every tick.
 
 ## Keep layout
 
-`GolemMending` reads `GolemData.keepLayout` (it already receives the data): bottles are only taken from slots holding 2
+`GolemMending` reads `GolemData.keepLayoutTake` (it already receives the data): bottles are only taken from slots holding 2
 or more (`bottlesIn(chest, keepLayout)`, `takeBottle`), so one bottle per slot stays behind, and `canRepair` ignores the
 left-behind ones. Parking a tool is exempt (unstackable). All three tool professions (Lumber, Farmer, Butcher) get this
 without a signature change. See [keep-layout.md](keep-layout.md).

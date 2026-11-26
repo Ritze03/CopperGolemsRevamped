@@ -75,7 +75,7 @@ public class OxidationTest {
 		d.followPlayer = FOLLOWED;
 		d.filterMode = FilterMode.WHITELIST;
 		d.stripLogs = true;
-		d.keepLayout = true;
+		d.keepLayoutTake = true; d.keepLayoutStore = true;
 		GolemData.save(golem, d);
 		golem.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.EMERALD, 5));
 		golem.setGuaranteedDrop(EquipmentSlot.MAINHAND);
@@ -156,7 +156,7 @@ public class OxidationTest {
 		helper.assertTrue(d.following && FOLLOWED.equals(d.followPlayer), "follow: " + d.following + " " + d.followPlayer);
 		helper.assertTrue(d.filterMode == FilterMode.WHITELIST, "filter mode: " + d.filterMode);
 		helper.assertTrue(d.stripLogs, "strip_logs lost");
-		helper.assertTrue(d.keepLayout, "keep_layout lost");
+		helper.assertTrue(d.keepLayoutTake && d.keepLayoutStore, "keep layout flags lost");
 		helper.assertTrue("Transporter".equals(d.autoName), "autoName: " + d.autoName);
 	}
 

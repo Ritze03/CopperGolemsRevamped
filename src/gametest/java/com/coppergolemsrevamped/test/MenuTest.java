@@ -356,63 +356,71 @@ public class MenuTest {
 		CopperGolem g = golem(helper, TRANSPORTER);
 		ServerPlayer player = player(helper, g);
 		GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-		helper.assertTrue(at(menu, 2, 3).is(Items.LEAD) && !glint(at(menu, 2, 3)) && name(at(menu, 2, 3)).equals("Follow: off"), "off " + at(menu, 2, 3));
-		click(menu, player, 2, 3);
-		helper.assertTrue(GolemData.get(g).following && glint(at(menu, 2, 3)) && name(at(menu, 2, 3)).equals("Follow: on"), "on " + at(menu, 2, 3));
-		click(menu, player, 2, 3);
-		helper.assertTrue(!GolemData.get(g).following && !glint(at(menu, 2, 3)), "off again");
+		helper.assertTrue(at(menu, 2, 2).is(Items.LEAD) && !glint(at(menu, 2, 2)) && name(at(menu, 2, 2)).equals("Follow: off"), "off " + at(menu, 2, 2));
+		click(menu, player, 2, 2);
+		helper.assertTrue(GolemData.get(g).following && glint(at(menu, 2, 2)) && name(at(menu, 2, 2)).equals("Follow: on"), "on " + at(menu, 2, 2));
+		click(menu, player, 2, 2);
+		helper.assertTrue(!GolemData.get(g).following && !glint(at(menu, 2, 2)), "off again");
 		helper.succeed();
 	}
 
-	/** Freeze: toggle at (2,5), freezing turns Follow off, Follow is refused while frozen, a profession change unfreezes. */
+	/** Freeze: toggle at (2,6), freezing turns Follow off, Follow is refused while frozen, a profession change unfreezes. */
 	@GameTest
 	public void settingsFreezeToggle(GameTestHelper helper) {
 		for (Identifier id : new Identifier[] {null, SORTER, TRANSPORTER}) {
 			CopperGolem g = golem(helper, id);
 			ServerPlayer player = player(helper, g);
 			GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-			helper.assertTrue(at(menu, 2, 5).is(Items.BLUE_ICE) && !glint(at(menu, 2, 5)) && name(at(menu, 2, 5)).equals("Freeze: off")
-				&& lore(at(menu, 2, 5)).contains("Golem stops all work and stands still") && lore(at(menu, 2, 5)).contains("Use it to safely change its inventory"),
-				id + " freeze off " + at(menu, 2, 5));
-			click(menu, player, 2, 3); // Follow on
-			click(menu, player, 2, 5); // Freeze: follow turns off
+			helper.assertTrue(at(menu, 2, 6).is(Items.BLUE_ICE) && !glint(at(menu, 2, 6)) && name(at(menu, 2, 6)).equals("Freeze: off")
+				&& lore(at(menu, 2, 6)).contains("Golem stops all work and stands still") && lore(at(menu, 2, 6)).contains("Use it to safely change its inventory"),
+				id + " freeze off " + at(menu, 2, 6));
+			click(menu, player, 2, 2); // Follow on
+			click(menu, player, 2, 6); // Freeze: follow turns off
 			GolemData d = GolemData.get(g);
-			helper.assertTrue(d.frozen && !d.following && d.followPlayer == null && glint(at(menu, 2, 5)) && name(at(menu, 2, 5)).equals("Freeze: on"),
+			helper.assertTrue(d.frozen && !d.following && d.followPlayer == null && glint(at(menu, 2, 6)) && name(at(menu, 2, 6)).equals("Freeze: on"),
 				id + " frozen " + d.frozen + "/" + d.following);
-			click(menu, player, 2, 3); // refused
-			helper.assertTrue(!GolemData.get(g).following && name(at(menu, 2, 3)).equals("Follow: off"), id + " follow must be refused while frozen");
+			click(menu, player, 2, 2); // refused
+			helper.assertTrue(!GolemData.get(g).following && name(at(menu, 2, 2)).equals("Follow: off"), id + " follow must be refused while frozen");
 			menu.showTab(Tab.STATUS);
 			boolean next = false;
 			for (int col = 0; col < 9; col++) next |= name(at(menu, 3, col)).startsWith("Frozen");
 			helper.assertTrue(name(at(menu, 2, 4)).endsWith("— Frozen") && next, id + " status " + name(at(menu, 2, 4)));
 			menu.showTab(Tab.SETTINGS);
-			click(menu, player, 2, 5);
+			click(menu, player, 2, 6);
 			helper.assertTrue(!GolemData.get(g).frozen, id + " unfrozen");
-			click(menu, player, 2, 5);
+			click(menu, player, 2, 6);
 			GolemService.changeProfession(helper.getLevel(), g, id == null ? TRANSPORTER : null);
 			helper.assertTrue(!GolemData.get(g).frozen, id + " a profession change clears freeze");
 		}
 		helper.succeed();
 	}
 
-	/** Keep layout: toggle at (2,4) for every profession, default off, flips, allowed while frozen, kept over a profession change. */
+	/** Keep layout (taking) at (2,3) and (storing) at (2,5): independent, default off, flip, allowed while frozen, kept over a profession change. */
 	@GameTest
-	public void settingsKeepLayoutToggle(GameTestHelper helper) {
+	public void settingsKeepLayoutToggles(GameTestHelper helper) {
 		for (Identifier id : new Identifier[] {null, SORTER, TRANSPORTER}) {
 			CopperGolem g = golem(helper, id);
 			ServerPlayer player = player(helper, g);
 			GolemMenu menu = new GolemMenu(1, player.getInventory(), g, Tab.SETTINGS);
-			helper.assertTrue(at(menu, 2, 4).is(Items.ITEM_FRAME) && !glint(at(menu, 2, 4)) && name(at(menu, 2, 4)).equals("Keep layout: off")
-				&& lore(at(menu, 2, 4)).contains("Leaves 1 item in every slot; never fills empty slots") && !GolemData.get(g).keepLayout,
-				id + " keep layout off " + at(menu, 2, 4));
-			click(menu, player, 2, 4);
-			helper.assertTrue(GolemData.get(g).keepLayout && glint(at(menu, 2, 4)) && name(at(menu, 2, 4)).equals("Keep layout: on"), id + " on");
-			click(menu, player, 2, 5); // freeze: the setting is not refused while frozen
-			click(menu, player, 2, 4);
-			helper.assertTrue(!GolemData.get(g).keepLayout && GolemData.get(g).frozen, id + " toggles while frozen");
-			click(menu, player, 2, 4);
+			helper.assertTrue(at(menu, 2, 3).is(Items.ITEM_FRAME) && !glint(at(menu, 2, 3)) && name(at(menu, 2, 3)).equals("Keep layout (taking): off")
+				&& lore(at(menu, 2, 3)).contains("Leaves 1 item in every slot it takes from") && !GolemData.get(g).keepLayoutTake,
+				id + " taking off " + at(menu, 2, 3));
+			helper.assertTrue(at(menu, 2, 5).is(Items.GLOW_ITEM_FRAME) && !glint(at(menu, 2, 5)) && name(at(menu, 2, 5)).equals("Keep layout (storing): off")
+				&& lore(at(menu, 2, 5)).contains("Only tops up existing stacks; never uses empty slots") && !GolemData.get(g).keepLayoutStore,
+				id + " storing off " + at(menu, 2, 5));
+			click(menu, player, 2, 3);
+			helper.assertTrue(GolemData.get(g).keepLayoutTake && !GolemData.get(g).keepLayoutStore && glint(at(menu, 2, 3))
+				&& !glint(at(menu, 2, 5)) && name(at(menu, 2, 3)).equals("Keep layout (taking): on"), id + " taking on, storing untouched");
+			click(menu, player, 2, 5);
+			helper.assertTrue(GolemData.get(g).keepLayoutStore && glint(at(menu, 2, 5)) && name(at(menu, 2, 5)).equals("Keep layout (storing): on"), id + " storing on");
+			click(menu, player, 2, 6); // freeze: the settings are not refused while frozen
+			click(menu, player, 2, 3);
+			click(menu, player, 2, 5);
+			helper.assertTrue(!GolemData.get(g).keepLayoutTake && !GolemData.get(g).keepLayoutStore && GolemData.get(g).frozen, id + " toggle while frozen");
+			click(menu, player, 2, 3);
+			click(menu, player, 2, 5);
 			GolemService.changeProfession(helper.getLevel(), g, id == null ? TRANSPORTER : null);
-			helper.assertTrue(GolemData.get(g).keepLayout, id + " a profession change keeps keep layout");
+			helper.assertTrue(GolemData.get(g).keepLayoutTake && GolemData.get(g).keepLayoutStore, id + " a profession change keeps both");
 		}
 		helper.succeed();
 	}

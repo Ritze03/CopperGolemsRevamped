@@ -58,8 +58,12 @@ public abstract class TransportItemsBetweenContainersMixin {
 		return ChestSorterProfession.visitedLimit(body);
 	}
 
-	private static boolean cgr$keepLayout(PathfinderMob body) {
-		return body instanceof CopperGolem golem && GolemData.get(golem).keepLayout;
+	private static boolean cgr$take(PathfinderMob body) {
+		return body instanceof CopperGolem golem && GolemData.get(golem).keepLayoutTake;
+	}
+
+	private static boolean cgr$store(PathfinderMob body) {
+		return body instanceof CopperGolem golem && GolemData.get(golem).keepLayoutStore;
 	}
 
 	/**
@@ -72,11 +76,13 @@ public abstract class TransportItemsBetweenContainersMixin {
 	private void cgr$layoutInteraction(PathfinderMob body, Container container,
 			BiConsumer<PathfinderMob, Container> onPickupSuccess, BiConsumer<PathfinderMob, Container> onPickupFailure,
 			BiConsumer<PathfinderMob, Container> onPlaceSuccess, BiConsumer<PathfinderMob, Container> onPlaceFailure, CallbackInfo ci) {
-		if (!cgr$keepLayout(body)) return;
+		boolean take = cgr$take(body), store = cgr$store(body);
 		ItemStack hand = body.getMainHandItem();
 		if (hand.isEmpty()) {
-			(cgr$pickSlot(body, container) >= 0 ? onPickupSuccess : onPickupFailure).accept(body, container);
+			if (!take && !store) return;
+			(cgr$pickSlot(body, container, take, store) >= 0 ? onPickupSuccess : onPickupFailure).accept(body, container);
 		} else {
+			if (!store) return;
 			(cgr$accepts(container, hand) ? onPlaceSuccess : onPlaceFailure).accept(body, container);
 		}
 		ci.cancel();
@@ -88,10 +94,11 @@ public abstract class TransportItemsBetweenContainersMixin {
 	 */
 	@Inject(method = "pickUpItems", at = @At("HEAD"), cancellable = true)
 	private void cgr$layoutPickUp(PathfinderMob body, Container container, CallbackInfo ci) {
-		if (!cgr$keepLayout(body)) return;
-		int slot = cgr$pickSlot(body, container);
+		boolean take = cgr$take(body), store = cgr$store(body);
+		if (!take && !store) return;
+		int slot = cgr$pickSlot(body, container, take, store);
 		ItemStack taken = slot < 0 ? ItemStack.EMPTY
-			: container.removeItem(slot, Math.min(TransporterLogic.takeable(container, container.getItem(slot), true), 16));
+			: container.removeItem(slot, Math.min(TransporterLogic.takeable(container, container.getItem(slot), take), 16));
 		body.setItemSlot(EquipmentSlot.MAINHAND, taken);
 		body.setGuaranteedDrop(EquipmentSlot.MAINHAND);
 		container.setChanged();
@@ -102,7 +109,7 @@ public abstract class TransportItemsBetweenContainersMixin {
 	/** Keep layout put-down: merge into existing same-item stacks only; unstackables go to an empty slot (vanilla). */
 	@Inject(method = "putDownItem", at = @At("HEAD"), cancellable = true)
 	private void cgr$layoutPutDown(PathfinderMob body, Container container, CallbackInfo ci) {
-		if (!cgr$keepLayout(body)) return;
+		if (!cgr$store(body)) return;
 		ItemStack left = TransporterLogic.insertStack(body.getMainHandItem().copy(), container, true);
 		container.setChanged();
 		body.setItemSlot(EquipmentSlot.MAINHAND, left);
@@ -116,7 +123,8 @@ public abstract class TransportItemsBetweenContainersMixin {
 	 * layout rule): vanilla's {@code matchesLeavingItemsRequirement}, i.e. the container is empty or holds the same item
 	 * ({@link ItemStack#isSameItem}), plus a free slot.
 	 */
-	private static boolean cgr$accepts(Container c, ItemStack stack) {
+	private static boolean cgr$accepts(Container c, ItemStack stack) { // store rule only
+
 		if (stack.getMaxStackSize() == 1 && !c.isEmpty()) {
 			boolean same = false;
 			for (int i = 0; i < c.getContainerSize() && !same; i++) same = ItemStack.isSameItem(c.getItem(i), stack);
@@ -131,11 +139,12 @@ public abstract class TransportItemsBetweenContainersMixin {
 	 * type no destination accepts would block every later slot of the copper chest. "In the area" stands in for
 	 * "reachable"; a real path check per chest would be too costly here.
 	 */
-	private int cgr$pickSlot(PathfinderMob body, Container container) {
+	private int cgr$pickSlot(PathfinderMob body, Container container, boolean take, boolean store) {
 		List<Container> dests = null;
 		for (int i = 0; i < container.getContainerSize(); i++) {
 			ItemStack s = container.getItem(i);
-			if (s.isEmpty() || TransporterLogic.takeable(container, s, true) <= 0) continue;
+			if (s.isEmpty() || TransporterLogic.takeable(container, s, take) <= 0) continue;
+			if (!store) return i; // destinations follow vanilla's own test
 			if (dests == null) dests = cgr$destinations(body);
 			for (Container d : dests) if (d != container && cgr$accepts(d, s)) return i;
 		}

@@ -300,7 +300,7 @@ public class CleanerTest {
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 2));
 		GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
 		GolemData data = GolemData.get(golem);
-		data.keepLayout = true;
+		data.keepLayoutTake = true; data.keepLayoutStore = true;
 		data.assignments.put("area_a", helper.absolutePos(new BlockPos(0, 0, 0)));
 		data.assignments.put("area_b", helper.absolutePos(new BlockPos(3, 0, 3)));
 		data.assignments.put("output", helper.absolutePos(chestPos));
@@ -339,7 +339,7 @@ public class CleanerTest {
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(4, 1, 2));
 		GolemService.changeProfession(helper.getLevel(), golem, CleanerProfession.ID);
 		GolemData data = GolemData.get(golem);
-		data.keepLayout = true;
+		data.keepLayoutTake = true; data.keepLayoutStore = true;
 		data.assignments.put("area_a", helper.absolutePos(new BlockPos(0, 0, 0)));
 		data.assignments.put("area_b", helper.absolutePos(new BlockPos(3, 0, 3)));
 		data.assignments.put("output", helper.absolutePos(chestPos));

@@ -188,10 +188,18 @@ public class GolemMenu extends AbstractContainerMenu {
 		rebuild();
 	}
 
-	/** Settings tab Keep layout: never empty a stack, never fill an empty slot (see keep-layout.md). Not refused while frozen. */
-	void toggleKeepLayout() {
+	/** Settings tab Keep layout (taking): never empty a stack it takes from (see keep-layout.md). Not refused while frozen. */
+	void toggleKeepLayoutTake() {
 		GolemData data = GolemData.get(golem);
-		data.keepLayout = !data.keepLayout;
+		data.keepLayoutTake = !data.keepLayoutTake;
+		GolemData.save(golem, data);
+		rebuild();
+	}
+
+	/** Settings tab Keep layout (storing): never fill an empty slot (see keep-layout.md). Not refused while frozen. */
+	void toggleKeepLayoutStore() {
+		GolemData data = GolemData.get(golem);
+		data.keepLayoutStore = !data.keepLayoutStore;
 		GolemData.save(golem, data);
 		rebuild();
 	}

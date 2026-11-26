@@ -234,7 +234,7 @@ public final class CrafterLogic {
 		for (int i = 0; i < CrafterProfession.TEMPLATE_SLOTS; i++) {
 			if (!used(p, i)) continue;
 			ItemStack s = at(data, CrafterProfession.FIRST_INPUT + i);
-			if (s.getCount() < target(data, p, i) && chestHas(cin, p.cell()[i], data.keepLayout)) return true;
+			if (s.getCount() < target(data, p, i) && chestHas(cin, p.cell()[i], data.keepLayoutTake)) return true;
 		}
 		return false;
 	}
@@ -259,7 +259,7 @@ public final class CrafterLogic {
 			if (want[i] > 0) {
 				for (int j = 0; j < cin.getContainerSize() && !took; j++) {
 					ItemStack c = cin.getItem(j);
-					if (!same(c, p.cell()[i]) || TransporterLogic.takeable(cin, c, data.keepLayout) <= 0) continue;
+					if (!same(c, p.cell()[i]) || TransporterLogic.takeable(cin, c, data.keepLayoutTake) <= 0) continue;
 					ItemStack one = c.split(1);
 					if (c.isEmpty()) cin.setItem(j, ItemStack.EMPTY);
 					int idx = CrafterProfession.FIRST_INPUT + i;
@@ -285,7 +285,7 @@ public final class CrafterLogic {
 	static int deliver(GolemData data, List<Integer> idxs, Container cout, int limit) {
 		NonNullList<ItemStack> carry = NonNullList.create();
 		for (int idx : idxs) carry.add(data.items.get(idx));
-		int moved = TransporterLogic.insertAll(carry, cout, limit, data.keepLayout);
+		int moved = TransporterLogic.insertAll(carry, cout, limit, data.keepLayoutStore);
 		for (int k = 0; k < idxs.size(); k++) data.items.set(idxs.get(k), carry.get(k));
 		return moved;
 	}

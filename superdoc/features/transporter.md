@@ -39,7 +39,7 @@ a long trip at all. The cooldown retries because the obstacle (a bridge, a moved
    fallback if none is reachable), see [../architecture/interaction.md](../architecture/interaction.md).
    For an unloaded target `TransporterLogic:farGiveUp` runs first (see below).
 5. In reach: stop, look at chest, then
-   - carry empty: `takeAll(A, carry)` of only the stacks B can take right now (`canInsert(B, stack, keepLayout)`, plus the
+   - carry empty: `takeAll(A, carry)` of only the stacks B can take right now (`canInsert(B, stack, keepLayoutStore)`, plus the
      filter); nothing moved (A empty, or nothing B accepts) -> wait 40 ticks; else open A's lid
      (`Interact:openChest`, `TAKE`) and wait 20 (`Interact.OPEN_TICKS`).
    - carry non-empty, at B: `insertAll(carry, B)`; leftovers stay in carry and mean B is full -> wait 40; else open B's lid
@@ -50,7 +50,7 @@ a long trip at all. The cooldown retries because the obstacle (a bridge, a moved
 
 ### Types B refuses
 
-Why: with Keep layout on, B only accepts types it already holds a non-full stack of. The golem used to take every type
+Why: with Keep layout (storing) on, B only accepts types it already holds a non-full stack of. The golem used to take every type
 from A, deliver what B took, and stand at B with the rest forever (retrying every 40 ticks); e.g. A with 64 sticks and
 64 logs, B with only a stick placeholder: 63 logs stuck in the carry. Now the take only picks types B can take, and a
 carry B refuses entirely (B changed meanwhile, or is physically full) goes back to A, so the items are in a chest, not
@@ -64,7 +64,7 @@ Tests: `TransporterTest:keepLayoutLeavesTypesBCannotTake`, `TransporterTest:carr
 Assigning the same chest as both A and B (or any other duplicate assignment) is allowed on purpose: nothing checks
 for it. Why: user decision, "if someone wants to do it, let them".
 
-**Keep layout:** `TransporterLogic:tick` passes `GolemData:keepLayout` to the budgeted take and insert, so with the setting on chest A keeps 1 item per slot and chest B only gets merged into non-empty same-item slots; types B has no such stack for stay in A (see "Types B refuses" above). See [keep-layout.md](keep-layout.md).
+**Keep layout:** `TransporterLogic:tick` passes `GolemData:keepLayoutTake` to the budgeted take and `keepLayoutStore` to the budgeted insert, so with taking on chest A keeps 1 item per slot and with storing on chest B only gets merged into non-empty same-item slots; types B has no such stack for stay in A (see "Types B refuses" above). See [keep-layout.md](keep-layout.md).
 
 **Transfer limit:** `takeAll` / `insertAll` run through `TransferBudget` (16 items per 5 ticks). A take cut short by the budget sets `State.loading` so the golem stays at A (lid kept open, wait until the next window) and only delivers once a take ends with budget left; a cut insert just repeats at B. See [../architecture/transfer-limit.md](../architecture/transfer-limit.md).
 

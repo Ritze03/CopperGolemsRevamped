@@ -97,7 +97,7 @@ public final class TransporterLogic {
 		boolean take = loading || isEmpty(carry);
 		// A carry B refuses entirely (B full, or changed under Keep layout) goes back to A instead of idling at B forever.
 		// An unloaded B is walked to with the carry; it is checked once it is loaded.
-		boolean deliver = !take && (cb == null || acceptsAny(carry, cb, data.keepLayout));
+		boolean deliver = !take && (cb == null || acceptsAny(carry, cb, data.keepLayoutStore));
 		BlockPos target = deliver ? b : a;
 		Container here = deliver ? cb : ca;
 		if (Interact.loaded(level, target)) s.farTarget = null;
@@ -107,8 +107,8 @@ public final class TransporterLogic {
 		if (take) {
 			// Only types B can take right now: a type B never accepts (Keep layout, no matching stack) would be carried forever.
 			// With B unloaded that check waits for B: a type it refuses then comes back to A (see deliver above).
-			Predicate<ItemStack> wanted = cb == null ? accepts(data) : accepts(data).and(st -> canInsert(cb, st, data.keepLayout));
-			boolean moved = TransferBudget.take(level, golem, ca, carry, wanted, data.keepLayout) > 0;
+			Predicate<ItemStack> wanted = cb == null ? accepts(data) : accepts(data).and(st -> canInsert(cb, st, data.keepLayoutStore));
+			boolean moved = TransferBudget.take(level, golem, ca, carry, wanted, data.keepLayoutTake) > 0;
 			if (moved) Interact.openChest(level, golem, target, Interact.Action.TAKE);
 			if (TransferBudget.exhausted(level, golem)) {
 				// budget used up, not "chest empty": stay, keep the lid open and go on next window
@@ -122,7 +122,7 @@ public final class TransporterLogic {
 			}
 		} else {
 			// deliver to B, or put back into A what B refuses
-			if (TransferBudget.insert(level, golem, carry, deliver ? cb : ca, data.keepLayout) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
+			if (TransferBudget.insert(level, golem, carry, deliver ? cb : ca, data.keepLayoutStore) > 0) Interact.openChest(level, golem, target, Interact.Action.INSERT);
 			boolean empty = isEmpty(carry);
 			if (empty) s.walk.reset();
 			if (empty) s.cooldown = Interact.OPEN_TICKS;

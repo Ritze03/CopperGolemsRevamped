@@ -525,7 +525,7 @@ public class ButcherTest {
 	@GameTest(maxTicks = 3000)
 	public void keepLayoutFoodFetchLeavesOne(GameTestHelper helper) {
 		Pen p = pen(helper, true);
-		p.data.keepLayout = true;
+		p.data.keepLayoutTake = true; p.data.keepLayoutStore = true;
 		GolemData.save(p.golem, p.data);
 		p.food.setItem(0, new ItemStack(Items.CARROT, 8));
 		for (int i = 0; i < 4; i++) animal(helper, p, EntityTypes.PIG, false);
@@ -541,7 +541,7 @@ public class ButcherTest {
 	@GameTest(maxTicks = 700)
 	public void keepLayoutSingleFoodItemIsNotTaken(GameTestHelper helper) {
 		Pen p = pen(helper, true);
-		p.data.keepLayout = true;
+		p.data.keepLayoutTake = true; p.data.keepLayoutStore = true;
 		GolemData.save(p.golem, p.data);
 		p.food.setItem(0, new ItemStack(Items.CARROT, 1));
 		for (int i = 0; i < 4; i++) animal(helper, p, EntityTypes.PIG, false);

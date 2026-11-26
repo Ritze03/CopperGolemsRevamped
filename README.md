@@ -26,7 +26,7 @@ The menu has a tab bar in the top row.
 - **Targets**: one column per target with Assign, **Show** (the golem walks to the target, or outlines an area) and **Clear**.
 - **Recipe** (Crafter only): put one item in each cell of the 3x3 grid to set the recipe. The golem never consumes these items.
 - **Inventory**: the golem's working slots (tool, supplies, carry, and so on).
-- **Settings**: **Follow** makes the golem follow you and pauses its work; **Freeze** makes it stop all work and stand still so you can safely change its inventory; **Keep layout** (off by default) makes it leave 1 item in every slot it takes from and never put items into empty slots, so chests you laid out by hand stay as they are.
+- **Settings**: **Follow** makes the golem follow you and pauses its work; **Freeze** makes it stop all work and stand still so you can safely change its inventory; **Keep layout (taking)** (off by default) makes it leave 1 item in every slot it takes from, and **Keep layout (storing)** (off by default) makes it only top up stacks that already hold the same item and never put items into empty slots, so chests you laid out by hand stay as they are.
 - **Profession**: switch profession. Switching asks for confirmation because it clears the targets and hands out all stored items.
 
 The **Help** button prints help for the current tab in chat; the menu stays open.

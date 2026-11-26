@@ -15,7 +15,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `reachRules`, `openChestClosesAfterTimer`, `killedGolemDoesNotLeakOpener`, `walkingAwayClosesChest`,
   `transporterStandsCloseAndOpensLids`, `walledOffChestUsesTwoBlockFallback` (see [interaction.md](interaction.md)), and the
   types-B-refuses rule `keepLayoutLeavesTypesBCannotTake`, `carryBRefusesGoesBackToA` ([transporter.md](../features/transporter.md)).
-- `GolemDataTest` (6): `golemDataSurvivesSaveLoad` (full entity round trip: `Entity#saveWithoutId` into
+- `GolemDataTest` (7, incl. `legacyKeepLayoutMigrates`): `golemDataSurvivesSaveLoad` (full entity round trip: `Entity#saveWithoutId` into
   `TagValueOutput`, then `Entity#load` of a fresh golem from `TagValueInput`; proves `GolemData` is a persistent
   attachment, not just that its codec works), the lenient codec `oldSaveGetsDefaults`, `badStackAndFieldAreTolerated`,
   `longerItemsListKeepsExtras`, `shortItemsListIsPaddedOnAccess` ([oxidation.md](../features/oxidation.md)),
@@ -26,7 +26,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   (`walkToStopsNextToBlock`, `areaAssignWalksOutline`, `unreachableWaypointIsSkipped`), area clamp
   (`areaCornerIsCappedNotRejected`), `everyProfessionHasHelp`. See [gui.md](../features/gui.md),
   [assign-mode.md](../features/assign-mode.md).
-- `MenuTest` (26, incl. `settingsKeepLayoutToggle`, `settingsHasNoSaveTools`, `settingsStripLogsToggleIsLumberOnly`, incl. `professionTabIsCentredAndWraps`): the tabbed menu. `opensOnStatusWithTabBar`, `noBackButtonAndCrafterBarHasRecipe` (no Back cell on any tab of any profession, Crafter bar has 6 tabs with Recipe before Inventory), `tabSwitchKeepsTheMenuInstance` (sets
+- `MenuTest` (26, incl. `settingsKeepLayoutToggles`, `settingsHasNoSaveTools`, `settingsStripLogsToggleIsLumberOnly`, incl. `professionTabIsCentredAndWraps`): the tabbed menu. `opensOnStatusWithTabBar`, `noBackButtonAndCrafterBarHasRecipe` (no Back cell on any tab of any profession, Crafter bar has 6 tabs with Recipe before Inventory), `tabSwitchKeepsTheMenuInstance` (sets
   `player.containerMenu`, clicks tabs and checks it is still the same menu), `controlCellsSwallowEveryOtherClick`,
   `noneSwitchesWithoutConfirm`, `confirmFlowAndCancel`, `targetsShowAndClear`, `targetsAreaClearAndColumns`,
   `lumberAndFarmerLayouts` (cell positions of every profession's Inventory tab), `settingsFollowToggle`, `settingsFreezeToggle`,
@@ -72,7 +72,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `FreezeTest` (5): `frozenTransporterMovesNothing` (200 ticks, chests unchanged, golem within 0.5 blocks),
   `unfreezingResumesTheWork`, `freezingClosesAnOpenLidAndStops`, `frozenSurvivesSaveLoad`, `frozenChestSorterDoesNotSort`
   ([freeze.md](../features/freeze.md)).
-- `KeepLayoutTest` (8): Keep layout for the Transporter (A keeps 1 per slot, B's empty slots stay empty), the plain-container rule incl. the unstackable and furnace exemptions, off-case, and the Chest Sorter mixin (`chestSorterKeepsLayout`, `chestSorterNeverFillsEmptySlots`, `chestSorterUnstackableKeepsVanillaRule`, `chestSorterSkipsTypesNoChestTakes`) ([keep-layout.md](../features/keep-layout.md)). The two "no chest takes it" sorter tests use echo shards, an item no other test uses: the sorter's 32-block search area reaches neighbour tests' chests, and a neighbour chest holding cobblestone accepted the "unwanted" cobblestone (flaky `hand 9 minecraft:cobblestone`).
+- `KeepLayoutTest` (10): Keep layout for the Transporter (A keeps 1 per slot, B's empty slots stay empty), the plain-container rule incl. the unstackable and furnace exemptions, off-case, taking-only (`takeOnlyLeavesOnePerSlotAndFillsEmptySlots`) and storing-only (`storeOnlyEmptiesSourceAndNeverFillsEmptySlots`), and the Chest Sorter mixin (`chestSorterKeepsLayout`, `chestSorterNeverFillsEmptySlots`, `chestSorterUnstackableKeepsVanillaRule`, `chestSorterSkipsTypesNoChestTakes`) ([keep-layout.md](../features/keep-layout.md)). The two "no chest takes it" sorter tests use echo shards, an item no other test uses: the sorter's 32-block search area reaches neighbour tests' chests, and a neighbour chest holding cobblestone accepted the "unwanted" cobblestone (flaky `hand 9 minecraft:cobblestone`).
 - `ChunkLoadTest` (9, plus `unreachableFarTargetIsGivenUp`, `golemsDoNotUsePortals`): `workingGolemHoldsTicket`, `ticketMovesWithGolem`, `releasedOnNone`, `releasedOnDiscard`,
   `sharedTicketStaysForOtherGolem`, `ticketSurvivesSaveLoad`, `unloadedTargetIsNeverLoaded` (a far chest B is never
   loaded, see "Unloaded targets") ([chunk-loading.md](../features/chunk-loading.md)).
@@ -84,7 +84,7 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 - `HealthTest` (5): `suffocationDoesNothing`, `nonPlayerDamageIsIgnored`, `playerDamageHurts`, `voidAndKillStillKill`, `regeneratesOneHpPerThirtySeconds` ([health.md](../features/health.md)).
 
 Total: 282 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 283 required tests passed` (see Gotchas). Update the numbers here when
+`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 286 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

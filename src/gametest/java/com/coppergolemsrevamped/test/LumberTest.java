@@ -1164,7 +1164,7 @@ public class LumberTest {
 		out.setItem(0, new ItemStack(Items.OAK_LOG, 1));
 		CopperGolem golem = lumber(helper);
 		GolemData d = GolemData.get(golem);
-		d.keepLayout = true;
+		d.keepLayoutTake = true; d.keepLayoutStore = true;
 		GolemData.save(golem, d);
 
 		helper.succeedWhen(() -> {

@@ -13,7 +13,7 @@ instant; a 256-item haul takes seconds, like a hopper line.
 - Transient: a `WeakHashMap` keyed by golem, never saved. A reload just starts with a full budget.
 - API: `remaining`, `exhausted`, `spend(n)`, `waitTicks(level)` (a profession cooldown that wakes the golem on the first
   tick of the next window), and the budgeted wrappers `take` / `insert` around `TransporterLogic.takeAll` / `insertAll`
-  (both take an optional `keepLayout` flag, see [../features/keep-layout.md](../features/keep-layout.md); both have a `limit` overload; the plain boolean versions are unlimited and used only for uncounted moves).
+  (both take an optional `keepLayout` flag (callers pass `keepLayoutTake` to `take` and `keepLayoutStore` to `insert`), see [../features/keep-layout.md](../features/keep-layout.md); both have a `limit` overload; the plain boolean versions are unlimited and used only for uncounted moves).
 
 ## What counts
 

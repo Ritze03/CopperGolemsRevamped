@@ -631,7 +631,7 @@ public final class LumberLogic {
 			mask[i] = only.test(st);
 			if (mask[i]) view.set(i, st);
 		}
-		int moved = TransferBudget.insert(level, golem, view, chest, data.keepLayout);
+		int moved = TransferBudget.insert(level, golem, view, chest, data.keepLayoutStore);
 		for (int i = 0; i < view.size(); i++) if (mask[i]) data.items.set(LumberProfession.CARRY_FROM + i, view.get(i));
 		return moved;
 	}
@@ -665,7 +665,7 @@ public final class LumberLogic {
 			if (!reach(s, level, golem, outPos, outPos, now)) return false;
 			golem.getLookControl().setLookAt(Vec3.atCenterOf(outPos));
 			NonNullList<ItemStack> carry = carryView(data);
-			boolean moved = TransferBudget.insert(level, golem, carry, out, data.keepLayout) > 0;
+			boolean moved = TransferBudget.insert(level, golem, carry, out, data.keepLayoutStore) > 0;
 			writeCarry(data, carry);
 			if (moved) Interact.openChest(level, golem, outPos, Interact.Action.INSERT);
 			s.anchored = false;
@@ -1302,7 +1302,7 @@ public final class LumberLogic {
 			if (isSapling(data.items.get(i))) n += data.items.get(i).getCount();
 		for (int i = 0; i < LumberProfession.CARRY_SLOTS; i++)
 			if (isSapling(data.items.get(LumberProfession.CARRY_FROM + i))) n += data.items.get(LumberProfession.CARRY_FROM + i).getCount();
-		if (in != null) for (int i = 0; i < in.getContainerSize(); i++) if (isSapling(in.getItem(i))) n += TransporterLogic.takeable(in, in.getItem(i), data.keepLayout);
+		if (in != null) for (int i = 0; i < in.getContainerSize(); i++) if (isSapling(in.getItem(i))) n += TransporterLogic.takeable(in, in.getItem(i), data.keepLayoutTake);
 		return n;
 	}
 
@@ -1333,7 +1333,7 @@ public final class LumberLogic {
 		ItemStack cur = slot < 0 ? ItemStack.EMPTY : data.items.get(slot);
 		for (int i = 0; i < chest.getContainerSize(); i++) {
 			ItemStack st = chest.getItem(i);
-			if (st.isEmpty() || !is.test(st) || TransporterLogic.takeable(chest, st, data.keepLayout) <= 0) continue;
+			if (st.isEmpty() || !is.test(st) || TransporterLogic.takeable(chest, st, data.keepLayoutTake) <= 0) continue;
 			if (cur.isEmpty() || ItemStack.isSameItemSameComponents(cur, st)) return i;
 		}
 		return -1;
@@ -1353,7 +1353,7 @@ public final class LumberLogic {
 		for (int i = first; i < chest.getContainerSize() && have + took < max; i++) {
 			ItemStack st = chest.getItem(i);
 			if (st.isEmpty() || !ItemStack.isSameItemSameComponents(kind, st)) continue;
-			int n = Math.min(max - have - took, TransporterLogic.takeable(chest, st, data.keepLayout));
+			int n = Math.min(max - have - took, TransporterLogic.takeable(chest, st, data.keepLayoutTake));
 			if (n <= 0) continue;
 			took += n;
 			st.shrink(n);

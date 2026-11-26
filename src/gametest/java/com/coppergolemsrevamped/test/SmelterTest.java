@@ -627,7 +627,7 @@ public class SmelterTest {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
 		CopperGolem golem = base(helper, 1, c);
 		GolemData d = GolemData.get(golem);
-		d.keepLayout = true;
+		d.keepLayoutTake = true; d.keepLayoutStore = true;
 		GolemData.save(golem, d);
 		furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE);
 		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 5));
@@ -652,7 +652,7 @@ public class SmelterTest {
 		ChestBlockEntity[] c = new ChestBlockEntity[3];
 		CopperGolem golem = base(helper, 1, c);
 		GolemData d = GolemData.get(golem);
-		d.keepLayout = true;
+		d.keepLayoutTake = true; d.keepLayoutStore = true;
 		GolemData.save(golem, d);
 		furnace(helper, new BlockPos(1, 1, 5), Blocks.FURNACE);
 		c[0].setItem(0, new ItemStack(Items.IRON_ORE, 5));

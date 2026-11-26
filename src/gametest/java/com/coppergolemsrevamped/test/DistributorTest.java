@@ -58,7 +58,7 @@ public class DistributorTest {
 		d.assignments.put("input", helper.absolutePos(IN_POS));
 		d.assignments.put("targets_a", helper.absolutePos(new BlockPos(0, 1, 5)));
 		d.assignments.put("targets_b", helper.absolutePos(new BlockPos(7, 1, 7)));
-		d.keepLayout = keepLayout;
+		d.keepLayoutTake = keepLayout; d.keepLayoutStore = keepLayout;
 		GolemData.save(golem, d);
 		return golem;
 	}

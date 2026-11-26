@@ -37,10 +37,14 @@ public class KeepLayoutTest {
 	}
 
 	private static CopperGolem keeper(GameTestHelper helper, net.minecraft.resources.Identifier profession) {
+		return keeper(helper, profession, true, true);
+	}
+
+	private static CopperGolem keeper(GameTestHelper helper, net.minecraft.resources.Identifier profession, boolean take, boolean store) {
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 4));
 		GolemService.changeProfession(helper.getLevel(), golem, profession);
 		GolemData data = GolemData.get(golem);
-		data.keepLayout = true;
+		data.keepLayoutTake = take; data.keepLayoutStore = store;
 		GolemData.save(golem, data);
 		return golem;
 	}
@@ -79,6 +83,61 @@ public class KeepLayoutTest {
 				helper.assertTrue(laidOut || chestB.getItem(i).isEmpty(), "B slot " + i + " must stay empty: " + chestB.getItem(i));
 			}
 			helper.assertTrue(chestB.getItem(0).is(Items.STICK) && chestB.getItem(1).is(Items.DARK_OAK_LOG) && chestB.getItem(5).getCount() == 1, "B layout changed");
+			helper.assertTrue(TransporterLogic.isEmpty(TransporterLogic.carry(GolemData.get(golem))), "carry not delivered");
+		});
+	}
+
+	/** Taking only: A keeps 1 per slot, but B's empty slots are used (the logs, which B has no stack for, go into an empty slot). */
+	@GameTest(maxTicks = 1200)
+	public void takeOnlyLeavesOnePerSlotAndFillsEmptySlots(GameTestHelper helper) {
+		floor(helper);
+		BlockPos a = new BlockPos(1, 1, 3);
+		BlockPos b = new BlockPos(6, 1, 3);
+		helper.setBlock(a, Blocks.CHEST);
+		helper.setBlock(b, Blocks.CHEST);
+		ChestBlockEntity chestA = helper.getBlockEntity(a, ChestBlockEntity.class);
+		ChestBlockEntity chestB = helper.getBlockEntity(b, ChestBlockEntity.class);
+		chestA.setItem(0, new ItemStack(Items.STICK, 5));
+		chestA.setItem(1, new ItemStack(Items.STICK, 1));
+		chestA.setItem(2, new ItemStack(Items.DARK_OAK_LOG, 3)); // B has no log stack: only a free slot can take it
+		chestB.setItem(0, new ItemStack(Items.STICK, 1));
+		CopperGolem golem = keeper(helper, CopperGolemsRevamped.id("transporter"), true, false);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("input", helper.absolutePos(a));
+		data.assignments.put("output", helper.absolutePos(b));
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(chestA.getItem(0).getCount() == 1 && chestA.getItem(1).getCount() == 1 && chestA.getItem(2).getCount() == 1,
+				"A keeps 1 per slot: " + chestA.getItem(0) + " " + chestA.getItem(1) + " " + chestA.getItem(2));
+			helper.assertTrue(count(chestB, Items.STICK) == 5 && count(chestB, Items.DARK_OAK_LOG) == 2, "B sticks " + count(chestB, Items.STICK) + ", logs " + count(chestB, Items.DARK_OAK_LOG));
+			helper.assertTrue(TransporterLogic.isEmpty(TransporterLogic.carry(GolemData.get(golem))), "carry not delivered");
+		});
+	}
+
+	/** Storing only: A is emptied fully, B's empty slots stay empty; only same-item slots are topped up (the logs have no stack in B and stay in A). */
+	@GameTest(maxTicks = 1200)
+	public void storeOnlyEmptiesSourceAndNeverFillsEmptySlots(GameTestHelper helper) {
+		floor(helper);
+		BlockPos a = new BlockPos(1, 1, 3);
+		BlockPos b = new BlockPos(6, 1, 3);
+		helper.setBlock(a, Blocks.CHEST);
+		helper.setBlock(b, Blocks.CHEST);
+		ChestBlockEntity chestA = helper.getBlockEntity(a, ChestBlockEntity.class);
+		ChestBlockEntity chestB = helper.getBlockEntity(b, ChestBlockEntity.class);
+		chestA.setItem(0, new ItemStack(Items.STICK, 5));
+		chestA.setItem(1, new ItemStack(Items.STICK, 1));
+		chestA.setItem(2, new ItemStack(Items.DARK_OAK_LOG, 3));
+		chestB.setItem(0, new ItemStack(Items.STICK, 1));
+		CopperGolem golem = keeper(helper, CopperGolemsRevamped.id("transporter"), false, true);
+		GolemData data = GolemData.get(golem);
+		data.assignments.put("input", helper.absolutePos(a));
+		data.assignments.put("output", helper.absolutePos(b));
+		GolemData.save(golem, data);
+		helper.succeedWhen(() -> {
+			helper.assertTrue(count(chestA, Items.STICK) == 0, "A sticks fully taken: " + chestA.getItem(0) + " " + chestA.getItem(1));
+			helper.assertTrue(chestA.getItem(2).getCount() == 3, "logs B cannot take stay in A: " + chestA.getItem(2));
+			helper.assertTrue(count(chestB, Items.STICK) == 7 && count(chestB, Items.DARK_OAK_LOG) == 0, "B sticks " + count(chestB, Items.STICK));
+			for (int i = 1; i < chestB.getContainerSize(); i++) helper.assertTrue(chestB.getItem(i).isEmpty(), "B slot " + i + " must stay empty: " + chestB.getItem(i));
 			helper.assertTrue(TransporterLogic.isEmpty(TransporterLogic.carry(GolemData.get(golem))), "carry not delivered");
 		});
 	}

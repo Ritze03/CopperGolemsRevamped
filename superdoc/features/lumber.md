@@ -360,7 +360,7 @@ golem that never had an axe still does no work. See [mending.md](mending.md).
 
 ## Keep layout
 
-With the Keep layout setting on, the golem leaves 1 of every stack in the input chest when fetching saplings, bone meal
-and XP bottles (slots holding 1 are skipped), and surplus saplings / bone meal / logs only merge into non-empty slots of
+With Keep layout (taking) on, the golem leaves 1 of every stack in the input chest when fetching saplings, bone meal
+and XP bottles (slots holding 1 are skipped); with Keep layout (storing) on, surplus saplings / bone meal / logs only merge into non-empty slots of
 the same item in the input and output chest. Axes are exempt (unstackable). A chest with no spare item counts as empty
 for fetching, and a chest with no matching stack counts as full (the usual full handling applies). See [keep-layout.md](keep-layout.md).

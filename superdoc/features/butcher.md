@@ -160,7 +160,7 @@ D9 (no loss or duplication): items only move between slots, chests and carry (ki
 
 ## Keep layout
 
-With [keep-layout.md](keep-layout.md) on: the food fetch (`ButcherLogic:fetchFood`) only picks a food slot with more than 1 item and takes at most `count - 1`; food handed back (`TransferBudget:insert`, `canMakeRoom`) only merges into non-empty same-item slots; the output delivery (loot, XP bottles) merges only. Weapons are unstackable, so fetch and return stay unchanged. A food chest with only single items counts as having no food.
+With [keep-layout.md](keep-layout.md) on: with **taking** the food fetch (`ButcherLogic:fetchFood`) only picks a food slot with more than 1 item and takes at most `count - 1`; with **storing** food handed back (`TransferBudget:insert`, `canMakeRoom`) only merges into non-empty same-item slots, and the output delivery (loot, XP bottles) merges only. Weapons are unstackable, so fetch and return stay unchanged. A food chest with only single items counts as having no food.
 
 ## Tests
 

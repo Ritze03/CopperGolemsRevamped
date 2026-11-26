@@ -182,7 +182,7 @@ fruit. Parking empties the slot, so the empty-slot rule above decides the next t
 
 ## Keep layout
 
-With the Keep layout setting on, the golem leaves 1 of every stack in the seed chest and tools chest (seeds, XP
-bottles; slots holding 1 are skipped), and seeds, harvest and surplus only merge into non-empty slots of the same item in
+With Keep layout (taking) on, the golem leaves 1 of every stack in the seed chest and tools chest (seeds, XP
+bottles; slots holding 1 are skipped); with Keep layout (storing) on, seeds, harvest and surplus only merge into non-empty slots of the same item in
 the seed and output chest. Tools are exempt (unstackable). A seed chest with no spare seed counts as empty, and a chest
 with no matching stack counts as full (the usual full handling applies). See [keep-layout.md](keep-layout.md).

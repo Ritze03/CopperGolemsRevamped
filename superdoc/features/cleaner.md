@@ -24,7 +24,7 @@ Transient per-golem timers in a `WeakHashMap` (same style as the Transporter); p
 
 1. Area unset, output unset or not a container: stop, retry in 40 ticks.
 2. An item entity in the box (its centre inside, see below), alive, no pickup delay, (partly) fits the carry, not
-   skipped and (Keep layout only) accepted by the chest: path to the nearest;
+   skipped and (Keep layout storing only) accepted by the chest: path to the nearest;
    within 1.5 blocks, move as much as fits into carry and discard the entity or leave the remainder on it
    (no duplication). Cooldown 5 ticks.
 3. Else carry non-empty: `Interact:approach` to the output chest (1-block stand position, 2-block fallback, see
@@ -34,7 +34,7 @@ Transient per-golem timers in a `WeakHashMap` (same style as the Transporter); p
 4. Else idle, rescan every 20 ticks.
 
 While chasing an item the full-area entity query runs only every `CleanerLogic:RESCAN_TICKS` (10) ticks; in between
-the chased entity alone is re-checked against the same filter (alive, fits, inside the box, not skipped, Keep layout).
+the chased entity alone is re-checked against the same filter (alive, fits, inside the box, not skipped, Keep layout storing).
 A pickup or a give-up rescans at once. Why: perf review #11, the area query ran on every walking tick; the cost is that a
 nearer item dropped mid-chase is noticed up to 10 ticks later.
 
@@ -73,7 +73,7 @@ check; the cost is up to 10 s wasted per unreachable item (then 1 min ignored).
 
 ## Keep layout
 
-With the per-golem Keep layout setting on ([keep-layout.md](keep-layout.md)): the delivery (`TransferBudget:insert`) merges into matching stacks of the output chest only, never into empty slots.
+With the per-golem Keep layout (storing) setting on (`GolemData:keepLayoutStore`, [keep-layout.md](keep-layout.md); the taking flag is irrelevant, the Cleaner takes from the ground): the delivery (`TransferBudget:insert`) merges into matching stacks of the output chest only, never into empty slots.
 The scan also skips item entities the chest cannot take right now (`TransporterLogic:canInsert(chest, stack, true)`):
 they stay on the ground. Items already carried that the chest refuses (it changed after the pickup) stay with the golem
 and the full-chest handling (retry every `RETRY_TICKS`) applies; they are never dropped.
@@ -81,7 +81,7 @@ and the full-chest handling (retry every `RETRY_TICKS`) applies; they are never 
 Why: undeliverable types used to be picked up anyway and piled up in the carry until all 9 slots were full, after which
 the golem could collect nothing. Why not drop refused carry back (the Transporter's return to A): the chest is often
 outside the area, and items dropped there would never be collected again and despawn; keeping them costs only a slot.
-Why only with Keep layout: with it off, a chest that is merely full is the old full-chest case, and holding the items
+Why only with Keep layout (storing): with it off, a chest that is merely full is the old full-chest case, and holding the items
 keeps them from despawning. Tests: `keepLayoutDeliversOnlyOntoMatchingStacks` (diamonds stay on the ground),
 `keepLayoutLeavesUndeliverableTypes` (nine refused types nearer than the cobblestone, all left lying).
 

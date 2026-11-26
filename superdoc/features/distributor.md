@@ -52,7 +52,7 @@ Phases (`DistributorLogic.Phase`): FETCH -> DISTRIBUTE -> RETURN -> FETCH.
    the golem moves on to the next one. A target that is gone, unloaded or unreachable (200 ticks without progress, then
    skipped for 600) is passed over and a rescan is forced.
 3. RETURN: whatever is still carried (the unplaced shares and the remainder) goes back into the input chest with
-   `TransferBudget.insert(..., keepLayout)`. If the input chest is full the golem holds the items, shows a status and retries
+   `TransferBudget.insert(..., keepLayoutStore)`. If the input chest is full the golem holds the items, shows a status and retries
    every 40 ticks. Why: items must never be stranded in the golem forever (the golem keeps trying to return them) and never
    busy-loop (the cooldown).
 
@@ -71,7 +71,7 @@ takes less than offered (physically full / no matching stack under keep layout) 
 full target can never hold the golem forever. The insert loop re-finds the carry slot each pass (`slotOf`) instead of
 stepping to the next slot. Why: stepping past a slot that a budget-limited insert left non-empty used to end the type
 with quota left, silently truncating the share (2 targets x 32 iron got 16 each per visit) and sending the rest back
-to the input for extra rounds. Keep layout: input slots keep 1, targets and the
+to the input for extra rounds. Keep layout: with taking input slots keep 1 (`planFetch`, `takeAll`), with storing targets and the
 return only merge into non-empty same-item slots; no matching stack means that target gets nothing and its share returns.
 Freeze and Follow work through `GolemTicker` (nothing here).
 

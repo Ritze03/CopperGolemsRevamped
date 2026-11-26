@@ -111,7 +111,7 @@ public final class GolemMending {
 	 * Why: user request, repair while waiting instead of idling; an idle golem has nothing better to do.
 	 */
 	public static boolean canRepair(ServerLevel level, GolemData data, ItemStack held, Container chest, Predicate<ItemStack> isTool, boolean topUp) {
-		if (data.xp <= 0 && bottlesIn(chest, data.keepLayout) <= 0) return false;
+		if (data.xp <= 0 && bottlesIn(chest, data.keepLayoutTake) <= 0) return false;
 		if (wantsRepair(level, held, isTool, topUp)) return true;
 		for (int i = 0; i < chest.getContainerSize(); i++) if (wantsRepair(level, chest.getItem(i), isTool, topUp)) return true;
 		return false;
@@ -139,7 +139,7 @@ public final class GolemMending {
 				int need = xpFor(level, t, t.getDamageValue());
 				if (data.xp < need && data.xp < GolemXp.XP_PER_BOTTLE) {
 					// store alone is not enough: open one more bottle (a partial repair from the store is fine when none is left)
-					if (used < limit && takeBottle(chest, data.keepLayout)) { GolemXp.add(data, GolemXp.XP_PER_BOTTLE); used++; continue; }
+					if (used < limit && takeBottle(chest, data.keepLayoutTake)) { GolemXp.add(data, GolemXp.XP_PER_BOTTLE); used++; continue; }
 					if (data.xp <= 0) break;
 				}
 				int spend = Math.min(need, data.xp);

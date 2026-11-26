@@ -84,9 +84,12 @@ public class GolemData {
 		Codec.INT.lenientOptionalFieldOf("xp", 0).forGetter(d -> d.xp),
 		Codec.STRING.lenientOptionalFieldOf("filter_mode", FilterMode.OFF.id).forGetter(d -> d.filterMode.id),
 		Codec.BOOL.lenientOptionalFieldOf("strip_logs", false).forGetter(d -> d.stripLogs),
-		Codec.BOOL.lenientOptionalFieldOf("keep_layout", false).forGetter(d -> d.keepLayout),
+		Codec.BOOL.lenientOptionalFieldOf("keep_layout_take").forGetter(d -> Optional.of(d.keepLayoutTake)),
+		Codec.BOOL.lenientOptionalFieldOf("keep_layout_store").forGetter(d -> Optional.of(d.keepLayoutStore)),
+		// Legacy key, read only as the fallback for old saves; never written (the forGetter returns empty).
+		Codec.BOOL.lenientOptionalFieldOf("keep_layout").forGetter(d -> Optional.empty()),
 		GlobalPos.CODEC.lenientOptionalFieldOf("home").forGetter(d -> Optional.ofNullable(d.home))
-	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, kl, hm) -> {
+	).apply(i, (p, a, it, f, u, sc, an, fr, xp, fm, sl, klt, kls, kl, hm) -> {
 		GolemData d = new GolemData();
 		d.profession = p.orElse(null);
 		d.assignments.putAll(a);
@@ -99,7 +102,8 @@ public class GolemData {
 		d.xp = Math.max(0, xp);
 		d.filterMode = FilterMode.parse(fm);
 		d.stripLogs = sl;
-		d.keepLayout = kl;
+		d.keepLayoutTake = klt.orElse(kl.orElse(false));
+		d.keepLayoutStore = kls.orElse(kl.orElse(false));
 		d.home = hm.orElse(null);
 		d.fitItems();
 		return d;
@@ -120,8 +124,10 @@ public class GolemData {
 	public FilterMode filterMode = FilterMode.OFF;
 	/** Lumber setting: strip each log with the axe before breaking it (see superdoc/features/lumber.md). Default off. */
 	public boolean stripLogs;
-	/** Keep layout: never empty a stack, never fill an empty slot in a container (see superdoc/features/keep-layout.md). Default off. */
-	public boolean keepLayout;
+	/** Keep layout, taking: never empty a stack it takes from, leave 1 per slot (see superdoc/features/keep-layout.md). Default off. */
+	public boolean keepLayoutTake;
+	/** Keep layout, storing: only merge into non-empty same-item slots, never fill an empty slot. Default off. */
+	public boolean keepLayoutStore;
 	public @Nullable UUID followPlayer;
 	/**
 	 * Chest Sorter home: where the golem works; it walks back when it strays too far (see superdoc/features/golem-safety.md).

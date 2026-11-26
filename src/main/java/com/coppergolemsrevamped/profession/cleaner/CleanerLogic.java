@@ -98,7 +98,7 @@ public final class CleanerLogic {
 		s.skip.values().removeIf(until -> until <= now);
 		// Keep layout: leave on the ground what the chest cannot take (no matching stack), or it piles up in the carry forever.
 		Predicate<ItemEntity> wanted = e -> e.isAlive() && !e.hasPickUpDelay() && fits(data.items, e.getItem()) && box.contains(e.position())
-			&& !s.skip.containsKey(e.getUUID()) && (!data.keepLayout || TransporterLogic.canInsert(chest, e.getItem(), true));
+			&& !s.skip.containsKey(e.getUUID()) && (!data.keepLayoutStore || TransporterLogic.canInsert(chest, e.getItem(), true));
 		ItemEntity target;
 		if (s.chasing != null && now - s.scannedAt < RESCAN_TICKS && wanted.test(s.chasing)) {
 			target = s.chasing; // mid-chase: reuse the last scan's pick
@@ -142,7 +142,7 @@ public final class CleanerLogic {
 		}
 		if (!Interact.approach(level, golem, out, s.walk, SPEED)) return;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(out));
-		if (TransferBudget.insert(level, golem, data.items, chest, data.keepLayout) > 0) Interact.openChest(level, golem, out, Interact.Action.INSERT);
+		if (TransferBudget.insert(level, golem, data.items, chest, data.keepLayoutStore) > 0) Interact.openChest(level, golem, out, Interact.Action.INSERT);
 		if (TransporterLogic.isEmpty(data.items)) {
 			s.cooldown = Interact.OPEN_TICKS;
 			s.walk.reset();

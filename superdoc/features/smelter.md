@@ -101,7 +101,7 @@ Every item move is budgeted (16 items per 5 ticks per golem): chest fetch, fuel 
 
 ## Keep layout
 
-With [keep-layout.md](keep-layout.md) on, the input, fuel and output chests follow the rule: ore and fuel are taken at most `count - 1` per slot (`SmelterLogic:removeFrom`), and the fetch/fuel plans (`planFetch`, `planFuel`, `fetched`) count only that takeable amount, so the even split never promises items it cannot take. Results and leftovers (`moveOut`) only merge into non-empty same-item slots; with no matching stack the output counts as full and `outBlockedUntil` applies as usual. Furnace slots are exempt.
+With [keep-layout.md](keep-layout.md) on, the input, fuel and output chests follow the rule: with **taking** ore and fuel are taken at most `count - 1` per slot (`SmelterLogic:removeFrom`), and the fetch/fuel plans (`planFetch`, `planFuel`, `fetched`) count only that takeable amount, so the even split never promises items it cannot take. With **storing**, results and leftovers (`moveOut`) only merge into non-empty same-item slots; with no matching stack the output counts as full and `outBlockedUntil` applies as usual. Furnace slots are exempt.
 
 ## Never block
 

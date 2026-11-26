@@ -338,18 +338,22 @@ final class GolemViews {
 	private static void settings(GolemMenu m, Cell[] cells) {
 		GolemData data = GolemData.get(m.golem());
 		boolean on = data.following;
-		set(cells, 2, 3, icon((on ? GolemIcon.FOLLOW_ON : GolemIcon.FOLLOW_OFF).stack(
+		set(cells, 2, 2, icon((on ? GolemIcon.FOLLOW_ON : GolemIcon.FOLLOW_OFF).stack(
 			Component.literal("Follow: " + (on ? "on" : "off")),
 			lore(on ? "Click to stop following you" : "Click to make the golem follow you"), on),
 			(p, b) -> m.toggleFollow(p)));
 		boolean frozen = data.frozen;
-		set(cells, 2, 5, icon(GolemIcon.plain(Items.BLUE_ICE, Component.literal("Freeze: " + (frozen ? "on" : "off")),
+		set(cells, 2, 6, icon(GolemIcon.plain(Items.BLUE_ICE, Component.literal("Freeze: " + (frozen ? "on" : "off")),
 			lore("Golem stops all work and stands still", "Use it to safely change its inventory"), frozen),
 			(p, b) -> m.toggleFreeze()));
-		boolean keep = data.keepLayout;
-		set(cells, 2, 4, icon(GolemIcon.plain(Items.ITEM_FRAME, Component.literal("Keep layout: " + (keep ? "on" : "off")),
-			lore("Leaves 1 item in every slot; never fills empty slots"), keep),
-			(p, b) -> m.toggleKeepLayout()));
+		boolean take = data.keepLayoutTake;
+		set(cells, 2, 3, icon(GolemIcon.plain(Items.ITEM_FRAME, Component.literal("Keep layout (taking): " + (take ? "on" : "off")),
+			lore("Leaves 1 item in every slot it takes from"), take),
+			(p, b) -> m.toggleKeepLayoutTake()));
+		boolean store = data.keepLayoutStore;
+		set(cells, 2, 5, icon(GolemIcon.plain(Items.GLOW_ITEM_FRAME, Component.literal("Keep layout (storing): " + (store ? "on" : "off")),
+			lore("Only tops up existing stacks; never uses empty slots"), store),
+			(p, b) -> m.toggleKeepLayoutStore()));
 		boolean lumber = LumberProfession.ID.equals(m.currentId());
 		if (lumber) {
 			boolean strip = data.stripLogs;

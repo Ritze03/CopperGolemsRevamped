@@ -52,9 +52,10 @@ The Chest Sorter is not subject to the mod's transfer limit: it runs vanilla's b
 
 ## Keep layout
 
-With the golem's Keep layout setting on (see [keep-layout.md](keep-layout.md)) the same mixin class also changes the pick-up
-and put-down: a source needs a slot with more than 1 item and the golem leaves 1 behind; a destination needs a stack of the
-same item to merge into, empty slots are never used. Unstackable items keep vanilla's rule: only a chest that is empty or
+With the golem's Keep layout settings on (see [keep-layout.md](keep-layout.md)) the same mixin class also changes the pick-up
+and put-down, each part by its own flag. **Taking** (`keepLayoutTake`): a source needs a slot with more than 1 item and the
+golem leaves 1 behind. **Storing** (`keepLayoutStore`): a destination needs a stack of the same item to merge into, empty
+slots are never used, and the pick-up only takes types some destination accepts. With a flag off, that part stays vanilla. Unstackable items keep vanilla's rule: only a chest that is empty or
 already holds the same item (`isSameItem`) takes them. A type no destination in range can take is left in the copper
 chest (the golem picks the next slot), because vanilla never returns a held item and would carry it forever, blocking the
 rest of the copper chest. Details and the why: [keep-layout.md](keep-layout.md) "Where".

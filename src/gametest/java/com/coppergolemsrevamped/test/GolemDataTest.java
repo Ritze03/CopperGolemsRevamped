@@ -56,7 +56,8 @@ public class GolemDataTest {
 		data.xp = 13;
 		data.filterMode = FilterMode.BLACKLIST;
 		data.stripLogs = true;
-		data.keepLayout = true;
+		data.keepLayoutTake = true;
+		data.keepLayoutStore = false;
 		GolemData.save(golem, data);
 
 		TagValueOutput out = TagValueOutput.createWithContext(ProblemReporter.DISCARDING, level.registryAccess());
@@ -83,7 +84,7 @@ public class GolemDataTest {
 		helper.assertTrue(d.xp == 13, "xp: " + d.xp);
 		helper.assertTrue(d.filterMode == FilterMode.BLACKLIST, "filter_mode: " + d.filterMode);
 		helper.assertTrue(d.stripLogs, "strip_logs lost");
-		helper.assertTrue(d.keepLayout, "keep_layout lost");
+		helper.assertTrue(d.keepLayoutTake && !d.keepLayoutStore, "keep_layout_take lost or keep_layout_store set");
 		helper.succeed();
 	}
 
@@ -128,7 +129,7 @@ public class GolemDataTest {
 		helper.assertTrue(d.xp == 0, "xp default: " + d.xp);
 		helper.assertTrue(d.filterMode == FilterMode.OFF, "filter_mode default: " + d.filterMode);
 		helper.assertTrue(!d.stripLogs, "strip_logs default");
-		helper.assertTrue(!d.keepLayout, "keep_layout default");
+		helper.assertTrue(!d.keepLayoutTake && !d.keepLayoutStore, "keep_layout defaults");
 		helper.assertTrue(d.autoName == null && d.spawnChest == null && d.followPlayer == null, "nullable defaults");
 		helper.succeed();
 	}
@@ -166,7 +167,32 @@ public class GolemDataTest {
 		helper.assertTrue(d.items.get(1).isEmpty(), "bad stack not empty: " + d.items.get(1));
 		helper.assertTrue(ItemStack.matches(d.items.get(2), new ItemStack(Items.EMERALD, 7)), "slot 2 shifted: " + d.items.get(2));
 		helper.assertTrue(d.xp == 0, "bad xp: " + d.xp);
-		helper.assertTrue(d.keepLayout, "keep_layout lost");
+		helper.assertTrue(d.keepLayoutTake && d.keepLayoutStore, "old keep_layout true must turn both on");
+		helper.succeed();
+	}
+
+	/** Migration: the old single keep_layout key turns both new settings on (true) or leaves both off (false); the new keys win when present. */
+	@GameTest
+	public void legacyKeepLayoutMigrates(GameTestHelper helper) {
+		CompoundTag off = new CompoundTag();
+		off.putBoolean("keep_layout", false);
+		GolemData d = GolemData.CODEC.parse(ops(helper), off).getOrThrow();
+		helper.assertTrue(!d.keepLayoutTake && !d.keepLayoutStore, "keep_layout false must leave both off");
+		CompoundTag on = new CompoundTag();
+		on.putBoolean("keep_layout", true);
+		d = GolemData.CODEC.parse(ops(helper), on).getOrThrow();
+		helper.assertTrue(d.keepLayoutTake && d.keepLayoutStore, "keep_layout true must turn both on");
+		CompoundTag both = new CompoundTag();
+		both.putBoolean("keep_layout", true);
+		both.putBoolean("keep_layout_take", false);
+		both.putBoolean("keep_layout_store", true);
+		d = GolemData.CODEC.parse(ops(helper), both).getOrThrow();
+		helper.assertTrue(!d.keepLayoutTake && d.keepLayoutStore, "new keys win over the old one");
+		GolemData x = new GolemData();
+		x.keepLayoutTake = true;
+		Tag saved = GolemData.CODEC.encodeStart(ops(helper), x).getOrThrow();
+		helper.assertTrue(saved instanceof CompoundTag c && !c.contains("keep_layout") && c.getBooleanOr("keep_layout_take", false) && !c.getBooleanOr("keep_layout_store", true),
+			"old key must not be written: " + saved);
 		helper.succeed();
 	}
 

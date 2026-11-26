@@ -431,7 +431,7 @@ public class CrafterTest {
 		c[0].setItem(1, new ItemStack(Items.OAK_PLANKS, 1));
 		c[1].setItem(5, new ItemStack(Items.STICK, 1));
 		GolemData data = GolemData.get(golem);
-		data.keepLayout = true;
+		data.keepLayoutTake = true; data.keepLayoutStore = true;
 		GolemData.save(golem, data);
 		helper.succeedWhen(() -> {
 			helper.assertTrue(c[1].getItem(5).is(Items.STICK) && c[1].getItem(5).getCount() == 9, "merged stick stack: " + c[1].getItem(5));
@@ -447,7 +447,7 @@ public class CrafterTest {
 		ChestBlockEntity[] c = new ChestBlockEntity[2];
 		CopperGolem golem = setup(helper, true, 3, c);
 		GolemData data = GolemData.get(golem);
-		data.keepLayout = true;
+		data.keepLayoutTake = true; data.keepLayoutStore = true;
 		GolemData.save(golem, data);
 		helper.runAfterDelay(300, () -> {
 			helper.assertTrue(total(c[1]) == 0, "output chest got " + total(c[1]));

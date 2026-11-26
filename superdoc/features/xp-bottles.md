@@ -52,7 +52,7 @@ Bottle delivery to a chest is part of the golem's transfer budget (`GolemXp:deli
 
 ## Keep layout
 
-With [keep-layout.md](keep-layout.md) on, `GolemXp:deliver` passes the flag to `TransporterLogic:insertAll`: bottles only merge into non-empty bottle stacks of the output chest. With none, the chest counts as full and the XP stays stored.
+With Keep layout (storing) on ([keep-layout.md](keep-layout.md)), `GolemXp:deliver` passes `keepLayoutStore` to `TransporterLogic:insertAll`: bottles only merge into non-empty bottle stacks of the output chest. With none, the chest counts as full and the XP stays stored.
 
 ## Status tab
 

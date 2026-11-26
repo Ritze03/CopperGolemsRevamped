@@ -270,7 +270,7 @@ public class TransporterTest {
 		CopperGolem golem = helper.spawn(EntityTypes.COPPER_GOLEM, new BlockPos(3, 1, 4));
 		GolemService.changeProfession(helper.getLevel(), golem, CopperGolemsRevamped.id("transporter"));
 		GolemData data = GolemData.get(golem);
-		data.keepLayout = keepLayout;
+		data.keepLayoutTake = keepLayout; data.keepLayoutStore = keepLayout;
 		data.assignments.put("input", helper.absolutePos(a));
 		data.assignments.put("output", helper.absolutePos(b));
 		GolemData.save(golem, data);

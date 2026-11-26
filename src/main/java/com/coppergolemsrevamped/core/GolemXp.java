@@ -58,7 +58,7 @@ public final class GolemXp {
 		if (ready <= 0 || limit <= 0) return 0;
 		NonNullList<ItemStack> carry = NonNullList.create();
 		carry.addAll(makeBottles(ready));
-		TransporterLogic.insertAll(carry, dst, limit, data.keepLayout);
+		TransporterLogic.insertAll(carry, dst, limit, data.keepLayoutStore);
 		int left = 0;
 		for (ItemStack s : carry) left += s.getCount();
 		int inserted = ready - left;

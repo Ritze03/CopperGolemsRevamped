@@ -293,7 +293,7 @@ public final class DistributorLogic {
 				s.cooldown = RETRY_TICKS;
 				return false;
 			}
-			List<Amount> plan = planFetch(in, carry, n, data.keepLayout);
+			List<Amount> plan = planFetch(in, carry, n, data.keepLayoutTake);
 			if (plan.isEmpty()) {
 				golem.getNavigation().stop();
 				s.status = "Input has fewer than " + n + " of any item";
@@ -311,7 +311,7 @@ public final class DistributorLogic {
 			Amount a = it.next();
 			int limit = Math.min(a.n, TransferBudget.remaining(level, golem));
 			if (limit <= 0) break;
-			int got = TransporterLogic.takeAll(in, carry, limit, x -> same(x, a.type), data.keepLayout);
+			int got = TransporterLogic.takeAll(in, carry, limit, x -> same(x, a.type), data.keepLayoutTake);
 			TransferBudget.spend(level, golem, got);
 			moved |= got > 0;
 			a.n -= got;
@@ -379,7 +379,7 @@ public final class DistributorLogic {
 				int i = slotOf(carry, q.type);
 				if (i < 0) break; // carry has no more of this type
 				int lim = Math.min(q.n, Math.min(carry.get(i).getCount(), budget));
-				int got = TransporterLogic.insertAll(carry.subList(i, i + 1), c, lim, data.keepLayout);
+				int got = TransporterLogic.insertAll(carry.subList(i, i + 1), c, lim, data.keepLayoutStore);
 				TransferBudget.spend(level, golem, got);
 				moved += got;
 				q.n -= got;
@@ -414,7 +414,7 @@ public final class DistributorLogic {
 		s.status = "Returning the leftovers to the input chest";
 		if (!walkTo(level, golem, s, inPos)) return false;
 		golem.getLookControl().setLookAt(Vec3.atCenterOf(inPos));
-		int n = TransferBudget.insert(level, golem, carry, in, data.keepLayout);
+		int n = TransferBudget.insert(level, golem, carry, in, data.keepLayoutStore);
 		if (n > 0) Interact.openChest(level, golem, inPos, Interact.Action.INSERT);
 		if (TransporterLogic.isEmpty(carry)) {
 			s.walk.reset();
