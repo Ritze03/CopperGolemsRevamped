@@ -48,11 +48,11 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
   `noCraftWithoutTable`, `noCraftWhenTableReplaced`, `deliversEverythingWhenTemplateCleared`, `staleInputItemsAreDelivered`,
   `lidsOpenAndReachIsOneBlock`, `guiLayoutIsOneRememberingGrid`, `recipeTabShowsTheTemplateAsGhosts`, `shiftClickFillsRememberedInputOnly`,
   `itemsDropOnProfessionChange`, `keepLayoutUsesOnlyTakeablesAndMerges`, `keepLayoutOutputWithoutMatchingStackCountsAsFull` ([crafter.md](../features/crafter.md)).
-- `FarmerTest` (20): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
+- `FarmerTest` (22): `harvestsReplantsAndOutputs`, `tillsDirtWithHoe`, `wornHoeIsSwappedNotLost`,
   `harvestWithNearlyFullCarryLosesNothing`, `stemSeedsIgnored`, `seedsGoToSeedChestRestToOutput`, `seedsOverflowToOutput`,
   `noSeedChestSeedsToOutput`, `axeHarvestsFruitLeavesStems`, `hoeIgnoresMelons`, `wornHoeReplacedOnlyByHoe`,
   `wornAxeReplacedOnlyByAxe`, `noReplacementKeepsWornHoe`, `noReplacementKeepsWornAxe`, `emptySlotTakesFirstToolAndFilter`,
-  `fieldLimit9`, `seedDefinition`, `hoeWorkSwingsAndReturnsToIdle`, `swingCounts`, `keepLayoutFetchesAndDeliversAroundTheLayout` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
+  `fieldLimit9`, `fieldClickedOnCropLayer`, `fieldClickedBelowSoil`, `seedDefinition`, `hoeWorkSwingsAndReturnsToIdle`, `swingCounts`, `keepLayoutFetchesAndDeliversAroundTheLayout` ([farmer.md](../features/farmer.md)). The nearly-full-carry test forces the drop roll
   through the global hook `FarmerLogic:testDropRoll` (filtered to its own crop position, since tests run in parallel).
 - `LumberTest` (42, incl. `professionChangeForgetsTransientState` (Lumber -> Transporter -> Lumber mid-phase starts with no phase, `Profession.Forget`), `collectsDropsWhileWaitingForGrowth`, `repairsMendingAxeWhileWaitingForGrowth`, `pickupDelayedDropIsNotTakenAtOnce`, `collectsDropWhileStandingInTheSapling`, `obstructedSaplingDoesNotDrainBoneMeal`): `stripLogsGivesStrippedLogs`, `stripLogsIsVisibleStep`, `fellsMixedPlainAndStrippedTree`, `stripLogsOffByDefault`, `stripLogsNeverBreaksMendingAxe`, `strippedStateFollowsVanilla`, `fellsAlreadyStrippedTree`, `stripLogsSurvivesSaveLoad` (strip setting, see lumber.md), `brokenAxeEmptiesSlotAndRefetches` (axe at 1 durability breaks, slot empty, no exception, new axe fetched), `fellsOakFromTheGround`, `fellsBranchyTree`, `fellsTwoByTwoAndReplantsFour`, `collectsGroundDrops`, `collectsDropsOneBlockFromTheSapling`, `collectsDropInsideTheSaplingFromOutside` (drop on the sapling cell is pulled in from the safe ring),
   `bonemealGrowsTheSaplingThenFellsIt`, `fullCarryDeliversMidTreeAndContinues`, `noAxeNoWork`, `wornAxeIsSwapped`,
@@ -83,8 +83,8 @@ Per class, with the `@GameTest` method count. Detail of what each test checks is
 
 - `HealthTest` (5): `suffocationDoesNothing`, `nonPlayerDamageIsIgnored`, `playerDamageHurts`, `voidAndKillStillKill`, `regeneratesOneHpPerThirtySeconds` ([health.md](../features/health.md)).
 
-Total: 282 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
-`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 289 required tests passed` (see Gotchas). Update the numbers here when
+Total: 290 `@GameTest` methods (`grep -c '@GameTest' src/gametest/java/com/coppergolemsrevamped/test/*.java` per file,
+`GolemGuiClientTest` and `ToolSwingClientTest` have none), so the log says `All 291 required tests passed` (see Gotchas). Update the numbers here when
 you add or remove a test.
 
 **Register every new test class** in the `fabric-gametest` list of `src/gametest/resources/fabric.mod.json`. An

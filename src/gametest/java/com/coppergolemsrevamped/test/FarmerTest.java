@@ -30,6 +30,7 @@ import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.FarmlandBlock;
 import net.minecraft.world.level.block.StemBlock;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 
 public class FarmerTest {
 	private static final BlockPos TOOLS = new BlockPos(5, 1, 0);
@@ -114,6 +115,40 @@ public class FarmerTest {
 			helper.assertTrue(count(out, Items.WHEAT_SEEDS) == 0, "seeds in output");
 			helper.assertTrue(count(d.items, Items.WHEAT) == 0, "wheat left in carry");
 		});
+	}
+
+	/** Field clicked at {@code clickY} (farmland at y=0, mature wheat at y=1): the Y window of +-1 still finds the soil. */
+	private static void clickedLayerHarvests(GameTestHelper helper, int clickY) {
+		world(helper);
+		for (int x = 0; x < 2; x++) for (int z = 0; z < 2; z++) {
+			helper.setBlock(new BlockPos(x, 0, z), Blocks.FARMLAND.defaultBlockState().setValue(FarmlandBlock.MOISTURE, 7));
+			helper.setBlock(new BlockPos(x, 1, z), ((CropBlock) Blocks.WHEAT).getStateForAge(7));
+		}
+		chest(helper, SEEDS).setItem(0, new ItemStack(Items.WHEAT_SEEDS, 20));
+		ChestBlockEntity out = chest(helper, OUT);
+		farmer(helper, 2, 2, (g, d) -> {
+			d.assignments.put("field_a", helper.absolutePos(new BlockPos(0, clickY, 0)));
+			d.assignments.put("field_b", helper.absolutePos(new BlockPos(1, clickY, 1)));
+		});
+		helper.succeedWhen(() -> {
+			for (int x = 0; x < 2; x++) for (int z = 0; z < 2; z++) {
+				BlockState st = helper.getBlockState(new BlockPos(x, 1, z));
+				helper.assertTrue(st.is(Blocks.WHEAT) && !((CropBlock) Blocks.WHEAT).isMaxAge(st), "not replanted at " + x + "," + z);
+			}
+			helper.assertTrue(count(out, Items.WHEAT) == 4, "wheat in output: " + count(out, Items.WHEAT));
+		});
+	}
+
+	/** Clicking the crop layer (one above the farmland) works like clicking the farmland. */
+	@GameTest(maxTicks = 1500)
+	public void fieldClickedOnCropLayer(GameTestHelper helper) {
+		clickedLayerHarvests(helper, 1);
+	}
+
+	/** Clicking one block below the farmland still works (window reaches +1). */
+	@GameTest(maxTicks = 1500)
+	public void fieldClickedBelowSoil(GameTestHelper helper) {
+		clickedLayerHarvests(helper, -1);
 	}
 
 	/**
